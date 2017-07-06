@@ -1,13 +1,17 @@
-# ceed_benchmarks_dealii
+# CEED benchmarks with deal.II
 
 This project provides small programs to evaluate the ceed benchmark cases
 http://ceed.exascaleproject.org/bps with the matrix-free evaluation routines
 provided by the deal.II finite element library,
 https://github.com/dealii/dealii
 
-### Results for mass operator
+### Results for mass operator (BP1)
 
+When running on SuperMUC Phase 1 (2x8 cores Sandy Bridge E5-2680 2.7 GHz), the
+following results are obtained:
 
+![alt text](https://github.com/kronbichler/ceed_benchmarks_dealii/blob/master/bp1/gnuplot/node1.png)
+![alt text](https://github.com/kronbichler/ceed_benchmarks_dealii/blob/master/bp1/gnuplot/node256.png)
 
 ### Prerequisites and installation
 
