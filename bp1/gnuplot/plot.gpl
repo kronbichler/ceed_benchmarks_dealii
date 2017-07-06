@@ -1,0 +1,41 @@
+set   autoscale                        # scale axes automatically
+unset log                              # remove any log-scaling
+unset label                            # remove any previous labels
+unset title
+set xtic auto                          # set xtics automatically
+set ytic auto                          # set ytics automatically
+set xlabel "Number of degrees of freedom / node"
+set ylabel "dofs / second / iteration / node (16 cores)"
+set title "1 node (16 cores) 2x8 SandyBridge 2680 (SuperMUC)"
+set logscale xy                        # logarithmic scales
+set key on right bottom Left box lw 0 width -3 height 0.5 # some white space around legend
+set grid
+set border linewidth 0.3
+set format y "10^{%L}"
+set format x "10^{%L}"
+set xr [1e3:1e8]
+set yr [1e7:1e9]
+set terminal postscript enhanced eps color lw 5 "Arial" 18
+set out 'node1.eps'
+plot \
+     "node1_p1_q3.dat" using 4:($6/1) title '  p=1, q=p+2' with linespoints, \
+     "node1_p2_q4.dat" using 4:($6/1) title '  p=2, q=p+2' with linespoints, \
+     "node1_p3_q5.dat" using 4:($6/1) title '  p=3, q=p+2' with linespoints, \
+     "node1_p4_q6.dat" using 4:($6/1) title '  p=4, q=p+2' with linespoints, \
+     "node1_p5_q7.dat" using 4:($6/1) title '  p=5, q=p+2' with linespoints, \
+     "node1_p6_q8.dat" using 4:($6/1) title '  p=6, q=p+2' with linespoints, \
+     "node1_p7_q9.dat" using 4:($6/1) title '  p=7, q=p+2' with linespoints, \
+     "node1_p8_q10.dat" using 4:($6/1) title '  p=8, q=p+2'  with linespoints
+
+set title "256 nodes (4096 cores) 2x8 SandyBridge 2680 (SuperMUC)"
+set terminal postscript enhanced eps color lw 5 "Arial" 18
+set out 'node256.eps'
+plot \
+     "node256_p1_q3.dat" using ($4/256):($6/256) title '  p=1, q=p+2' with linespoints, \
+     "node256_p2_q4.dat" using ($4/256):($6/256) title '  p=2, q=p+2' with linespoints, \
+     "node256_p3_q5.dat" using ($4/256):($6/256) title '  p=3, q=p+2' with linespoints, \
+     "node256_p4_q6.dat" using ($4/256):($6/256) title '  p=4, q=p+2' with linespoints, \
+     "node256_p5_q7.dat" using ($4/256):($6/256) title '  p=5, q=p+2' with linespoints, \
+     "node256_p6_q8.dat" using ($4/256):($6/256) title '  p=6, q=p+2' with linespoints, \
+     "node256_p7_q9.dat" using ($4/256):($6/256) title '  p=7, q=p+2' with linespoints, \
+     "node256_p8_q10.dat" using ($4/256):($6/256) title '  p=8, q=p+2'  with linespoints
