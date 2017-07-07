@@ -88,7 +88,7 @@ private:
 
 template <int dim, int fe_degree, int n_q_points>
 void test(const unsigned int s,
-          const bool short_test)
+          const bool short_output)
 {
   Timer time;
   const unsigned int n_refine = s/3;
@@ -134,7 +134,8 @@ void test(const unsigned int s,
 
   Utilities::MPI::MinMaxAvg data =
     Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD);
-  if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0 && short_test == false)
+  if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0 &&
+      short_output == false)
     std::cout << "Setup time:         "
               << data.min << " (p" << data.min_index << ") " << data.avg
               << " " << data.max << " (p" << data.max_index << ")" << "s"
@@ -147,7 +148,7 @@ void test(const unsigned int s,
   solver.solve(mass_operator, output, input, PreconditionIdentity());
   data = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD);
   if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0 &&
-      short_test==false)
+      short_output==false)
     {
       std::cout << "Solve time:         "
                 << data.min << " (p" << data.min_index << ") " << data.avg
@@ -161,14 +162,22 @@ void test(const unsigned int s,
                 << " (p" << data.max_index << ")" << "s"
                 << std::endl;
     }
+  const double solver_time = data.max;
+
+  time.restart();
+  for (unsigned int i=0; i<100; ++i)
+    mass_operator.vmult(input, output);
+  data = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD);
+
   if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0 &&
-      short_test == true)
+      short_output == true)
     std::cout << std::setw(2) << fe_degree << " | " << std::setw(2) << n_q_points
               << " | " << std::setw(10) << tria.n_global_active_cells()
               << " | " << std::setw(11) << dof_handler.n_dofs()
-              << " | " << std::setw(11) << data.max/solver_control.last_step()
-              << " | " << std::setw(11) << dof_handler.n_dofs()/data.max*solver_control.last_step()
-              << " | " << std::setw(3) << solver_control.last_step()
+              << " | " << std::setw(11) << solver_time/solver_control.last_step()
+              << " | " << std::setw(11) << dof_handler.n_dofs()/solver_time*solver_control.last_step()
+              << " | " << std::setw(6) << solver_control.last_step()
+              << " | " << std::setw(11) << data.max/100
               << std::endl;
 }
 
@@ -180,9 +189,9 @@ void do_test()
     std::max(3U, static_cast<unsigned int>
              (std::log2(1024/fe_degree/fe_degree/fe_degree)));
   if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
-    std::cout << " p |  q | n_elements |      n_dofs |     time/it |   dofs/s/it | CG its"
+    std::cout << " p |  q | n_elements |      n_dofs |     time/it |   dofs/s/it | CG_its | time/matvec"
               << std::endl;
-  while (Utilities::fixed_power<dim>(fe_degree+1)*(1U<<s)
+  while (Utilities::fixed_power<dim>(fe_degree+1)*(1UL<<s)
          < 3000000ULL*Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD))
     {
       test<dim,fe_degree,n_q_points>(s, true);

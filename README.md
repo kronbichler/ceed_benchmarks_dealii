@@ -13,6 +13,18 @@ following results are obtained:
 ![alt text](https://github.com/kronbichler/ceed_benchmarks_dealii/blob/master/bp1/gnuplot/node1.png)
 ![alt text](https://github.com/kronbichler/ceed_benchmarks_dealii/blob/master/bp1/gnuplot/node256.png)
 
+When we turn to a more detailed analysis of the behavior at p=6 and q=8, we
+get the following data:
+![alt text](https://github.com/kronbichler/ceed_benchmarks_dealii/blob/master/bp1/gnuplot/p6_q8.png)
+
+One solver iteration gets slower on large computations in the left part of the
+plot, which is clearly the MPI communication in the two inner products per
+iteration in the CG solver. However, when looking specifically at the time per
+matrix-vector product, we also see that it is 2x faster than the CG
+iterations. In other words, the three vector updates and two inner products in
+CG represent half the compute time in the CG solver. Again, this is not too
+surprising since the kernel is mostly memory bandwidth bound.
+
 ### Prerequisites and installation
 
 The benchmark problems are designed as small programs that run against a

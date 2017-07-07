@@ -6,7 +6,7 @@ set xtic auto                          # set xtics automatically
 set ytic auto                          # set ytics automatically
 set xlabel "Number of degrees of freedom / node"
 set ylabel "dofs / second / iteration / node (16 cores)"
-set title "1 node (16 cores) 2x8 SandyBridge 2680 (SuperMUC)"
+set title "1 node (16 cores) 2x8 SandyBridge E5 2680 (SuperMUC)"
 set logscale xy                        # logarithmic scales
 set key on right bottom Left box lw 0 width -3 height 0.5 # some white space around legend
 set grid
@@ -27,7 +27,7 @@ plot \
      "node1_p7_q9.dat" using 4:($6/1) title '  p=7, q=p+2' with linespoints, \
      "node1_p8_q10.dat" using 4:($6/1) title '  p=8, q=p+2'  with linespoints
 
-set title "256 nodes (4096 cores) 2x8 SandyBridge 2680 (SuperMUC)"
+set title "256 nodes (4096 cores) 2x8 SandyBridge E5-2680 (SuperMUC)"
 set terminal postscript enhanced eps color lw 5 "Arial" 18
 set out 'node256.eps'
 plot \
@@ -39,3 +39,63 @@ plot \
      "node256_p6_q8.dat" using ($4/256):($6/256) title '  p=6, q=p+2' with linespoints, \
      "node256_p7_q9.dat" using ($4/256):($6/256) title '  p=7, q=p+2' with linespoints, \
      "node256_p8_q10.dat" using ($4/256):($6/256) title '  p=8, q=p+2'  with linespoints
+
+#set title "256 nodes (4096 cores) 2x8 SandyBridge 2680 (SuperMUC)"
+#set terminal postscript enhanced eps color lw 5 "Arial" 18
+#set out 'node256_cart.eps'
+#plot \
+#     "node256cart_p1_q3.dat" using ($4/256):($6/256) title '  p=1, q=p+2' with linespoints, \
+#     "node256cart_p2_q4.dat" using ($4/256):($6/256) title '  p=2, q=p+2' with linespoints, \
+#     "node256cart_p3_q5.dat" using ($4/256):($6/256) title '  p=3, q=p+2' with linespoints, \
+#     "node256cart_p4_q6.dat" using ($4/256):($6/256) title '  p=4, q=p+2' with linespoints, \
+#     "node256cart_p5_q7.dat" using ($4/256):($6/256) title '  p=5, q=p+2' with linespoints, \
+#     "node256cart_p6_q8.dat" using ($4/256):($6/256) title '  p=6, q=p+2' with linespoints, \
+#     "node256cart_p7_q9.dat" using ($4/256):($6/256) title '  p=7, q=p+2' with linespoints, \
+#     "node256cart_p8_q10.dat" using ($4/256):($6/256) title '  p=8, q=p+2'  with linespoints
+#
+#set ylabel "Solver time"
+#set xlabel "Problem size"
+#set title "256 nodes (4096 cores) 2x8 SandyBridge 2680 (SuperMUC)"
+#set terminal postscript enhanced eps color lw 5 "Arial" 18
+#set xr [1e3:1e11]
+#set yr[1e-5:1e-1]
+#set out 'node256_cart_time.eps'
+#plot \
+#     "node256cart_p1_q3.dat" using ($4):($5) title '  p=1, q=p+2' with linespoints, \
+#     "node256cart_p2_q4.dat" using ($4):($5) title '  p=2, q=p+2' with linespoints, \
+#     "node256cart_p3_q5.dat" using ($4):($5) title '  p=3, q=p+2' with linespoints, \
+#     "node256cart_p4_q6.dat" using ($4):($5) title '  p=4, q=p+2' with linespoints, \
+#     "node256cart_p5_q7.dat" using ($4):($5) title '  p=5, q=p+2' with linespoints, \
+#     "node256cart_p6_q8.dat" using ($4):($5) title '  p=6, q=p+2' with linespoints, \
+#     "node256cart_p7_q9.dat" using ($4):($5) title '  p=7, q=p+2' with linespoints, \
+#     "node256cart_p8_q10.dat" using ($4):($5) title '  p=8, q=p+2'  with linespoints
+#
+#set ylabel "Solver time"
+#set xlabel "Problem size"
+#set title "1 nodes (16 cores) 2x8 SandyBridge 2680 (SuperMUC)"
+#set terminal postscript enhanced eps color lw 5 "Arial" 18
+#set xr [1e3:1e9]
+#set yr[1e-5:1e-1]
+#set out 'node1_time.eps'
+#plot \
+#     "node1_p1_q3.dat" using ($4):($5) title '  p=1, q=p+2' with linespoints, \
+#     "node1_p2_q4.dat" using ($4):($5) title '  p=2, q=p+2' with linespoints, \
+#     "node1_p3_q5.dat" using ($4):($5) title '  p=3, q=p+2' with linespoints, \
+#     "node1_p4_q6.dat" using ($4):($5) title '  p=4, q=p+2' with linespoints, \
+#     "node1_p5_q7.dat" using ($4):($5) title '  p=5, q=p+2' with linespoints, \
+#     "node1_p6_q8.dat" using ($4):($5) title '  p=6, q=p+2' with linespoints, \
+#     "node1_p7_q9.dat" using ($4):($5) title '  p=7, q=p+2' with linespoints, \
+#     "node1_p8_q10.dat" using ($4):($5) title '  p=8, q=p+2'  with linespoints
+
+set key on right bottom Left box lw 0 width -4 height 0.5 # some white space around legend
+set title "p=6, q=p+2=8 details on 2x8 SandyBridge E5-2680 (SuperMUC)"
+set terminal postscript enhanced eps color lw 5 "Arial" 18
+set out 'p6_q8.eps'
+set yr [1e7:2e9]
+plot \
+     "node1_p6_q8.dat" using ($4/1):($4/$8/1) title '  matvec 1 node' with linespoints, \
+     "node256_p6_q8.dat" using ($4/256):($4/$8/256) title '  matvec 256 nodes' with linespoints, \
+     "node1024_p6_q8.dat" using ($4/1024):($4/$8/1024) title '  matvec 1024 nodes' with linespoints, \
+     "node1_p6_q8.dat" using ($4/1):($6/1) title '  CG it 1 node' with linespoints, \
+     "node256_p6_q8.dat" using ($4/256):($6/256) title '  CG it 256 nodes' with linespoints, \
+     "node1024_p6_q8.dat" using ($4/1024):($6/1024) title '  CG it 1024 nodes' with linespoints
