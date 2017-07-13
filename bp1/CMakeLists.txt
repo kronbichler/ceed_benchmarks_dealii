@@ -34,6 +34,18 @@ IF(NOT ${deal.II_FOUND})
     )
 ENDIF()
 
+#
+# Are all dependencies fulfilled?
+#
+IF(NOT DEAL_II_WITH_P4EST) # keep in one line
+  MESSAGE(FATAL_ERROR "
+Error! The deal.II library found at ${DEAL_II_PATH} was not configured with
+    DEAL_II_WITH_P4EST = ON
+It was set to OFF in your installation but is required for this program."
+    )
+ENDIF()
+
+
 DEAL_II_INITIALIZE_CACHED_VARIABLES()
 PROJECT(${TARGET})
 DEAL_II_INVOKE_AUTOPILOT()

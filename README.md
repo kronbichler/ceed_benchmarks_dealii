@@ -41,12 +41,12 @@ following software packages are needed:
 * p4est for providing parallel adaptive mesh management on forests of
   quad-trees (2D) or oct-trees (3D). For obtaining p4est, see
   http://www.p4est.org. p4est of at least version 0.3.4.2 is needed for
-  adaflo. Installation of p4est can be done via a script provided by deal.II:
+  running this project. Installation of p4est can be done via a script
+  provided by deal.II (the last argument specifies the desired installation
+  directory for p4est, e.g. $HOME/sw/p4est):
 ```
 /path/to/dealii/doc/external-libs/p4est-setup.sh p4est-1.1.tar.gz /path/to/p4est/install
 ```
-  (the last argument specifies the desired installation directory for p4est,
-  e.g. $HOME/sw/p4est).
 
 Given these dependencies, the configuration of deal.II can be done
 through the following script:
