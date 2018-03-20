@@ -1,5 +1,5 @@
 %!PS-Adobe-2.0 EPSF-2.0
-%%Title: p6_q8.eps
+%%Title: matvec_bdw.eps
 %%Creator: gnuplot 4.6 patchlevel 2
 %%CreationDate: Tue Mar 20 14:00:11 2018
 %%DocumentFonts: (atend)
@@ -455,7 +455,7 @@ systemdict /pdfmark known not {
   userdict /pdfmark systemdict /cleartomark get put
 } if
 SDict begin [
-  /Title (p6_q8.eps)
+  /Title (matvec_bdw.eps)
   /Subject (gnuplot plot)
   /Creator (gnuplot 4.6 patchlevel 2)
   /Author (kronbichler)
@@ -501,35 +501,35 @@ stroke
 0.300 UL
 LTb
 LCb setrgbcolor
-666 1053 M
+666 1040 M
 31 0 V
 6178 0 R
 -31 0 V
-666 1332 M
+666 1312 M
 31 0 V
 6178 0 R
 -31 0 V
-666 1529 M
+666 1504 M
 31 0 V
 6178 0 R
 -31 0 V
-666 1683 M
+666 1654 M
 31 0 V
 6178 0 R
 -31 0 V
-666 1808 M
+666 1776 M
 31 0 V
 6178 0 R
 -31 0 V
-666 1914 M
+666 1879 M
 31 0 V
 6178 0 R
 -31 0 V
-666 2006 M
+666 1969 M
 31 0 V
 6178 0 R
 -31 0 V
-666 2087 M
+666 2047 M
 31 0 V
 6178 0 R
 -31 0 V
@@ -537,53 +537,55 @@ stroke
 1.000 UL
 LTa
 LCa setrgbcolor
-666 2160 M
-6209 0 V
+666 2118 M
+4526 0 V
+1575 0 R
+108 0 V
 stroke
 0.300 UL
 LTb
 LCb setrgbcolor
-666 2160 M
+666 2118 M
 63 0 V
 6146 0 R
 -63 0 V
 stroke
-558 2160 M
+558 2118 M
 [ [(Arial) 180.0 0.0 true true 0 (10)]
 [(Arial) 144.0 90.0 true true 0 (8)]
 ] -78.0 MRshow
 0.300 UL
 LTb
 LCb setrgbcolor
-666 2636 M
+666 2582 M
 31 0 V
 6178 0 R
 -31 0 V
-666 2915 M
+666 2854 M
 31 0 V
 6178 0 R
 -31 0 V
-666 3113 M
+666 3046 M
 31 0 V
 6178 0 R
 -31 0 V
-666 3267 M
+666 3196 M
 31 0 V
 6178 0 R
 -31 0 V
-666 3392 M
+666 3318 M
 31 0 V
 6178 0 R
 -31 0 V
-666 3498 M
+666 3421 M
 31 0 V
 6178 0 R
 -31 0 V
-666 3590 M
+666 3511 M
 31 0 V
 6178 0 R
 -31 0 V
-666 3671 M
+666 3589 M
 31 0 V
 6178 0 R
 -31 0 V
@@ -591,29 +593,29 @@ stroke
 1.000 UL
 LTa
 LCa setrgbcolor
-666 3743 M
+666 3660 M
 6209 0 V
 stroke
 0.300 UL
 LTb
 LCb setrgbcolor
-666 3743 M
+666 3660 M
 63 0 V
 6146 0 R
 -63 0 V
 stroke
-558 3743 M
+558 3660 M
 [ [(Arial) 180.0 0.0 true true 0 (10)]
 [(Arial) 144.0 90.0 true true 0 (9)]
 ] -78.0 MRshow
 0.300 UL
 LTb
 LCb setrgbcolor
-666 4220 M
+666 4124 M
 31 0 V
 6178 0 R
 -31 0 V
-666 4499 M
+666 4396 M
 31 0 V
 6178 0 R
 -31 0 V
@@ -759,8 +761,8 @@ LTa
 LCa setrgbcolor
 5633 576 M
 0 63 V
-0 1170 R
-0 2690 V
+0 1530 R
+0 2330 V
 stroke
 0.300 UL
 LTb
@@ -823,7 +825,7 @@ Z stroke
 LCb setrgbcolor
 144 2537 M
 currentpoint gsave translate -270 rotate 0 0 moveto
-[ [(Arial) 180.0 0.0 true true 0 (dofs / second / iteration / node \(16 cores\))]
+[ [(Arial) 180.0 0.0 true true 0 (dofs / second / node \(28 cores\))]
 ] -60.0 MCshow
 grestore
 LTb
@@ -833,7 +835,7 @@ LCb setrgbcolor
 ] -60.0 MCshow
 LTb
 3770 4769 M
-[ [(Arial) 180.0 0.0 true true 0 (BP1, p=6, q=p+2=8 details on 2x8 SandyBridge E5-2680 \(SuperMUC\))]
+[ [(Arial) 180.0 0.0 true true 0 (BP1 mat-vec, 1 node 2x14C Broadwell E5-2690 v4)]
 ] -60.0 MCshow
 1.000 UP
 0.300 UL
@@ -842,11 +844,11 @@ LCb setrgbcolor
 0.000 UL
 LTb
 LCb setrgbcolor
-4436 639 N
-0 1170 V
-2331 0 V
-0 -1170 V
--2331 0 V
+5192 639 N
+0 1530 V
+1575 0 V
+0 -1530 V
+-1575 0 V
 Z stroke
 % Begin plot #1
 1.000 UP
@@ -854,45 +856,43 @@ Z stroke
 LT0
 LC0 setrgbcolor
 LCb setrgbcolor
-4436 1674 M
-[ [(Arial) 180.0 0.0 true true 0 (  matvec 1 node)]
+5192 2034 M
+[ [(Arial) 180.0 0.0 true true 0 (  p=1, q=3)]
 ] -60.0 MLshow
 LT0
-6164 1674 M
+6164 2034 M
 495 0 V
-1090 2172 M
-353 359 V
-353 367 V
-352 329 V
-363 428 V
-363 98 V
-363 49 V
-369 48 V
-368 -6 V
-368 -25 V
-371 -102 V
-371 -66 V
-371 -1 V
-373 8 V
-372 -1 V
-372 -1 V
-1090 2172 Pls
-1443 2531 Pls
-1796 2898 Pls
-2148 3227 Pls
-2511 3655 Pls
-2874 3753 Pls
-3237 3802 Pls
-3606 3850 Pls
-3974 3844 Pls
-4342 3819 Pls
-4713 3717 Pls
-5084 3651 Pls
-5455 3650 Pls
-5828 3658 Pls
-6200 3657 Pls
-6572 3656 Pls
-6411 1674 Pls
+839 2474 M
+343 241 V
+343 241 V
+357 200 V
+358 71 V
+358 55 V
+365 68 V
+366 -22 V
+365 -17 V
+370 -205 V
+370 -81 V
+369 -16 V
+372 -7 V
+372 6 V
+372 3 V
+839 2474 Pls
+1182 2715 Pls
+1525 2956 Pls
+1882 3156 Pls
+2240 3227 Pls
+2598 3282 Pls
+2963 3350 Pls
+3329 3328 Pls
+3694 3311 Pls
+4064 3106 Pls
+4434 3025 Pls
+4803 3009 Pls
+5175 3002 Pls
+5547 3008 Pls
+5919 3011 Pls
+6411 2034 Pls
 % End plot #1
 % Begin plot #2
 1.000 UP
@@ -900,46 +900,45 @@ LT0
 LT1
 LC1 setrgbcolor
 LCb setrgbcolor
-4436 1494 M
-[ [(Arial) 180.0 0.0 true true 0 (  matvec 256 nodes)]
+5192 1854 M
+[ [(Arial) 180.0 0.0 true true 0 (  p=2, q=4)]
 ] -60.0 MLshow
 LT1
-6164 1494 M
+6164 1854 M
 495 0 V
-666 1003 M
-317 366 V
-369 241 V
-371 494 V
-371 502 V
-371 425 V
-372 273 V
-373 238 V
-372 91 V
-373 95 V
-373 -22 V
-373 -72 V
-374 -176 V
-373 142 V
-374 -104 V
-373 129 V
-374 -49 V
-983 1369 Crs
-1352 1610 Crs
-1723 2104 Crs
-2094 2606 Crs
-2465 3031 Crs
-2837 3304 Crs
-3210 3542 Crs
-3582 3633 Crs
-3955 3728 Crs
-4328 3706 Crs
-4701 3634 Crs
-5075 3458 Crs
-5448 3600 Crs
-5822 3496 Crs
-6195 3625 Crs
-6569 3576 Crs
-6411 1494 Crs
+839 2739 M
+343 76 V
+343 281 V
+357 358 V
+358 155 V
+358 138 V
+365 126 V
+366 53 V
+365 52 V
+370 -10 V
+370 -169 V
+369 -171 V
+372 -92 V
+372 24 V
+372 1 V
+372 14 V
+839 2739 Crs
+1182 2815 Crs
+1525 3096 Crs
+1882 3454 Crs
+2240 3609 Crs
+2598 3747 Crs
+2963 3873 Crs
+3329 3926 Crs
+3694 3978 Crs
+4064 3968 Crs
+4434 3799 Crs
+4803 3628 Crs
+5175 3536 Crs
+5547 3560 Crs
+5919 3561 Crs
+6291 3575 Crs
+6411 1854 Crs
 % End plot #2
 % Begin plot #3
 1.000 UP
@@ -947,46 +946,47 @@ LT1
 LT2
 LC2 setrgbcolor
 LCb setrgbcolor
-4436 1314 M
-[ [(Arial) 180.0 0.0 true true 0 (  matvec 1024 nodes)]
+5192 1674 M
+[ [(Arial) 180.0 0.0 true true 0 (  p=3, q=5)]
 ] -60.0 MLshow
 LT2
-6164 1314 M
+6164 1674 M
 495 0 V
-666 947 M
-309 351 V
-371 156 V
-371 622 V
-372 507 V
-373 320 V
-372 263 V
-373 303 V
-374 20 V
-373 202 V
-373 2 V
-374 -185 V
-373 75 V
-374 9 V
-373 20 V
-374 -56 V
-374 71 V
-975 1298 Star
-1346 1454 Star
-1717 2076 Star
-2089 2583 Star
-2462 2903 Star
-2834 3166 Star
-3207 3469 Star
-3581 3489 Star
-3954 3691 Star
-4327 3693 Star
-4701 3508 Star
-5074 3583 Star
-5448 3592 Star
-5821 3612 Star
-6195 3556 Star
-6569 3627 Star
-6411 1314 Star
+757 2687 M
+333 232 V
+353 368 V
+353 42 V
+352 269 V
+363 273 V
+363 115 V
+363 75 V
+369 92 V
+368 25 V
+368 11 V
+371 -206 V
+371 -182 V
+371 -46 V
+373 1 V
+372 13 V
+372 7 V
+757 2687 Star
+1090 2919 Star
+1443 3287 Star
+1796 3329 Star
+2148 3598 Star
+2511 3871 Star
+2874 3986 Star
+3237 4061 Star
+3606 4153 Star
+3974 4178 Star
+4342 4189 Star
+4713 3983 Star
+5084 3801 Star
+5455 3755 Star
+5828 3756 Star
+6200 3769 Star
+6572 3776 Star
+6411 1674 Star
 % End plot #3
 % Begin plot #4
 1.000 UP
@@ -994,45 +994,47 @@ LT2
 LT3
 LC3 setrgbcolor
 LCb setrgbcolor
-4436 1134 M
-[ [(Arial) 180.0 0.0 true true 0 (  CG it 1 node)]
+5192 1494 M
+[ [(Arial) 180.0 0.0 true true 0 (  p=4, q=6)]
 ] -60.0 MLshow
 LT3
-6164 1134 M
+6164 1494 M
 495 0 V
-1090 1637 M
-353 421 V
-353 395 V
-352 358 V
-363 453 V
-363 166 V
-363 103 V
-369 88 V
-368 21 V
-368 -81 V
-371 -249 V
-371 -129 V
-371 -4 V
-373 3 V
-372 1 V
-372 1 V
-1090 1637 Box
-1443 2058 Box
-1796 2453 Box
-2148 2811 Box
-2511 3264 Box
-2874 3430 Box
-3237 3533 Box
-3606 3621 Box
-3974 3642 Box
-4342 3561 Box
-4713 3312 Box
-5084 3183 Box
-5455 3179 Box
-5828 3182 Box
-6200 3183 Box
-6572 3184 Box
-6411 1134 Box
+839 2762 M
+343 180 V
+343 305 V
+357 384 V
+358 30 V
+358 226 V
+365 222 V
+366 52 V
+365 74 V
+370 44 V
+370 -12 V
+369 -201 V
+372 -194 V
+372 -52 V
+372 20 V
+372 23 V
+373 12 V
+839 2762 Box
+1182 2942 Box
+1525 3247 Box
+1882 3631 Box
+2240 3661 Box
+2598 3887 Box
+2963 4109 Box
+3329 4161 Box
+3694 4235 Box
+4064 4279 Box
+4434 4267 Box
+4803 4066 Box
+5175 3872 Box
+5547 3820 Box
+5919 3840 Box
+6291 3863 Box
+6664 3875 Box
+6411 1494 Box
 % End plot #4
 % Begin plot #5
 1.000 UP
@@ -1040,46 +1042,47 @@ LT3
 LT4
 LC4 setrgbcolor
 LCb setrgbcolor
-4436 954 M
-[ [(Arial) 180.0 0.0 true true 0 (  CG it 256 nodes)]
+5192 1314 M
+[ [(Arial) 180.0 0.0 true true 0 (  p=5, q=7)]
 ] -60.0 MLshow
 LT4
-6164 954 M
+6164 1314 M
 495 0 V
-833 576 M
-983 756 L
-369 337 V
-371 467 V
-371 459 V
-371 395 V
-372 343 V
-373 334 V
-372 181 V
-373 -3 V
-373 25 V
-373 -105 V
-374 -75 V
-373 -41 V
-374 61 V
-373 27 V
-374 -2 V
-983 756 BoxF
-1352 1093 BoxF
-1723 1560 BoxF
-2094 2019 BoxF
-2465 2414 BoxF
-2837 2757 BoxF
-3210 3091 BoxF
-3582 3272 BoxF
-3955 3269 BoxF
-4328 3294 BoxF
-4701 3189 BoxF
-5075 3114 BoxF
-5448 3073 BoxF
-5822 3134 BoxF
-6195 3161 BoxF
-6569 3159 BoxF
-6411 954 BoxF
+820 2504 M
+349 323 V
+349 261 V
+348 333 V
+361 389 V
+361 5 V
+361 239 V
+367 142 V
+367 56 V
+367 46 V
+371 20 V
+370 -169 V
+371 -218 V
+372 -52 V
+372 3 V
+372 6 V
+373 8 V
+820 2504 BoxF
+1169 2827 BoxF
+1518 3088 BoxF
+1866 3421 BoxF
+2227 3810 BoxF
+2588 3815 BoxF
+2949 4054 BoxF
+3316 4196 BoxF
+3683 4252 BoxF
+4050 4298 BoxF
+4421 4318 BoxF
+4791 4149 BoxF
+5162 3931 BoxF
+5534 3879 BoxF
+5906 3882 BoxF
+6278 3888 BoxF
+6651 3896 BoxF
+6411 1314 BoxF
 % End plot #5
 % Begin plot #6
 1.000 UP
@@ -1087,45 +1090,136 @@ LT4
 LT5
 LC5 setrgbcolor
 LCb setrgbcolor
-4436 774 M
-[ [(Arial) 180.0 0.0 true true 0 (  CG it 1024 nodes)]
+5192 1134 M
+[ [(Arial) 180.0 0.0 true true 0 (  p=6, q=8)]
 ] -60.0 MLshow
 LT5
+6164 1134 M
+495 0 V
+1090 2487 M
+353 365 V
+353 300 V
+352 365 V
+363 401 V
+363 -17 V
+363 209 V
+369 128 V
+368 11 V
+368 93 V
+371 -108 V
+371 -219 V
+371 -100 V
+373 0 V
+372 12 V
+372 8 V
+1090 2487 Circle
+1443 2852 Circle
+1796 3152 Circle
+2148 3517 Circle
+2511 3918 Circle
+2874 3901 Circle
+3237 4110 Circle
+3606 4238 Circle
+3974 4249 Circle
+4342 4342 Circle
+4713 4234 Circle
+5084 4015 Circle
+5455 3915 Circle
+5828 3915 Circle
+6200 3927 Circle
+6572 3935 Circle
+6411 1134 Circle
+% End plot #6
+% Begin plot #7
+1.000 UP
+1.000 UL
+LT6
+LC6 setrgbcolor
+LCb setrgbcolor
+5192 954 M
+[ [(Arial) 180.0 0.0 true true 0 (  p=7, q=9)]
+] -60.0 MLshow
+LT6
+6164 954 M
+495 0 V
+1322 2452 M
+356 379 V
+355 331 V
+356 398 V
+364 400 V
+364 -20 V
+365 188 V
+369 132 V
+369 -4 V
+369 33 V
+372 -188 V
+371 -182 V
+371 4 V
+373 12 V
+373 17 V
+372 15 V
+1322 2452 CircleF
+1678 2831 CircleF
+2033 3162 CircleF
+2389 3560 CircleF
+2753 3960 CircleF
+3117 3940 CircleF
+3482 4128 CircleF
+3851 4260 CircleF
+4220 4256 CircleF
+4589 4289 CircleF
+4961 4101 CircleF
+5332 3919 CircleF
+5703 3923 CircleF
+6076 3935 CircleF
+6449 3952 CircleF
+6821 3967 CircleF
+6411 954 CircleF
+% End plot #7
+% Begin plot #8
+1.000 UP
+1.000 UL
+LT7
+LC7 setrgbcolor
+LCb setrgbcolor
+5192 774 M
+[ [(Arial) 180.0 0.0 true true 0 (  p=8, q=10)]
+] -60.0 MLshow
+LT7
 6164 774 M
 495 0 V
-1070 576 M
-276 281 V
-371 455 V
-372 458 V
-373 371 V
-372 337 V
-373 347 V
-374 235 V
-373 112 V
-373 39 V
-374 -121 V
-373 -28 V
-374 12 V
-373 34 V
-374 24 V
-374 -7 V
-1346 857 Circle
-1717 1312 Circle
-2089 1770 Circle
-2462 2141 Circle
-2834 2478 Circle
-3207 2825 Circle
-3581 3060 Circle
-3954 3172 Circle
-4327 3211 Circle
-4701 3090 Circle
-5074 3062 Circle
-5448 3074 Circle
-5821 3108 Circle
-6195 3132 Circle
-6569 3125 Circle
-6411 774 Circle
-% End plot #6
+1525 2415 M
+357 392 V
+358 354 V
+358 406 V
+365 414 V
+366 -21 V
+365 195 V
+370 89 V
+370 6 V
+369 -43 V
+372 -191 V
+372 -66 V
+372 5 V
+372 17 V
+373 12 V
+1525 2415 TriU
+1882 2807 TriU
+2240 3161 TriU
+2598 3567 TriU
+2963 3981 TriU
+3329 3960 TriU
+3694 4155 TriU
+4064 4244 TriU
+4434 4250 TriU
+4803 4207 TriU
+5175 4016 TriU
+5547 3950 TriU
+5919 3955 TriU
+6291 3972 TriU
+6664 3984 TriU
+6411 774 TriU
+% End plot #8
 0.300 UL
 LTb
 LCb setrgbcolor

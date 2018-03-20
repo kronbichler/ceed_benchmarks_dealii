@@ -1,0 +1,67 @@
+set   autoscale                        # scale axes automatically
+unset log                              # remove any log-scaling
+unset label                            # remove any previous labels
+unset title
+set xtic auto                          # set xtics automatically
+set ytic auto                          # set ytics automatically
+set xlabel "Number of degrees of freedom / node"
+set ylabel "dofs / second / node (28 cores)"
+set logscale xy                        # logarithmic scales
+set key on right bottom Left box lw 0 width -3 height 0.5 # some white space around legend
+set grid
+set border linewidth 0.3
+set format y "10^{%L}"
+set format x "10^{%L}"
+set xr [1e3:1e8]
+set yr [1e7:1e9]
+set terminal postscript enhanced eps color lw 5 "Arial" 18
+
+set key on right bottom Left box lw 0 width -3 height 0.5 # some white space around legend
+set title "mat-vec 1 node 2x14C Intel Broadwell E5-2690 v4, merged coefficient tensor"
+set terminal postscript enhanced eps color lw 5 "Arial" 18
+set out 'matvec_bdw.eps'
+set yr [1e7:2e9]
+plot \
+     "bdw_node1_p1_q3.dat" using ($4/1):($4/$9) title '  p=1, q=3' with linespoints, \
+     "bdw_node1_p2_q4.dat" using ($4/1):($4/$9) title '  p=2, q=4' with linespoints, \
+     "bdw_node1_p3_q5.dat" using ($4/1):($4/$9) title '  p=3, q=5' with linespoints, \
+     "bdw_node1_p4_q6.dat" using ($4/1):($4/$9) title '  p=4, q=6' with linespoints, \
+     "bdw_node1_p5_q7.dat" using ($4/1):($4/$9) title '  p=5, q=7' with linespoints, \
+     "bdw_node1_p6_q8.dat" using ($4/1):($4/$9) title '  p=6, q=8' with linespoints, \
+     "bdw_node1_p7_q9.dat" using ($4/1):($4/$9) title '  p=7, q=9' with linespoints, \
+     "bdw_node1_p8_q10.dat" using ($4/1):($4/$9) title '  p=8, q=10'  with linespoints
+
+set key on right bottom Left box lw 0 width -8 height 0.5 # some white space around legend
+set title "mat-vec 1 node 2x14C Intel Broadwell E5-2690 v4, p=5, q=7"
+set terminal postscript enhanced eps color lw 5 "Arial" 18
+set out 'matvec_coefficients.eps'
+set yr [1e7:2e9]
+plot \
+     "bdw_node1_p5_q7.dat" using ($4/1):($4/$8) title '  plain Jacobian' with linespoints, \
+     "bdw_node1_p5_q7.dat" using ($4/1):($4/$9) title '  merged coefficient tensor' with linespoints, \
+     "bdw_node1_p5_q7.dat" using ($4/1):($4/$10) title '  q-geometry on the fly' with linespoints, \
+     "bdw_node1_p5_q7.dat" using ($4/1):($4/$11) title '  linear geometry on the fly' with linespoints
+
+set key on right bottom Left box lw 0 width -8 height 0.5 # some white space around legend
+set title "mat-vec 1 node 2x14C Intel Broadwell E5-2690 v4 with Hyperthreading, p=5, q=7"
+set terminal postscript enhanced eps color lw 5 "Arial" 18
+set ylabel "dofs / second / node (56 MPI ranks)"
+set out 'matvec_coefficients_ht.eps'
+set yr [1e7:2e9]
+plot \
+     "bdw_ht_node1_p5_q7.dat" using ($4/1):($4/$8) title '  plain Jacobian' with linespoints, \
+     "bdw_ht_node1_p5_q7.dat" using ($4/1):($4/$9) title '  merged coefficient tensor' with linespoints, \
+     "bdw_ht_node1_p5_q7.dat" using ($4/1):($4/$10) title '  q-geometry on the fly' with linespoints, \
+     "bdw_ht_node1_p5_q7.dat" using ($4/1):($4/$11) title '  linear geometry on the fly' with linespoints
+
+set key on right bottom Left box lw 0 width -8 height 0.5 # some white space around legend
+set title "mat-vec 1 node 2x14C Intel Broadwell E5-2690 v4, p=8, q=10"
+set ylabel "dofs / second / node (28 cores)"
+set terminal postscript enhanced eps color lw 5 "Arial" 18
+set out 'matvec_coefficients_p8.eps'
+set yr [1e7:2e9]
+plot \
+     "bdw_node1_p8_q10.dat" using ($4/1):($4/$8) title '  plain Jacobian' with linespoints, \
+     "bdw_node1_p8_q10.dat" using ($4/1):($4/$9) title '  merged coefficient tensor' with linespoints, \
+     "bdw_node1_p8_q10.dat" using ($4/1):($4/$10) title '  q-geometry on the fly' with linespoints, \
+     "bdw_node1_p8_q10.dat" using ($4/1):($4/$11) title '  linear geometry on the fly' with linespoints
