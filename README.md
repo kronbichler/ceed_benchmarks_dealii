@@ -101,13 +101,13 @@ for a higher polynomial degree of eight. The methods behave similarly as for
 
 ### Literature
 
-* ((M. Kronbichler and K. Kormann
-  (2012)|https://doi.org/10.1016/j.compfluid.2012.04.012)). A generic
+* [M. Kronbichler and K. Kormann
+  (2012)](https://doi.org/10.1016/j.compfluid.2012.04.012). A generic
   interface for parallel cell-based finite element operator
   application. *Comput. Fluids*, 63:135--147.
 
-* ((M. Kronbichler and K. Kormann
-  (2017)|https://arxiv.org/abs/1711.03590)). Fast matrix-free evaluation of
+* [M. Kronbichler and K. Kormann
+  (2017)](https://arxiv.org/abs/1711.03590). Fast matrix-free evaluation of
   discontinuous Galerkin finite element operators. *Preprint*
   arXiv:1711.03590.
 
