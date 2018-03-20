@@ -30,8 +30,8 @@ namely one node of Intel Broadwell E5-2690 v4 (2x14 cores at 2.6 GHz nominal
 frequency, Turbo Boost to 2.9 GHz enabled) is as follows:
 ![alt text](https://github.com/kronbichler/ceed_benchmarks_dealii/blob/master/bp1/gnuplot/matvec_bdw.png)
 
-The timings for this system are a bit higher. For those sizes that fit into
-the L3 cache, the performance is more than twice as high at 2.77 Gdofs/s
+The timings for this system are better then before. For those sizes that fit
+into the L3 cache, the performance is more than twice as high at 2.77 Gdofs/s
 versus 1.11 Gdofs/s on 16 cores of Sandy Bridge, reflecting the increased
 arithmetic power of 28 cores of a newer generation that includes fused
 multiply-add (FMA) instructions. However, at around 10^7 dofs the throughput
@@ -101,13 +101,13 @@ for a higher polynomial degree of eight. The methods behave similarly as for
 
 ### Literature
 
-* [[M. Kronbichler and K. Kormann
-  (2012)|https://doi.org/10.1016/j.compfluid.2012.04.012]]. A generic
+* ((M. Kronbichler and K. Kormann
+  (2012)|https://doi.org/10.1016/j.compfluid.2012.04.012)). A generic
   interface for parallel cell-based finite element operator
   application. *Comput. Fluids*, 63:135--147.
 
-* [[M. Kronbichler and K. Kormann
-  (2017)|https://arxiv.org/abs/1711.03590]]. Fast matrix-free evaluation of
+* ((M. Kronbichler and K. Kormann
+  (2017)|https://arxiv.org/abs/1711.03590)). Fast matrix-free evaluation of
   discontinuous Galerkin finite element operators. *Preprint*
   arXiv:1711.03590.
 

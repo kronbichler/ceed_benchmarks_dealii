@@ -17,7 +17,7 @@ set yr [1e7:1e9]
 set terminal postscript enhanced eps color lw 5 "Arial" 18
 
 set key on right bottom Left box lw 0 width -3 height 0.5 # some white space around legend
-set title "mat-vec 1 node 2x14C Intel Broadwell E5-2690 v4, merged coefficient tensor"
+set title "BP3 mat-vec, 1 node 2x14C Intel Broadwell E5-2690 v4, merged coefficient tensor"
 set terminal postscript enhanced eps color lw 5 "Arial" 18
 set out 'matvec_bdw.eps'
 set yr [1e7:2e9]
@@ -32,7 +32,7 @@ plot \
      "bdw_node1_p8_q10.dat" using ($4/1):($4/$9) title '  p=8, q=10'  with linespoints
 
 set key on right bottom Left box lw 0 width -8 height 0.5 # some white space around legend
-set title "mat-vec 1 node 2x14C Intel Broadwell E5-2690 v4, p=5, q=7"
+set title "BP3 mat-vec, 1 node 2x14C Intel Broadwell E5-2690 v4, p=5, q=7"
 set terminal postscript enhanced eps color lw 5 "Arial" 18
 set out 'matvec_coefficients.eps'
 set yr [1e7:2e9]
@@ -43,7 +43,7 @@ plot \
      "bdw_node1_p5_q7.dat" using ($4/1):($4/$11) title '  linear geometry on the fly' with linespoints
 
 set key on right bottom Left box lw 0 width -8 height 0.5 # some white space around legend
-set title "mat-vec 1 node 2x14C Intel Broadwell E5-2690 v4 with Hyperthreading, p=5, q=7"
+set title "BP3 mat-vec, 1 node 2x14C Intel Broadwell E5-2690 v4 with Hyperthreading, p=5, q=7"
 set terminal postscript enhanced eps color lw 5 "Arial" 18
 set ylabel "dofs / second / node (56 MPI ranks)"
 set out 'matvec_coefficients_ht.eps'
@@ -55,7 +55,7 @@ plot \
      "bdw_ht_node1_p5_q7.dat" using ($4/1):($4/$11) title '  linear geometry on the fly' with linespoints
 
 set key on right bottom Left box lw 0 width -8 height 0.5 # some white space around legend
-set title "mat-vec 1 node 2x14C Intel Broadwell E5-2690 v4, p=8, q=10"
+set title "BP3 mat-vec, 1 node 2x14C Intel Broadwell E5-2690 v4, p=8, q=10"
 set ylabel "dofs / second / node (28 cores)"
 set terminal postscript enhanced eps color lw 5 "Arial" 18
 set out 'matvec_coefficients_p8.eps'
