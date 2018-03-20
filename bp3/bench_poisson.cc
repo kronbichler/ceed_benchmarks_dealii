@@ -603,9 +603,9 @@ void test(const unsigned int s,
       short_output == true)
     std::cout << std::setw(2) << fe_degree << " | " << std::setw(2) << n_q_points
               << " |" << std::setw(10) << tria.n_global_active_cells()
-              << " |" << std::setw(11) << dim*dof_handler.n_dofs()
+              << " |" << std::setw(11) << dof_handler.n_dofs()
               << " | " << std::setw(11) << solver_time/solver_control.last_step()
-              << " | " << std::setw(11) << dim*dof_handler.n_dofs()/solver_time*solver_control.last_step()
+              << " | " << std::setw(11) << dof_handler.n_dofs()/solver_time*solver_control.last_step()
               << " | " << std::setw(4) << solver_control.last_step()
               << " | " << std::setw(11) << t1
               << " | " << std::setw(11) << t2
@@ -624,7 +624,7 @@ void do_test()
   if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
     std::cout << " p |  q | n_element |     n_dofs |     time/it |   dofs/s/it | itCG | time/matvec | timeMVmerge | timeMVcompu | timeMVlinear"
               << std::endl;
-  while (Utilities::fixed_power<dim>(fe_degree+1)*(1UL<<s)*dim
+  while (Utilities::fixed_power<dim>(fe_degree+1)*(1UL<<s)
          < 6000000ULL*Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD))
     {
       test<dim,fe_degree,n_q_points>(s, true);
