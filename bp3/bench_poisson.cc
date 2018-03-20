@@ -622,7 +622,7 @@ void do_test()
     std::max(3U, static_cast<unsigned int>
              (std::log2(1024/fe_degree/fe_degree/fe_degree)));
   if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
-    std::cout << " p |  q | n_element |     n_dofs |     time/it |   dofs/s/it | itCG | time/matvec | timeMV merg | timeMV comp | timeMV linear"
+    std::cout << " p |  q | n_element |     n_dofs |     time/it |   dofs/s/it | itCG | time/matvec | timeMVmerge | timeMVcompu | timeMVlinear"
               << std::endl;
   while (Utilities::fixed_power<dim>(fe_degree+1)*(1UL<<s)*dim
          < 6000000ULL*Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD))

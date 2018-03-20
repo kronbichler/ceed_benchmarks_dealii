@@ -44,7 +44,7 @@ void test(const unsigned int s,
   tria.refine_global(n_refine);
 
   FE_Q<dim> fe(fe_degree);
-  MappingQGeneric<dim> mapping(fe_degree);
+  MappingQGeneric<dim> mapping(1);
   DoFHandler<dim> dof_handler(tria);
   dof_handler.distribute_dofs(fe);
 

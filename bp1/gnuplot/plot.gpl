@@ -91,11 +91,13 @@ set key on right bottom Left box lw 0 width -4 height 0.5 # some white space aro
 set title "p=6, q=p+2=8 details on 2x8 SandyBridge E5-2680 (SuperMUC)"
 set terminal postscript enhanced eps color lw 5 "Arial" 18
 set out 'p6_q8.eps'
-set yr [1e7:2e9]
+set yr [1e7:3e9]
 plot \
+     "bdw_node1_p6_q8.dat" using ($4/1):($4/$8/1) title '  BDW matvec 1 node' with linespoints, \
      "node1_p6_q8.dat" using ($4/1):($4/$8/1) title '  matvec 1 node' with linespoints, \
      "node256_p6_q8.dat" using ($4/256):($4/$8/256) title '  matvec 256 nodes' with linespoints, \
      "node1024_p6_q8.dat" using ($4/1024):($4/$8/1024) title '  matvec 1024 nodes' with linespoints, \
+     "bdw_node1_p6_q8.dat" using ($4/1):($6/1) title '  BDW matvec 1 node' with linespoints, \
      "node1_p6_q8.dat" using ($4/1):($6/1) title '  CG it 1 node' with linespoints, \
      "node256_p6_q8.dat" using ($4/256):($6/256) title '  CG it 256 nodes' with linespoints, \
      "node1024_p6_q8.dat" using ($4/1024):($6/1024) title '  CG it 1024 nodes' with linespoints
