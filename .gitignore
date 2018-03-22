@@ -1,0 +1,9 @@
+*/Makefile
+*/CMakeCache.txt
+*/build
+*/CMakeFiles
+*/cmake_install.cmake
+bp1/bench_mass
+bp2/bench_mass
+bp3/bench_poisson
+**~

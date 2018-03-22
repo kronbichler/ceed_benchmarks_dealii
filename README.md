@@ -7,7 +7,11 @@ https://github.com/dealii/dealii
 
 ### Results for mass operator (BP1)
 
-When running on SuperMUC Phase 1 (2x8 cores Sandy Bridge E5-2680 2.7 GHz), the
+As a first experiment, we run the mass matrix operator within a conjugate
+gradient iterative solver with the identity preconditioner and record the time
+for one solver iteration, i.e., we run the solver until convergence to a
+tolerance of 1e-6 and divide the total solver time by the number of
+iterations.  On SuperMUC Phase 1 (2x8 cores Sandy Bridge E5-2680 2.7 GHz), the
 following results are obtained:
 
 ![alt text](https://github.com/kronbichler/ceed_benchmarks_dealii/blob/master/bp1/gnuplot/node1.png)
@@ -41,18 +45,21 @@ bandwidth limitations.
 ### Results for Laplace operator (BP3)
 
 We now turn to the evaluation of the three-dimensional Laplacian on a general
-geometry (bake-off problem 3). On one node of Intel Broadwell E5-2690 v4 (2x14
-cores at 2.6 GHz nominal frequency, Turbo Boost to 2.9 GHz enabled) the
-following throughput is reached:
+geometry (bake-off problem 3). Here, we only look at the details of the
+matrix-vector product and not the conjugate gradient solver as a whole,
+because the vector operations (that again take a signicant proportion of the
+time for `p>2`) are the same as before. On one node of Intel Broadwell E5-2690
+v4 (2x14 cores at 2.6 GHz nominal frequency, Turbo Boost to 2.9 GHz enabled)
+the following throughput is reached:
 ![alt text](https://github.com/kronbichler/ceed_benchmarks_dealii/blob/master/bp3/gnuplot/matvec_bdw.png)
 
 As opposed to the mass matrix where the only sensible option is to read the
-precomputed Jacobian determinant from memory, there are several options to get
-the variable coefficients for the Laplacian. In the figure above, we used the
-final geometry tensor, i.e. we stored the 6 independent components of the
-symmetric matrix `det(J) J^{-1} J^{-T}` and loaded it in each quadrature
-point. As for the mass matrix, a clear bump in throughput is visible when the
-whole data fits into the level 3 cache. Since this is six times more data than
+precomputed Jacobian determinant from memory, there are several options to
+implement the variable coefficients for the Laplacian. In the figure above, we
+used the final geometry tensor, i.e. we store the 6 independent components of
+the symmetric matrix `det(J) J^{-1} J^{-T}` and load it in each quadrature
+point. As for the mass matrix, a clear peak in throughput is visible when the
+all data fits into the level 3 cache. Since this is six times more data than
 for the mass matrix, the high performance is limited to significantly smaller
 problem sizes (and won't be visible at all once we have many nodes with MPI
 due to the communication overhead).
@@ -68,35 +75,37 @@ when the geometry is computed on the fly. In the case *linear geometry on the
 fly*, the Jacobians of the geometry are evaluated from the vertex positions
 (or rather, a combination of the vertex positions in terms of the factors in
 the reference coordinates, to simplify the evaluation of the Jacobian on the
-fly) of the cells in a trilinear way. This variant is slower ethan *merged
+fly) of the cells in a trilinear way. This variant is slower than *merged
 coefficient tensor* for small sizes when the latter fits into the 70 MB of L3
 cache, but it is faster for larger sizes because it significantly reduces the
-memory transfer. Indeed, the linear geometry case is compute bound. In case a
-curved representation of elements is desired, the linear geometry
-approximation is of course inadequate and another strategy must be used. One
-option to compute the Jacobian on the fly is represented by *q-geometry on the
-fly* that evaluates the Jacobian from the precomputed location of quadrature
-points in real space using a collocation derivative. This variant uses only
-half the memory transfer of *merged coefficient tensor*, but it is compute
-bound rather than memory bound on this particular system. Thus, the resuling
-performance is slower than *merged coefficient tensor*, but still faster than
-*plain Jacobian*. We refer to [Kronbichler and Kormann, 2017] for details on
-the variants.
+memory transfer. To be more specific, the linear geometry case is compute
+bound (i.e., bound by the instruction throughput without significant phases
+where the execution waits for data from memory to arrive). In case a curved
+representation of elements is desired, the linear geometry approximation is of
+course inadequate and another strategy must be used. One option to compute the
+Jacobian on the fly is represented by *q-geometry on the fly* that evaluates
+the Jacobian from the precomputed location of quadrature points in real space
+using a collocation derivative. This variant uses only half the memory
+transfer of *merged coefficient tensor*, but it is compute bound rather than
+memory bound on this particular system. Thus, the resuling performance is
+slower than *merged coefficient tensor*, but still faster than *plain
+Jacobian*. We refer to [Kronbichler and Kormann, 2017] for details on the
+variants.
 
 ![alt text](https://github.com/kronbichler/ceed_benchmarks_dealii/blob/master/bp3/gnuplot/matvec_coefficients.png)
 
-On the Broadwell system, we can also enable hyperthreading and use 56 MPI
-ranks rather than 28. Since our implementation is bound by the instruction
+On the Broadwell system, we can enable hyperthreading and use 56 MPI ranks
+rather than 28. Since our implementation is bound by the instruction
 throughput with phases of vector access (gather/scatter) and computations (sum
 factorization, geometry evaluation) interleaved, 2-way simultaneous
 multithreading (hyperthreading in Intel language) can be used to improve
-instruction flow. Indeed, we record around 10-15% higher throughput with this
+instruction flow. We record around 10-15% higher throughput with this
 variant:
 ![alt text](https://github.com/kronbichler/ceed_benchmarks_dealii/blob/master/bp3/gnuplot/matvec_coefficients_ht.png)
 
 Finally, we show the analysis of the four ways to represent the geometry also
-for a higher polynomial degree of eight. The methods behave similarly as for
-`p=5`.
+for a higher polynomial degree of eight. The performance is very similar to
+the case `p=5`.
 ![alt text](https://github.com/kronbichler/ceed_benchmarks_dealii/blob/master/bp3/gnuplot/matvec_coefficients_p8.png)
 
 ### Literature
@@ -104,7 +113,7 @@ for a higher polynomial degree of eight. The methods behave similarly as for
 * [M. Kronbichler and K. Kormann
   (2012)](https://doi.org/10.1016/j.compfluid.2012.04.012). A generic
   interface for parallel cell-based finite element operator
-  application. *Comput. Fluids*, 63:135--147.
+  application. *Comput. Fluids*, 63:135-147.
 
 * [M. Kronbichler and K. Kormann
   (2017)](https://arxiv.org/abs/1711.03590). Fast matrix-free evaluation of
