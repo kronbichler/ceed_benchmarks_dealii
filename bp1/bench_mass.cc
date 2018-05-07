@@ -10,11 +10,12 @@
 #include <deal.II/lac/precondition.h>
 #include <deal.II/matrix_free/matrix_free.h>
 #include <deal.II/matrix_free/fe_evaluation.h>
-#include <deal.II/matrix_free/operators.h>
 
-#include "../bp1/curved_manifold.h"
+#include "../common_code/curved_manifold.h"
+#include "../common_code/mass_operator.h"
 
 using namespace dealii;
+
 
 
 template <int dim, int fe_degree, int n_q_points>
@@ -54,7 +55,7 @@ void test(const unsigned int s,
   matrix_free->reinit(mapping, dof_handler, constraints, QGauss<1>(n_q_points),
                       typename MatrixFree<dim,double>::AdditionalData());
 
-  MatrixFreeOperators::MassOperator<dim,fe_degree,n_q_points> mass_operator;
+  Mass::MassOperator<dim,fe_degree,n_q_points> mass_operator;
   mass_operator.initialize(matrix_free);
 
   LinearAlgebra::distributed::Vector<double> input, output;
@@ -72,7 +73,7 @@ void test(const unsigned int s,
               << " " << data.max << " (p" << data.max_index << ")" << "s"
               << std::endl;
 
-  ReductionControl solver_control(1000, 1e-15, 1e-6);
+  ReductionControl solver_control(500, 1e-15, 1e-6);
   SolverCG<LinearAlgebra::distributed::Vector<double> > solver(solver_control);
 
   time.restart();
@@ -113,6 +114,7 @@ void test(const unsigned int s,
 }
 
 
+
 template <int dim, int fe_degree, int n_q_points>
 void do_test()
 {
@@ -133,13 +135,12 @@ void do_test()
 }
 
 
+
 int main(int argc, char** argv)
 {
   Utilities::MPI::MPI_InitFinalize mpi(argc, argv, 1);
 
-  do_test<3,1,2>();
   do_test<3,1,3>();
-  do_test<3,2,3>();
   do_test<3,2,4>();
   do_test<3,3,5>();
   do_test<3,4,6>();

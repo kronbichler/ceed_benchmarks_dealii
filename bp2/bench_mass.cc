@@ -13,100 +13,10 @@
 #include <deal.II/matrix_free/fe_evaluation.h>
 #include <deal.II/matrix_free/operators.h>
 
-#include "../bp1/curved_manifold.h"
+#include "../common_code/curved_manifold.h"
+#include "../common_code/mass_operator.h"
 
 using namespace dealii;
-
-// very similar to bp1/bench_mass.cc but using a system of dim components
-// rather than a scalar equation.
-
-// In order to use block vectors that is not contained in
-// MatrixFreeOperators::MassOperator of deal.II version 8.5, we manually
-// implement the respective class here. It is easy enough to do.
-
-template <int dim, int fe_degree, int n_q_points_1d = fe_degree+1, int n_components = 1, typename Number = double>
-  class MassOperator
-  {
-  public:
-    /**
-     * Number typedef.
-     */
-    typedef Number value_type;
-
-    /**
-     * size_type needed for preconditioner classes.
-     */
-    typedef types::global_dof_index size_type;
-
-    /**
-     * Constructor.
-     */
-    MassOperator () {}
-
-    /**
-     * Initialize function.
-     */
-    void initialize(std::shared_ptr<const MatrixFree<dim,Number> > data_)
-    {
-      this->data = data_;
-    }
-
-    /**
-     * Initialize function.
-     */
-    void initialize_dof_vector(LinearAlgebra::distributed::BlockVector<Number> &vec) const
-    {
-      vec.reinit(dim);
-      for (unsigned int d=0; d<dim; ++d)
-        data->initialize_dof_vector(vec.block(d));
-      vec.collect_sizes();
-    }
-
-    /**
-     * Matrix-vector multiplication.
-     */
-    void vmult(LinearAlgebra::distributed::BlockVector<Number> &dst,
-               const LinearAlgebra::distributed::BlockVector<Number> &src) const
-    {
-      dst = 0;
-      this->data->cell_loop (&MassOperator::local_apply_cell,
-                             this, dst, src);
-    }
-
-    /**
-     * Transpose matrix-vector multiplication. Since the mass matrix is
-     * symmetric, it does exactly the same as vmult().
-     */
-    void Tvmult(LinearAlgebra::distributed::BlockVector<Number> &dst,
-                const LinearAlgebra::distributed::BlockVector<Number> &src) const
-    {
-      vmult(dst, src);
-    }
-
-  private:
-    /**
-     * For this operator, there is just a cell contribution.
-     */
-    void local_apply_cell (const MatrixFree<dim,value_type>            &data,
-                           LinearAlgebra::distributed::BlockVector<Number> &dst,
-                           const LinearAlgebra::distributed::BlockVector<Number> &src,
-                           const std::pair<unsigned int,unsigned int>  &cell_range) const
-    {
-      FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number> phi(data);
-      for (unsigned int cell=cell_range.first; cell<cell_range.second; ++cell)
-        {
-          phi.reinit (cell);
-          phi.read_dof_values(src);
-          phi.evaluate (true,false);
-          for (unsigned int q=0; q<phi.n_q_points; ++q)
-            phi.submit_value (phi.get_value(q), q);
-          phi.integrate (true,false);
-          phi.distribute_local_to_global (dst);
-        }
-    }
-
-    std::shared_ptr<const MatrixFree<dim,Number> > data;
-  };
 
 
 template <int dim, int fe_degree, int n_q_points>
@@ -136,7 +46,6 @@ void test(const unsigned int s,
   tria.refine_global(n_refine);
 
   FE_Q<dim> fe_q(fe_degree);
-  //FESystem<dim> fe(fe_q, dim);
   MappingQGeneric<dim> mapping(fe_degree);
   DoFHandler<dim> dof_handler(tria);
   dof_handler.distribute_dofs(fe_q);
@@ -147,7 +56,7 @@ void test(const unsigned int s,
   matrix_free->reinit(mapping, dof_handler, constraints, QGauss<1>(n_q_points),
                       typename MatrixFree<dim,double>::AdditionalData());
 
-  MassOperator<dim,fe_degree,n_q_points,dim> mass_operator;
+  Mass::MassOperator<dim,fe_degree,n_q_points,dim> mass_operator;
   mass_operator.initialize(matrix_free);
 
   LinearAlgebra::distributed::BlockVector<double> input, output;
@@ -166,7 +75,7 @@ void test(const unsigned int s,
               << " " << data.max << " (p" << data.max_index << ")" << "s"
               << std::endl;
 
-  ReductionControl solver_control(1000, 1e-15, 1e-6);
+  ReductionControl solver_control(500, 1e-15, 1e-6);
   SolverCG<LinearAlgebra::distributed::BlockVector<double> > solver(solver_control);
 
   time.restart();
@@ -207,6 +116,7 @@ void test(const unsigned int s,
 }
 
 
+
 template <int dim, int fe_degree, int n_q_points>
 void do_test()
 {
@@ -227,13 +137,12 @@ void do_test()
 }
 
 
+
 int main(int argc, char** argv)
 {
   Utilities::MPI::MPI_InitFinalize mpi(argc, argv, 1);
 
-  do_test<3,1,2>();
   do_test<3,1,3>();
-  do_test<3,2,3>();
   do_test<3,2,4>();
   do_test<3,3,5>();
   do_test<3,4,6>();
