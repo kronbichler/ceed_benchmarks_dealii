@@ -43,7 +43,7 @@ namespace Mass
     /**
      * Initialize function.
      */
-    void initialize(std::shared_ptr<const MatrixFree<dim,Number> > data_)
+    void initialize(std_cxx11::shared_ptr<const MatrixFree<dim,Number> > data_)
     {
       this->data = data_;
     }
@@ -65,8 +65,9 @@ namespace Mass
     void vmult(LinearAlgebra::distributed::BlockVector<Number> &dst,
                const LinearAlgebra::distributed::BlockVector<Number> &src) const
     {
+      dst = 0;
       this->data->cell_loop (&MassOperator::local_apply_cell,
-                             this, dst, src, true);
+                             this, dst, src);
     }
 
     /**
@@ -101,7 +102,7 @@ namespace Mass
         }
     }
 
-    std::shared_ptr<const MatrixFree<dim,Number> > data;
+    std_cxx11::shared_ptr<const MatrixFree<dim,Number> > data;
   };
 
 
@@ -129,7 +130,7 @@ namespace Mass
     /**
      * Initialize function.
      */
-    void initialize(std::shared_ptr<const MatrixFree<dim,Number> > data_)
+    void initialize(std_cxx11::shared_ptr<const MatrixFree<dim,Number> > data_)
     {
       this->data = data_;
     }
@@ -148,8 +149,9 @@ namespace Mass
     void vmult(LinearAlgebra::distributed::Vector<Number>       &dst,
                const LinearAlgebra::distributed::Vector<Number> &src) const
     {
+      dst = 0;
       this->data->cell_loop (&MassOperator::local_apply_cell,
-                             this, dst, src, true);
+                             this, dst, src);
     }
 
     /**
@@ -184,7 +186,7 @@ namespace Mass
         }
     }
 
-    std::shared_ptr<const MatrixFree<dim,Number> > data;
+    std_cxx11::shared_ptr<const MatrixFree<dim,Number> > data;
   };
 
 }

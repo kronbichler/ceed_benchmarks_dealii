@@ -65,14 +65,14 @@ namespace Poisson
   namespace internal
   {
     template <typename MFType, typename Number>
-    void do_initialize_vector(const std::shared_ptr<const MFType> &data,
+    void do_initialize_vector(const std_cxx11::shared_ptr<const MFType> &data,
                               LinearAlgebra::distributed::Vector<Number> &vec)
     {
       data->initialize_dof_vector(vec);
     }
 
     template <typename MFType, typename Number>
-    void do_initialize_vector(const std::shared_ptr<const MFType> &data,
+    void do_initialize_vector(const std_cxx11::shared_ptr<const MFType> &data,
                               LinearAlgebra::distributed::BlockVector<Number> &vec)
     {
       for (unsigned int bl=0; bl<vec.n_blocks(); ++bl)
@@ -130,7 +130,7 @@ namespace Poisson
     /**
      * Initialize function.
      */
-    void initialize(std::shared_ptr<const MatrixFree<dim,Number> > data_)
+    void initialize(std_cxx11::shared_ptr<const MatrixFree<dim,Number> > data_)
     {
       this->data = data_;
       quad_1d = QGauss<1>(n_q_points_1d);
@@ -150,8 +150,11 @@ namespace Poisson
                 = data->get_cell_iterator(c, l);
               if (dim == 2)
                 {
-                  std::array<Tensor<1,dim>, 4> v{{cell->vertex(0), cell->vertex(1),
-                        cell->vertex(2), cell->vertex(3)}};
+                  std_cxx11::array<Tensor<1,dim>, 4> v;
+                  v[0] = cell->vertex(0);
+                  v[1] = cell->vertex(1);
+                  v[2] = cell->vertex(2);
+                  v[3] = cell->vertex(3);
                   for (unsigned int d=0; d<dim; ++d)
                     {
                       cell_vertex_coefficients[c][0][d][l] = v[0][d];
@@ -162,10 +165,9 @@ namespace Poisson
                 }
               else if (dim==3)
                 {
-                  std::array<Tensor<1,dim>, 8> v{{cell->vertex(0), cell->vertex(1),
-                        cell->vertex(2), cell->vertex(3),
-                        cell->vertex(4), cell->vertex(5),
-                        cell->vertex(6), cell->vertex(7)}};
+                  std_cxx11::array<Tensor<1,dim>, 8> v;
+                  for (unsigned int d=0; d<8; ++d)
+                    v[d] = cell->vertex(d);
                   for (unsigned int d=0; d<dim; ++d)
                     {
                       cell_vertex_coefficients[c][0][d][l] = v[0][d];
@@ -220,8 +222,9 @@ namespace Poisson
     void vmult(VectorType &dst,
                const VectorType &src) const
     {
+      dst = 0;
       this->data->cell_loop (&LaplaceOperator::local_apply_merged,
-                             this, dst, src, true);
+                             this, dst, src);
       internal::set_constrained_entries(data->get_constrained_dofs(0), src, dst);
     }
 
@@ -231,8 +234,9 @@ namespace Poisson
     void vmult_linear_geo(VectorType &dst,
                           const VectorType &src) const
     {
+      dst = 0;
       this->data->cell_loop (&LaplaceOperator::local_apply_linear_geo,
-                             this, dst, src, true);
+                             this, dst, src);
       internal::set_constrained_entries(data->get_constrained_dofs(0), src, dst);
     }
 
@@ -242,8 +246,9 @@ namespace Poisson
     void vmult_basic(VectorType &dst,
                      const VectorType &src) const
     {
+      dst = 0;
       this->data->cell_loop (&LaplaceOperator::local_apply_basic,
-                             this, dst, src, true);
+                             this, dst, src);
       internal::set_constrained_entries(data->get_constrained_dofs(0), src, dst);
     }
 
@@ -253,8 +258,9 @@ namespace Poisson
     void vmult_construct_q(VectorType &dst,
                            const VectorType &src) const
     {
+      dst = 0;
       this->data->cell_loop (&LaplaceOperator::local_apply_construct_q,
-                             this, dst, src, true);
+                             this, dst, src);
       internal::set_constrained_entries(data->get_constrained_dofs(0), src, dst);
     }
 
@@ -295,13 +301,13 @@ namespace Poisson
                             const std::pair<unsigned int,unsigned int> &cell_range) const
     {
       FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number> phi(data);
-      constexpr unsigned int n_q_points = Utilities::pow(n_q_points_1d,dim);
+      const unsigned int n_q_points = Utilities::fixed_int_power<n_q_points_1d,dim>::value;
       for (unsigned int cell=cell_range.first; cell<cell_range.second; ++cell)
         {
           phi.reinit (cell);
           phi.read_dof_values(src);
           phi.evaluate (false,true);
-          const std::array<Tensor<1,dim,VectorizedArray<Number> >,GeometryInfo<dim>::vertices_per_cell> &v
+          const Tensor<1,GeometryInfo<dim>::vertices_per_cell,Tensor<1,dim,VectorizedArray<Number> > > &v
             = cell_vertex_coefficients[cell];
           VectorizedArray<Number> *phi_grads = phi.begin_gradients();
           if (dim == 2)
@@ -309,11 +315,11 @@ namespace Poisson
               for (unsigned int q=0, qy = 0; qy<n_q_points_1d; ++qy)
                 {
                   // x-derivative, already complete
-                  Tensor<1,dim,VectorizedArray<Number>> x_con = v[1] + quad_1d.point(qy)[0]*v[3];
+                  Tensor<1,dim,VectorizedArray<Number> > x_con = v[1] + quad_1d.point(qy)[0]*v[3];
                   for (unsigned int qx=0; qx<n_q_points_1d; ++qx, ++q)
                     {
                       const double q_weight = quad_1d.weight(qy) * quad_1d.weight(qx);
-                      Tensor<2,dim,VectorizedArray<Number>> jac;
+                      Tensor<2,dim,VectorizedArray<Number> > jac;
                       jac[1] = v[2] + quad_1d.point(qx)[0]*v[3];
                       jac[0] = x_con;
                       const VectorizedArray<Number> det = do_invert(jac);
@@ -346,21 +352,21 @@ namespace Poisson
                   for (unsigned int qy = 0; qy<n_q_points_1d; ++qy)
                     {
                       // x-derivative, already complete
-                      Tensor<1,dim,VectorizedArray<Number>> x_con = v[1] + quad_1d.point(qz)[0]*v[5];
+                      Tensor<1,dim,VectorizedArray<Number> > x_con = v[1] + quad_1d.point(qz)[0]*v[5];
                       x_con += quad_1d.point(qy)[0]*(v[4]+quad_1d.point(qz)[0]*v[7]);
                       // y-derivative, constant part
-                      Tensor<1,dim,VectorizedArray<Number>> y_con = v[2] + quad_1d.point(qz)[0]*v[6];
+                      Tensor<1,dim,VectorizedArray<Number> > y_con = v[2] + quad_1d.point(qz)[0]*v[6];
                       // y-derivative, xi-dependent part
-                      Tensor<1,dim,VectorizedArray<Number>> y_var = v[4] + quad_1d.point(qz)[0]*v[7];
+                      Tensor<1,dim,VectorizedArray<Number> > y_var = v[4] + quad_1d.point(qz)[0]*v[7];
                       // z-derivative, constant part
-                      Tensor<1,dim,VectorizedArray<Number>> z_con = v[3] + quad_1d.point(qy)[0]*v[6];
+                      Tensor<1,dim,VectorizedArray<Number> > z_con = v[3] + quad_1d.point(qy)[0]*v[6];
                       // z-derivative, variable part
-                      Tensor<1,dim,VectorizedArray<Number>> z_var = v[5] + quad_1d.point(qy)[0]*v[7];
+                      Tensor<1,dim,VectorizedArray<Number> > z_var = v[5] + quad_1d.point(qy)[0]*v[7];
                       double q_weight_tmp = quad_1d.weight(qz) * quad_1d.weight(qy);
                       for (unsigned int qx=0; qx<n_q_points_1d; ++qx, ++q)
                         {
                           const double q_weight = q_weight_tmp * quad_1d.weight(qx);
-                          Tensor<2,dim,VectorizedArray<Number>> jac;
+                          Tensor<2,dim,VectorizedArray<Number> > jac;
                           jac[1] = y_con + quad_1d.point(qx)[0]*y_var;
                           jac[2] = z_con + quad_1d.point(qx)[0]*z_var;
                           jac[0] = x_con;
@@ -400,7 +406,7 @@ namespace Poisson
                         const std::pair<unsigned int,unsigned int> &cell_range) const
     {
       FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number> phi(data);
-      constexpr unsigned int n_q_points = Utilities::pow(n_q_points_1d, dim);
+      const unsigned int n_q_points = Utilities::fixed_int_power<n_q_points_1d, dim>::value;
       for (unsigned int cell=cell_range.first; cell<cell_range.second; ++cell)
         {
           phi.reinit (cell);
@@ -456,25 +462,27 @@ namespace Poisson
                              const std::pair<unsigned int,unsigned int> &cell_range) const
     {
       FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number> phi(data);
-      constexpr unsigned int n_q_points = Utilities::pow(n_q_points_1d, dim);
-      VectorizedArray<Number> jacobians[dim*dim*n_q_points];
+      const unsigned int n_q_points = Utilities::fixed_int_power<n_q_points_1d, dim>::value;
+      //VectorizedArray<Number> jacobians[dim*dim*n_q_points];
       for (unsigned int cell=cell_range.first; cell<cell_range.second; ++cell)
         {
           phi.reinit (cell);
           phi.read_dof_values(src);
           phi.evaluate (false,true);
+          /*
           dealii::internal::FEEvaluationImplCollocation<dim,n_q_points_1d-1,dim,VectorizedArray<Number>>
             ::evaluate(data.get_shape_info(),
                        quadrature_points.begin()+cell*dim*n_q_points,
                        nullptr, jacobians, nullptr, nullptr,
                        false, true, false);
+          */
           VectorizedArray<Number> *phi_grads = phi.begin_gradients();
           for (unsigned int q=0; q<phi.n_q_points; ++q)
             {
-              Tensor<2,dim,VectorizedArray<Number>> jac;
+              Tensor<2,dim,VectorizedArray<Number> > jac;
               for (unsigned int d=0; d<dim; ++d)
                 for (unsigned int e=0; e<dim; ++e)
-                  jac[d][e] = jacobians[(e*dim+d)*n_q_points+q];
+                  jac[d][e] = (d==e ? 1.0 : 0.0);//jacobians[(e*dim+d)*n_q_points+q];
               const VectorizedArray<Number> det = do_invert(jac);
               const Number q_weight = data.get_quadrature().weight(q);
 
@@ -502,15 +510,14 @@ namespace Poisson
         }
     }
 
-    std::shared_ptr<const MatrixFree<dim,Number> > data;
+    std_cxx11::shared_ptr<const MatrixFree<dim,Number> > data;
 
 
     Quadrature<1> quad_1d;
     // For local_apply_linear_geo:
     // A list containing the geometry in terms of the bilinear coefficients,
     // i.e. x_0, x_1-x_0, x_2-x_0, x_4-x_0, x_3-x_2-x_1+x_0, ...
-    AlignedVector<std::array<Tensor<1,dim,VectorizedArray<Number> >,
-                             GeometryInfo<dim>::vertices_per_cell> > cell_vertex_coefficients;
+    AlignedVector<Tensor<1,GeometryInfo<dim>::vertices_per_cell,Tensor<1,dim,VectorizedArray<Number> > > > cell_vertex_coefficients;
 
     // For local_apply_merged: dim*(dim+1)/2 coefficients
     AlignedVector<Tensor<1,(dim*(dim+1)/2),VectorizedArray<Number> > > merged_coefficients;

@@ -3,7 +3,6 @@
 #define curved_manifold_h_
 
 #include <deal.II/grid/manifold.h>
-#include <deal.II/base/std_cxx14/memory.h>
 
 
 // small deformation in mesh to avoid triggering the constant Jacobian case
@@ -12,11 +11,6 @@ class MyManifold : public dealii::ChartManifold<dim,dim,dim>
 {
 public:
   MyManifold() : factor(0.1) {}
-
-  virtual std::unique_ptr<dealii::Manifold<dim> > clone () const
-  {
-    return dealii::std_cxx14::make_unique<MyManifold<dim>>();
-  }
 
   virtual dealii::Point<dim> push_forward(const dealii::Point<dim> &p) const
   {

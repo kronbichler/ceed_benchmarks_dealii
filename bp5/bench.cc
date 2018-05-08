@@ -39,8 +39,8 @@ void test(const unsigned int s,
   for (unsigned int d=0; d<remainder; ++d)
     subdivisions[d] = 2;
   GridGenerator::subdivided_hyper_rectangle(tria, subdivisions, Point<dim>(), p2);
-  GridTools::transform(std::bind(&MyManifold<dim>::push_forward, manifold,
-                                 std::placeholders::_1),
+  GridTools::transform(std_cxx11::bind(&MyManifold<dim>::push_forward, manifold,
+                                       std_cxx11::_1),
                        tria);
   tria.set_all_manifold_ids(1);
   tria.set_manifold(1, manifold);
@@ -57,8 +57,8 @@ void test(const unsigned int s,
   VectorTools::interpolate_boundary_values(dof_handler, 0, ZeroFunction<dim>(),
                                            constraints);
   constraints.close();
-  std::shared_ptr<MatrixFree<dim,double> > matrix_free(new MatrixFree<dim,double>());
-  matrix_free->reinit(dof_handler, constraints, QGauss<1>(n_q_points),
+  std_cxx11::shared_ptr<MatrixFree<dim,double> > matrix_free(new MatrixFree<dim,double>());
+  matrix_free->reinit(dof_handler, constraints, QGaussLobatto<1>(n_q_points),
                       typename MatrixFree<dim,double>::AdditionalData());
 
   Poisson::LaplaceOperator<dim,fe_degree,n_q_points,1,double,
@@ -118,6 +118,7 @@ void test(const unsigned int s,
     laplace_operator.vmult(input, output);
   const double t1 = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD).max/100;
 
+#ifdef SHOW_VARIANTS
   time.restart();
   for (unsigned int i=0; i<100; ++i)
     laplace_operator.vmult_basic(output_test, output);
@@ -147,6 +148,7 @@ void test(const unsigned int s,
       short_output==false)
     std::cout << "Error trilinear interpolation of Jacobian: "
               << output_test.linfty_norm() << std::endl;
+#endif
 
   if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0 &&
       short_output == true)
@@ -157,9 +159,11 @@ void test(const unsigned int s,
               << " | " << std::setw(11) << dof_handler.n_dofs()/solver_time*solver_control.last_step()
               << " | " << std::setw(4) << solver_control.last_step()
               << " | " << std::setw(11) << t1
+#ifdef SHOW_VARIANTS
               << " | " << std::setw(11) << t2
               << " | " << std::setw(11) << t3
               << " | " << std::setw(11) << t4
+#endif
               << std::endl;
 }
 
@@ -169,12 +173,16 @@ void do_test()
 {
   unsigned int s =
     std::max(3U, static_cast<unsigned int>
-             (std::log2(1024/fe_degree/fe_degree/fe_degree)));
+             (1.000001*std::log(1024/fe_degree/fe_degree/fe_degree)/std::log(2)));
   if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
+#ifdef SHOW_VARIANTS
     std::cout << " p |  q | n_element |     n_dofs |     time/it |   dofs/s/it | itCG | time/matvec | timeMVbasic | timeMVcompu | timeMVlinear"
+#else
+    std::cout << " p |  q | n_element |     n_dofs |     time/it |   dofs/s/it | itCG | time/matvec"
+#endif
               << std::endl;
   while (Utilities::fixed_power<dim>(fe_degree+1)*(1UL<<s)
-         < 5000000ULL*Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD))
+         < 6000000ULL*Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD))
     {
       test<dim,fe_degree,n_q_points>(s, true);
       ++s;
@@ -188,14 +196,14 @@ int main(int argc, char** argv)
 {
   Utilities::MPI::MPI_InitFinalize mpi(argc, argv, 1);
 
-  do_test<3,1,3>();
-  do_test<3,2,4>();
-  do_test<3,3,5>();
-  do_test<3,4,6>();
-  do_test<3,5,7>();
-  do_test<3,6,8>();
-  do_test<3,7,9>();
-  do_test<3,8,10>();
+  do_test<3,1,2>();
+  do_test<3,2,3>();
+  do_test<3,3,4>();
+  do_test<3,4,5>();
+  do_test<3,5,6>();
+  do_test<3,6,7>();
+  do_test<3,7,8>();
+  do_test<3,8,9>();
 
   return 0;
 }

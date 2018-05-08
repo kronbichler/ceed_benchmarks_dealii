@@ -3,7 +3,10 @@
 */build
 */CMakeFiles
 */cmake_install.cmake
-bp1/bench_mass
-bp2/bench_mass
-bp3/bench_poisson
+bp1/bench
+bp2/bench
+bp3/bench
+bp4/bench
+bp5/bench
+bp6/bench
 **~

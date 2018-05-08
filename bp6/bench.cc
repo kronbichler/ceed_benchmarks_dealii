@@ -39,8 +39,8 @@ void test(const unsigned int s,
   for (unsigned int d=0; d<remainder; ++d)
     subdivisions[d] = 2;
   GridGenerator::subdivided_hyper_rectangle(tria, subdivisions, Point<dim>(), p2);
-  GridTools::transform(std::bind(&MyManifold<dim>::push_forward, manifold,
-                                 std::placeholders::_1),
+  GridTools::transform(std_cxx11::bind(&MyManifold<dim>::push_forward, manifold,
+                                       std_cxx11::_1),
                        tria);
   tria.set_all_manifold_ids(1);
   tria.set_manifold(1, manifold);
@@ -57,7 +57,7 @@ void test(const unsigned int s,
   VectorTools::interpolate_boundary_values(dof_handler, 0, ZeroFunction<dim>(),
                                            constraints);
   constraints.close();
-  std::shared_ptr<MatrixFree<dim,double> > matrix_free(new MatrixFree<dim,double>());
+  std_cxx11::shared_ptr<MatrixFree<dim,double> > matrix_free(new MatrixFree<dim,double>());
   matrix_free->reinit(dof_handler, constraints, QGaussLobatto<1>(n_q_points),
                       typename MatrixFree<dim,double>::AdditionalData());
 
@@ -177,7 +177,7 @@ void do_test()
 {
   unsigned int s =
     std::max(3U, static_cast<unsigned int>
-             (std::log2(1024/fe_degree/fe_degree/fe_degree)));
+             (1.000001*std::log(1024/fe_degree/fe_degree/fe_degree)/std::log(2)));
   if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
 #ifdef SHOW_VARIANTS
     std::cout << " p |  q | n_element |     n_dofs |     time/it |   dofs/s/it | itCG | time/matvec | timeMVbasic | timeMVcompu | timeMVlinear"
