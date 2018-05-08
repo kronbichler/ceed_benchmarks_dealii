@@ -3,7 +3,7 @@
 ##
 
 # Set the name of the project and target:
-SET(TARGET "bench_poisson")
+SET(TARGET "bench")
 
 # Declare all source files the target consists of. Here, this is only
 # the one step-X.cc file, but as you expand your project you may wish
@@ -45,7 +45,7 @@ It was set to OFF in your installation but is required for this program."
     )
 ENDIF()
 
+
 DEAL_II_INITIALIZE_CACHED_VARIABLES()
 PROJECT(${TARGET})
 DEAL_II_INVOKE_AUTOPILOT()
-SET(CMAKE_BUILD_TYPE "Release")
