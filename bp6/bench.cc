@@ -16,6 +16,7 @@
 
 #include "../common_code/curved_manifold.h"
 #include "../common_code/poisson_operator.h"
+#include "../common_code/diagonal_matrix_blocked.h"
 
 using namespace dealii;
 
@@ -77,6 +78,9 @@ void test(const unsigned int s,
       if (!constraints.is_constrained(input.block(0).get_partitioner()->local_to_global(i)))
         input.block(d).local_element(i) = (i+d)%8;
 
+  DiagonalMatrixBlocked<dim,double> diag_mat;
+  diag_mat.diagonal = laplace_operator.compute_inverse_diagonal();
+
   Utilities::MPI::MinMaxAvg data =
     Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD);
   if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0 &&
@@ -86,13 +90,13 @@ void test(const unsigned int s,
               << " " << data.max << " (p" << data.max_index << ")" << "s"
               << std::endl;
 
-  ReductionControl solver_control(500, 1e-15, 1e-6);
+  ReductionControl solver_control(200, 1e-15, 1e-6);
   SolverCG<LinearAlgebra::distributed::BlockVector<double> > solver(solver_control);
 
   time.restart();
   try
     {
-      solver.solve(laplace_operator, output, input, PreconditionIdentity());
+      solver.solve(laplace_operator, output, input, diag_mat);
     }
   catch (SolverControl::NoConvergence &e)
     {

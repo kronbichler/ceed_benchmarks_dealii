@@ -5,6 +5,7 @@
 #include <deal.II/grid/grid_tools.h>
 #include <deal.II/grid/manifold.h>
 #include <deal.II/lac/la_parallel_vector.h>
+#include <deal.II/lac/diagonal_matrix.h>
 #include <deal.II/lac/solver_control.h>
 #include <deal.II/lac/solver_cg.h>
 #include <deal.II/lac/precondition.h>
@@ -77,8 +78,16 @@ void test(const unsigned int s,
   ReductionControl solver_control(500, 1e-15, 1e-6);
   SolverCG<LinearAlgebra::distributed::Vector<double> > solver(solver_control);
 
+  DiagonalMatrix<LinearAlgebra::distributed::Vector<double> > diag_mat;
+  matrix_free->initialize_dof_vector(diag_mat.get_vector());
+  output = 1.;
+  mass_operator.vmult(diag_mat.get_vector(), output);
+  for (unsigned int i=0; i<diag_mat.get_vector().local_size(); ++i)
+    diag_mat.get_vector().local_element(i) = 1./diag_mat.get_vector().local_element(i);
+  output = 0;
+
   time.restart();
-  solver.solve(mass_operator, output, input, PreconditionIdentity());
+  solver.solve(mass_operator, output, input, diag_mat);
   data = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD);
   if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0 &&
       short_output==false)
@@ -125,7 +134,7 @@ void do_test()
   if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
     std::cout << " p |  q | n_elements |      n_dofs |     time/it |   dofs/s/it | CG_its | time/matvec"
               << std::endl;
-  while (Utilities::fixed_power<dim>(fe_degree+1)*(1UL<<s)
+  while ((8+Utilities::fixed_power<dim>(fe_degree+1))*(1UL<<s)
          < 6000000ULL*Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD))
     {
       test<dim,fe_degree,n_q_points>(s, true);

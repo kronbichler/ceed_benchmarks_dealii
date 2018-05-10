@@ -73,6 +73,9 @@ void test(const unsigned int s,
     if (!constraints.is_constrained(input.get_partitioner()->local_to_global(i)))
       input.local_element(i) = (i)%8;
 
+  DiagonalMatrix<LinearAlgebra::distributed::Vector<double> > diag_mat;
+  diag_mat.get_vector() = laplace_operator.compute_inverse_diagonal();
+
   Utilities::MPI::MinMaxAvg data =
     Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD);
   if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0 &&
@@ -82,13 +85,13 @@ void test(const unsigned int s,
               << " " << data.max << " (p" << data.max_index << ")" << "s"
               << std::endl;
 
-  ReductionControl solver_control(500, 1e-15, 1e-6);
+  ReductionControl solver_control(200, 1e-15, 1e-6);
   SolverCG<LinearAlgebra::distributed::Vector<double> > solver(solver_control);
 
   time.restart();
   try
     {
-      solver.solve(laplace_operator, output, input, PreconditionIdentity());
+      solver.solve(laplace_operator, output, input, diag_mat);
     }
   catch (SolverControl::NoConvergence &e)
     {
@@ -181,7 +184,7 @@ void do_test()
     std::cout << " p |  q | n_element |     n_dofs |     time/it |   dofs/s/it | itCG | time/matvec"
 #endif
               << std::endl;
-  while (Utilities::fixed_power<dim>(fe_degree+1)*(1UL<<s)
+  while ((2+Utilities::fixed_power<dim>(fe_degree+1))*(1UL<<s)
          < 6000000ULL*Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD))
     {
       test<dim,fe_degree,n_q_points>(s, true);
