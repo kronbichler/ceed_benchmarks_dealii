@@ -268,6 +268,45 @@ namespace Poisson
       vmult(dst, src);
     }
 
+    /**
+     * Compute the diagonal (scalar variant) of the matrix
+     */
+    LinearAlgebra::distributed::Vector<Number>
+    compute_inverse_diagonal() const
+    {
+      LinearAlgebra::distributed::Vector<Number> diag;
+      data->initialize_dof_vector(diag);
+      FEEvaluation<dim, fe_degree, n_q_points_1d, 1, Number> phi(*data);
+
+      AlignedVector<VectorizedArray<Number> > diagonal(phi.dofs_per_cell);
+      for (unsigned int cell=0; cell<data->n_macro_cells(); ++cell)
+        {
+          phi.reinit (cell);
+          for (unsigned int i=0; i<phi.dofs_per_cell; ++i)
+            {
+              for (unsigned int j=0; j<phi.dofs_per_cell; ++j)
+                phi.submit_dof_value(VectorizedArray<Number>(), j);
+              phi.submit_dof_value(make_vectorized_array<Number>(1.), i);
+
+              phi.evaluate (false, true);
+              for (unsigned int q=0; q<phi.n_q_points; ++q)
+                phi.submit_gradient (phi.get_gradient(q), q);
+              phi.integrate (false, true);
+              diagonal[i] = phi.get_dof_value(i);
+            }
+          for (unsigned int i=0; i<phi.dofs_per_cell; ++i)
+            phi.submit_dof_value(diagonal[i], i);
+          phi.distribute_local_to_global (diag);
+        }
+      diag.compress(VectorOperation::add);
+      for (unsigned int i=0; i<diag.local_size(); ++i)
+        if (diag.local_element(i) == 0.)
+          diag.local_element(i) = 1.;
+        else
+          diag.local_element(i) = 1./diag.local_element(i);
+      return diag;
+    }
+
   private:
     void
     local_apply_basic (const MatrixFree<dim,value_type>           &data,

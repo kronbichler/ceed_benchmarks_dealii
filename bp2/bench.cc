@@ -15,6 +15,7 @@
 
 #include "../common_code/curved_manifold.h"
 #include "../common_code/mass_operator.h"
+#include "../common_code/diagonal_matrix_blocked.h"
 
 using namespace dealii;
 
@@ -66,6 +67,16 @@ void test(const unsigned int s,
     for (unsigned int i=0; i<input.block(d).local_size(); ++i)
       input.block(d).local_element(i) = (i+d)%8;
 
+  LinearAlgebra::distributed::BlockVector<double> tmp;
+  tmp = input;
+  output = 1.;
+  mass_operator.vmult(tmp, output);
+  DiagonalMatrixBlocked<dim,double> diag_mat;
+  diag_mat.diagonal = tmp.block(0);
+  for (unsigned int i=0; i<tmp.block(0).local_size(); ++i)
+    diag_mat.diagonal.local_element(i) = 1./tmp.block(0).local_element(i);
+  output = 0;
+
   Utilities::MPI::MinMaxAvg data =
     Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD);
   if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0 &&
@@ -79,7 +90,7 @@ void test(const unsigned int s,
   SolverCG<LinearAlgebra::distributed::BlockVector<double> > solver(solver_control);
 
   time.restart();
-  solver.solve(mass_operator, output, input, PreconditionIdentity());
+  solver.solve(mass_operator, output, input, diag_mat);
   data = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD);
   if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0 &&
       short_output==false)
