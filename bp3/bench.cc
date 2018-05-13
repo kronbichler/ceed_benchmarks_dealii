@@ -58,6 +58,22 @@ void test(const unsigned int s,
                                            constraints);
   constraints.close();
   std::shared_ptr<MatrixFree<dim,double> > matrix_free(new MatrixFree<dim,double>());
+
+  // create preconditioner based on the diagonal of the GLL quadrature with
+  // fe_degree+1 points
+  DiagonalMatrix<LinearAlgebra::distributed::Vector<double> > diag_mat;
+  {
+    matrix_free->reinit(dof_handler, constraints, QGaussLobatto<1>(fe_degree+1),
+                        typename MatrixFree<dim,double>::AdditionalData());
+
+    Poisson::LaplaceOperator<dim,fe_degree,fe_degree+1,1,double,
+                             LinearAlgebra::distributed::Vector<double> > laplace_operator;
+    laplace_operator.initialize(matrix_free);
+
+    diag_mat.get_vector() = laplace_operator.compute_inverse_diagonal();
+  }
+
+  // now go back to the actual operator with n_q_points points
   matrix_free->reinit(dof_handler, constraints, QGauss<1>(n_q_points),
                       typename MatrixFree<dim,double>::AdditionalData());
 
@@ -72,9 +88,6 @@ void test(const unsigned int s,
   for (unsigned int i=0; i<input.local_size(); ++i)
     if (!constraints.is_constrained(input.get_partitioner()->local_to_global(i)))
       input.local_element(i) = (i)%8;
-
-  DiagonalMatrix<LinearAlgebra::distributed::Vector<double> > diag_mat;
-  diag_mat.get_vector() = laplace_operator.compute_inverse_diagonal();
 
   Utilities::MPI::MinMaxAvg data =
     Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD);
