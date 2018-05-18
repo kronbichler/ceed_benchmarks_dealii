@@ -82,4 +82,22 @@ private:
 };
 
 
+void warmup_code()
+{
+  // do some short burst of work to get all cores up by doing some useless
+  // things; the final check is to prevent the compiler to optimize this away.
+  {
+    MPI_Barrier(MPI_COMM_WORLD);
+    std::vector<double> big_vector(5000000);
+    big_vector[10] = 10;
+    big_vector[50] = 8;
+    big_vector[big_vector.size()/2] = 10;
+    for (std::size_t j=0; j<50; ++j)
+      for (std::size_t i=0; i<big_vector.size(); ++i)
+        big_vector[i] = big_vector[std::min(i+j,big_vector.size()-1)] + big_vector[i];
+    AssertThrow(big_vector[0] > 0, dealii::ExcMessage("Wrong computation"));
+  }
+}
+
+
 #endif
