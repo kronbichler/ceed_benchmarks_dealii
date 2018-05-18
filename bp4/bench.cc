@@ -25,6 +25,13 @@ template <int dim, int fe_degree, int n_q_points>
 void test(const unsigned int s,
           const bool short_output)
 {
+  warmup_code();
+
+  if (short_output == true)
+    deallog.depth_console(0);
+  else if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
+    deallog.depth_console(2);
+
   Timer time;
   const unsigned int n_refine = s/3;
   const unsigned int remainder = s%3;
@@ -73,6 +80,12 @@ void test(const unsigned int s,
 
     diag_mat.diagonal = laplace_operator.compute_inverse_diagonal();
   }
+  if (short_output == false)
+    {
+      const double diag_norm = diag_mat.diagonal.l2_norm();
+      if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
+        std::cout << "Norm of diagonal for preconditioner: " << diag_norm << std::endl;
+    }
 
   // now go back to the actual operator with n_q_points points
   matrix_free->reinit(dof_handler, constraints, QGauss<1>(n_q_points),
@@ -103,41 +116,36 @@ void test(const unsigned int s,
               << " " << data.max << " (p" << data.max_index << ")" << "s"
               << std::endl;
 
-  ReductionControl solver_control(200, 1e-15, 1e-6);
+  ReductionControl solver_control(100, 1e-15, 1e-8);
   SolverCG<LinearAlgebra::distributed::BlockVector<double> > solver(solver_control);
 
-  time.restart();
-  try
+  double solver_time = 1e10;
+  for (unsigned int t=0; t<2; ++t)
     {
-      solver.solve(laplace_operator, output, input, diag_mat);
+      output = 0;
+      time.restart();
+      try
+        {
+          solver.solve(laplace_operator, output, input, diag_mat);
+        }
+      catch (SolverControl::NoConvergence &e)
+        {
+          // prevent the solver to throw an exception in case we should need more
+          // than 100 iterations
+        }
+      data = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD);
+      solver_time = std::min(data.max, solver_time);
     }
-  catch (SolverControl::NoConvergence &e)
-    {
-      // prevent the solver to throw an exception in case we should need more
-      // than 500 iterations
-    }
-  data = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD);
-  if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0 &&
-      short_output==false)
-    {
-      std::cout << "Solve time:         "
-                << data.min << " (p" << data.min_index << ") " << data.avg
-                << " " << data.max << " (p" << data.max_index << ")" << "s"
-                << std::endl;
-      std::cout << "Time per iteration: "
-                << data.min/solver_control.last_step()
-                << " (p" << data.min_index << ") "
-                << data.avg/solver_control.last_step()
-                << " " << data.max/solver_control.last_step()
-                << " (p" << data.max_index << ")" << "s"
-                << std::endl;
-    }
-  const double solver_time = data.max;
 
-  time.restart();
-  for (unsigned int i=0; i<100; ++i)
-    laplace_operator.vmult(input, output);
-  const double t1 = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD).max/100;
+  double matvec_time = 1e10;
+  for (unsigned int t=0; t<2; ++t)
+    {
+      time.restart();
+      for (unsigned int i=0; i<50; ++i)
+        laplace_operator.vmult(input, output);
+      data = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD);
+      matvec_time = std::min(data.max/50, matvec_time);
+    }
 
 #ifdef SHOW_VARIANTS
   time.restart();
@@ -179,7 +187,7 @@ void test(const unsigned int s,
               << " | " << std::setw(11) << solver_time/solver_control.last_step()
               << " | " << std::setw(11) << dim*dof_handler.n_dofs()/solver_time*solver_control.last_step()
               << " | " << std::setw(4) << solver_control.last_step()
-              << " | " << std::setw(11) << t1
+              << " | " << std::setw(11) << matvec_time
 #ifdef SHOW_VARIANTS
               << " | " << std::setw(11) << t2
               << " | " << std::setw(11) << t3
@@ -190,27 +198,33 @@ void test(const unsigned int s,
 
 
 template <int dim, int fe_degree, int n_q_points>
-void do_test()
+void do_test(const int s_in,
+             const bool compact_output)
 {
-  unsigned int s =
-    std::max(3U, static_cast<unsigned int>
-             (1.000001*std::log(1024/fe_degree/fe_degree/fe_degree)/std::log(2)));
-  if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
-#ifdef SHOW_VARIANTS
-    std::cout << " p |  q | n_element |     n_dofs |     time/it |   dofs/s/it | itCG | time/matvec | timeMVmerge | timeMVcompu | timeMVlinear"
-              << std::endl;
-#else
-    std::cout << " p |  q | n_element |     n_dofs |     time/it |   dofs/s/it | itCG | time/matvec"
-#endif
-              << std::endl;
-  while (Utilities::fixed_power<dim>(fe_degree+1)*(1UL<<s)*dim
-         < 6000000ULL*Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD))
+  if (s_in < 1)
     {
-      test<dim,fe_degree,n_q_points>(s, true);
-      ++s;
+      unsigned int s =
+        std::max(3U, static_cast<unsigned int>
+                 (1.000001*std::log(1024/fe_degree/fe_degree/fe_degree)/std::log(2)));
+      if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
+#ifdef SHOW_VARIANTS
+        std::cout << " p |  q | n_element |     n_dofs |     time/it |   dofs/s/it | itCG | time/matvec | timeMVmerge | timeMVcompu | timeMVlinear"
+                  << std::endl;
+#else
+      std::cout << " p |  q | n_element |     n_dofs |     time/it |   dofs/s/it | itCG | time/matvec"
+#endif
+                << std::endl;
+      while (Utilities::fixed_power<dim>(fe_degree+1)*(1UL<<s)*dim
+             < 6000000ULL*Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD))
+        {
+          test<dim,fe_degree,n_q_points>(s, compact_output);
+          ++s;
+        }
+      if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
+        std::cout << std::endl << std::endl;
     }
-  if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
-    std::cout << std::endl << std::endl;
+  else
+    test<dim,fe_degree,n_q_points>(s_in, compact_output);
 }
 
 
@@ -218,14 +232,40 @@ int main(int argc, char** argv)
 {
   Utilities::MPI::MPI_InitFinalize mpi(argc, argv, 1);
 
-  do_test<3,1,3>();
-  do_test<3,2,4>();
-  do_test<3,3,5>();
-  do_test<3,4,6>();
-  do_test<3,5,7>();
-  do_test<3,6,8>();
-  do_test<3,7,9>();
-  do_test<3,8,10>();
+  unsigned int degree = 1;
+  unsigned int s = -1;
+  bool compact_output = true;
+  if (argc > 1)
+    degree = std::atoi(argv[1]);
+  if (argc > 2)
+    s = std::atoi(argv[2]);
+  if (argc > 3)
+    compact_output = std::atoi(argv[3]);
+
+  if (degree == 1)
+    do_test<3,1,3>(s, compact_output);
+  else if (degree == 2)
+    do_test<3,2,4>(s, compact_output);
+  else if (degree == 3)
+    do_test<3,3,5>(s, compact_output);
+  else if (degree == 4)
+    do_test<3,4,6>(s, compact_output);
+  else if (degree == 5)
+    do_test<3,5,7>(s, compact_output);
+  else if (degree == 6)
+    do_test<3,6,8>(s, compact_output);
+  else if (degree == 7)
+    do_test<3,7,9>(s, compact_output);
+  else if (degree == 8)
+    do_test<3,8,10>(s, compact_output);
+  else if (degree == 9)
+    do_test<3,9,11>(s, compact_output);
+  else if (degree == 10)
+    do_test<3,10,12>(s, compact_output);
+  else if (degree == 11)
+    do_test<3,11,13>(s, compact_output);
+  else
+    AssertThrow(false, ExcMessage("Only degrees up to 11 implemented"));
 
   return 0;
 }
