@@ -54,7 +54,7 @@ void test(const unsigned int s,
   tria.refine_global(n_refine);
 
   FE_Q<dim> fe_q(fe_degree);
-  MappingQGeneric<dim> mapping(fe_degree);
+  MappingQGeneric<dim> mapping(std::min(fe_degree, 6));
   DoFHandler<dim> dof_handler(tria);
   dof_handler.distribute_dofs(fe_q);
 
@@ -222,8 +222,18 @@ int main(int argc, char** argv)
     do_test<3,10,12>(s, compact_output);
   else if (degree == 11)
     do_test<3,11,13>(s, compact_output);
+  else if (degree == 12)
+    do_test<3,12,14>(s, compact_output);
+  else if (degree == 13)
+    do_test<3,13,15>(s, compact_output);
+  else if (degree == 14)
+    do_test<3,14,16>(s, compact_output);
+  else if (degree == 15)
+    do_test<3,15,17>(s, compact_output);
+  else if (degree == 16)
+    do_test<3,16,18>(s, compact_output);
   else
-    AssertThrow(false, ExcMessage("Only degrees up to 11 implemented"));
+    AssertThrow(false, ExcMessage("Only degrees up to 16 implemented"));
 
   return 0;
 }
