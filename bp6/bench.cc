@@ -245,27 +245,27 @@ int main(int argc, char** argv)
     compact_output = std::atoi(argv[3]);
 
   if (degree == 1)
-    do_test<3,1,3>(s, compact_output);
+    do_test<3,1,2>(s, compact_output);
   else if (degree == 2)
-    do_test<3,2,4>(s, compact_output);
+    do_test<3,2,3>(s, compact_output);
   else if (degree == 3)
-    do_test<3,3,5>(s, compact_output);
+    do_test<3,3,4>(s, compact_output);
   else if (degree == 4)
-    do_test<3,4,6>(s, compact_output);
+    do_test<3,4,5>(s, compact_output);
   else if (degree == 5)
-    do_test<3,5,7>(s, compact_output);
+    do_test<3,5,6>(s, compact_output);
   else if (degree == 6)
-    do_test<3,6,8>(s, compact_output);
+    do_test<3,6,7>(s, compact_output);
   else if (degree == 7)
-    do_test<3,7,9>(s, compact_output);
+    do_test<3,7,8>(s, compact_output);
   else if (degree == 8)
-    do_test<3,8,10>(s, compact_output);
+    do_test<3,8,9>(s, compact_output);
   else if (degree == 9)
-    do_test<3,9,11>(s, compact_output);
+    do_test<3,9,10>(s, compact_output);
   else if (degree == 10)
-    do_test<3,10,12>(s, compact_output);
+    do_test<3,10,11>(s, compact_output);
   else if (degree == 11)
-    do_test<3,11,13>(s, compact_output);
+    do_test<3,11,12>(s, compact_output);
   else
     AssertThrow(false, ExcMessage("Only degrees up to 11 implemented"));
 
