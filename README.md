@@ -108,6 +108,28 @@ for a higher polynomial degree of eight. The performance is very similar to
 the case `p=5`.
 ![alt text](https://github.com/kronbichler/ceed_benchmarks_dealii/blob/master/bp3/gnuplot/matvec_coefficients_p8.png)
 
+### Results for Laplace operator (BP5)
+
+The next benchmark to evaluate is the BP5 problem, which represents a 3D
+Laplacian with the integrals computed with the Gauss-Lobatto quadrature rule
+rather than the Gauss quadrature, and using p+1 rather than p+2 quadrature
+points. This setup comes along with a collocation between node points and
+quadrature points. This allows to cut the work in the sum factorization code
+paths (related to interpolation of values and gradients between the node
+values and quadrature points) into half. On one node of Intel Broadwell
+E5-2690 v4 (2x14 cores at 2.6 GHz nominal frequency, Turbo Boost to 2.9 GHz
+enabled) the following throughput is reached for the full BP5 problem,
+including the conjugate gradient solver and a Jacobi preconditioner on the
+diagonal of the matrix:
+![alt text](https://github.com/kronbichler/ceed_benchmarks_dealii/blob/master/bp5/gnuplot/bp5_bdw.png)
+
+By looking only at the matrix-vector product, the numbers get considerably
+higher, as for the BP1 and BP3 problems. Again, we spend more than 50% of time
+on vector operations in the CG solver. Furthermore, we clearly see the effect
+of the L3 cache.
+![alt text](https://github.com/kronbichler/ceed_benchmarks_dealii/blob/master/bp5/gnuplot/matvec_bdw.png)
+
+
 ### Literature
 
 * [M. Kronbichler and K. Kormann
