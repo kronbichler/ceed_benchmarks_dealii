@@ -32,8 +32,9 @@ plot \
      "bdw_node1_p8_q9.dat" using ($4/1):($4/$8) title '  p=8, q=9'  with linespoints
 
 set key on right bottom Left box lw 0 width -3 height 0.5 # some white space around legend
-set title "BP5 mat-vec, 1 node 2x14C Intel Broadwell E5-2690 v4, merged coefficient tensor"
+set title "BP5, 1 node 2x14C Intel Broadwell E5-2690 v4, merged coefficient tensor"
 set terminal postscript enhanced eps color lw 5 "Arial" 18
+set ylabel "dofs / second / iteration / node (28 cores)"
 set out 'bp5_bdw.eps'
 set yr [1e7:2e9]
 plot \
