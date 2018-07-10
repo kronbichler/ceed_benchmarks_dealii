@@ -14,11 +14,11 @@ set format y "10^{%L}"
 set format x "10^{%L}"
 set xr [1e3:1e8]
 set yr [1e7:1e9]
-set terminal postscript enhanced eps color lw 5 "Arial" 18
+set terminal postscript enhanced eps color lw 5 "Times" 18
 
 set key on right bottom Left box lw 0 width -3 height 0.5 # some white space around legend
 set title "BP5 mat-vec, 1 node 2x14C Intel Broadwell E5-2690 v4, merged coefficient tensor"
-set terminal postscript enhanced eps color lw 5 "Arial" 18
+set terminal postscript enhanced eps color lw 5 "Helvetica" 18
 set out 'matvec_bdw.eps'
 set yr [1e7:2e9]
 plot \
@@ -33,7 +33,7 @@ plot \
 
 set key on right bottom Left box lw 0 width -3 height 0.5 # some white space around legend
 set title "BP5, 1 node 2x14C Intel Broadwell E5-2690 v4, merged coefficient tensor"
-set terminal postscript enhanced eps color lw 5 "Arial" 18
+set terminal postscript enhanced eps color lw 5 "Helvetica" 18
 set ylabel "dofs / second / iteration / node (28 cores)"
 set out 'bp5_bdw.eps'
 set yr [1e7:2e9]
