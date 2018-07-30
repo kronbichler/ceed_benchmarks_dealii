@@ -129,6 +129,19 @@ on vector operations in the CG solver. Furthermore, we clearly see the effect
 of the L3 cache.
 ![alt text](https://github.com/kronbichler/ceed_benchmarks_dealii/blob/master/bp5/gnuplot/matvec_bdw.png)
 
+Next, we report results for a newer architecture, namely Intel Xeon Scalable
+Platinum 8168 (Skylake) with 2x24 cores. The BP5 benchmark runs about 1.85
+times (8.0e8 DoFs/sec/it on one node vs 4.3e8 DoFs/sec/it for *p*=7) as fast
+for large sizes that run from main memory. Near the peak at 500,000 DoFs per
+node, Skylake reaches 3.0e9 DoFs/s versus 1.3e9 on Broadwell. These values are
+close to the capabilities of hardware, as we have measured up to 220 GB/s of
+memory speed on Skylake versus 120 GB/s on Broadwell (1.83 times) and the
+arithmetic peak on Skylake at 3840 GFlops/node versus Broadwell's 1300
+GFlops/node (2.95 times, speedup was 2.31).
+![alt text](https://github.com/kronbichler/ceed_benchmarks_dealii/blob/master/bp5/gnuplot/bp5_skx.png)
+
+The matrix-vector product behaves similarly, again showing about a 2x boost by Skylake.
+![alt text](https://github.com/kronbichler/ceed_benchmarks_dealii/blob/master/bp5/gnuplot/matvec_skx.png)
 
 ### Literature
 

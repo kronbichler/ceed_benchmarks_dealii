@@ -64,7 +64,7 @@ plot \
      "skx_node1_p8_q9.dat" using ($4/1):($4/$8) title '  p=8, q=9' with linespoints, \
      "bdw_node1_p7_q8.dat" using ($4/1):($4/$8) title '  Broadwell p=7, q=8' with linespoints lt 0 lc 7 pt 7
 
-set key on right bottom Left box lw 0 width -3 height 0.5 # some white space around legend
+set key on right bottom Left box lw 0 width -5 height 0.5 # some white space around legend
 set title "BP5, 1 node 2x24C Intel Skylake Platinum 8168, merged coefficient tensor"
 set terminal postscript enhanced eps color lw 5 "Helvetica" 18
 set ylabel "dofs / second / iteration / node (28 cores)"
@@ -78,4 +78,5 @@ plot \
      "skx_node1_p5_q6.dat" using ($4/1):($4/$5) title '  p=5, q=6' with linespoints, \
      "skx_node1_p6_q7.dat" using ($4/1):($4/$5) title '  p=6, q=7' with linespoints, \
      "skx_node1_p7_q8.dat" using ($4/1):($4/$5) title '  p=7, q=8' with linespoints, \
-     "skx_node1_p8_q9.dat" using ($4/1):($4/$5) title '  p=8, q=9'  with linespoints
+     "skx_node1_p8_q9.dat" using ($4/1):($4/$5) title '  p=8, q=9'  with linespoints, \
+     "bdw_node1_p7_q8.dat" using ($4/1):($4/$5) title '  Broadwell p=7, q=8' with linespoints lt 0 lc 7 pt 7
