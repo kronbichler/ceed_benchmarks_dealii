@@ -50,7 +50,7 @@ plot \
 set key on right bottom Left box lw 0 width -5 height 0.5 # some white space around legend
 set title "BP5 mat-vec, 1 node 2x24C Intel Skylake Platinum 8168, merged coefficient tensor"
 set terminal postscript enhanced eps color lw 5 "Helvetica" 18
-set ylabel "dofs / second / node (28 cores)"
+set ylabel "dofs / second / node (48 cores)"
 set out 'matvec_skx.eps'
 set yr [1e7:5e9]
 plot \
@@ -67,7 +67,7 @@ plot \
 set key on right bottom Left box lw 0 width -5 height 0.5 # some white space around legend
 set title "BP5, 1 node 2x24C Intel Skylake Platinum 8168, merged coefficient tensor"
 set terminal postscript enhanced eps color lw 5 "Helvetica" 18
-set ylabel "dofs / second / iteration / node (28 cores)"
+set ylabel "dofs / second / iteration / node (48 cores)"
 set out 'bp5_skx.eps'
 set yr [1e7:4e9]
 plot \
