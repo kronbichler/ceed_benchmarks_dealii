@@ -217,7 +217,7 @@ void do_test(const int s_in,
         std::cout << " p |  q | n_element |     n_dofs |     time/it |   dofs/s/it | itCG | time/matvec | timeMVbasic | timeMVcompu | timeMVlinear"
                   << std::endl;
       while ((8+Utilities::fixed_power<dim>(fe_degree+1))*(1UL<<s)
-             < 60000ULL*Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD))
+             < 3000000ULL*Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD))
         {
           test<dim,fe_degree,n_q_points>(s, compact_output);
           ++s;
