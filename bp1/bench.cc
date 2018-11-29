@@ -14,6 +14,7 @@
 
 #include "../common_code/curved_manifold.h"
 #include "../common_code/mass_operator.h"
+#include "../common_code/solver_cg_optimized.h"
 
 using namespace dealii;
 
@@ -57,7 +58,7 @@ void test(const unsigned int s,
   DoFHandler<dim> dof_handler(tria);
   dof_handler.distribute_dofs(fe);
 
-  ConstraintMatrix constraints;
+  AffineConstraints<double> constraints;
   constraints.close();
   std::shared_ptr<MatrixFree<dim,double> > matrix_free(new MatrixFree<dim,double>());
   matrix_free->reinit(mapping, dof_handler, constraints, QGauss<1>(n_q_points),
@@ -98,7 +99,7 @@ void test(const unsigned int s,
     }
 
   double solver_time = 1e10;
-  for (unsigned int t=0; t<2; ++t)
+  for (unsigned int t=0; t<4; ++t)
     {
       output = 0;
       time.restart();
@@ -131,6 +132,25 @@ void test(const unsigned int s,
                 << std::endl;
     }
 
+  SolverCGOptimized<LinearAlgebra::distributed::Vector<double> > solver2(solver_control);
+  double solver_time2 = 1e10;
+  for (unsigned int t=0; t<4; ++t)
+    {
+      output = 0;
+      time.restart();
+      try
+        {
+          solver2.solve(mass_operator, output, input, diag_mat);
+        }
+      catch (SolverControl::NoConvergence &e)
+        {
+          // prevent the solver to throw an exception in case we should need more
+          // than 100 iterations
+        }
+      data = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD);
+      solver_time2 = std::min(data.max, solver_time2);
+    }
+
   double matvec_time = 1e10;
   for (unsigned int t=0; t<2; ++t)
     {
@@ -146,7 +166,8 @@ void test(const unsigned int s,
               << " | " << std::setw(10) << tria.n_global_active_cells()
               << " | " << std::setw(11) << dof_handler.n_dofs()
               << " | " << std::setw(11) << solver_time/solver_control.last_step()
-              << " | " << std::setw(11) << dof_handler.n_dofs()/solver_time*solver_control.last_step()
+              << " | " << std::setw(11) << dof_handler.n_dofs()/solver_time2*solver_control.last_step()
+              << " | " << std::setw(11) << solver_time2/solver_control.last_step()
               << " | " << std::setw(6) << solver_control.last_step()
               << " | " << std::setw(11) << matvec_time
               << std::endl;
@@ -161,7 +182,7 @@ void do_test(const int s_in,
   if (s_in < 1)
     {
       if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
-        std::cout << " p |  q | n_elements |      n_dofs |     time/it |   dofs/s/it | CG_its | time/matvec"
+        std::cout << " p |  q | n_elements |      n_dofs |     time/it |op dofs/s/it | opt time/it | CG_its | time/matvec"
                   << std::endl;
       unsigned int s =
         std::max(3U, static_cast<unsigned int>

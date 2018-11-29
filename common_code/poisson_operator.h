@@ -81,23 +81,34 @@ namespace Poisson
     }
 
     template <typename Number>
-    void set_constrained_entries(const std::vector<unsigned int> &constrained_entries,
-                                 const LinearAlgebra::distributed::Vector<Number> &src,
-                                 LinearAlgebra::distributed::Vector<Number> &dst)
+    Number set_constrained_entries(const std::vector<unsigned int> &constrained_entries,
+                                   const LinearAlgebra::distributed::Vector<Number> &src,
+                                   LinearAlgebra::distributed::Vector<Number> &dst)
     {
+      Number sum = 0;
       for (unsigned int i=0; i<constrained_entries.size(); ++i)
-        dst.local_element(constrained_entries[i]) = src.local_element(constrained_entries[i]);
+        {
+          dst.local_element(constrained_entries[i]) = src.local_element(constrained_entries[i]);
+          sum += src.local_element(constrained_entries[i]) * src.local_element(constrained_entries[i]);
+        }
+      return sum;
     }
 
     template <typename Number>
-    void set_constrained_entries(const std::vector<unsigned int> &constrained_entries,
-                                 const LinearAlgebra::distributed::BlockVector<Number> &src,
-                                 LinearAlgebra::distributed::BlockVector<Number> &dst)
+    Number set_constrained_entries(const std::vector<unsigned int> &constrained_entries,
+                                   const LinearAlgebra::distributed::BlockVector<Number> &src,
+                                   LinearAlgebra::distributed::BlockVector<Number> &dst)
     {
+      Number sum = 0;
       for (unsigned int bl=0; bl<dst.n_blocks(); ++bl)
         for (unsigned int i=0; i<constrained_entries.size(); ++i)
-          dst.block(bl).local_element(constrained_entries[i]) =
-            src.block(bl).local_element(constrained_entries[i]);
+          {
+            dst.block(bl).local_element(constrained_entries[i]) =
+              src.block(bl).local_element(constrained_entries[i]);
+            sum += src.block(bl).local_element(constrained_entries[i]) *
+              src.block(bl).local_element(constrained_entries[i]);
+          }
+      return sum;
     }
   }
 
@@ -106,7 +117,7 @@ namespace Poisson
   // similar to bp1/bench_mass.cc but now implementing the Laplacian in various
   // options.
 
-  template <int dim, int fe_degree, int n_q_points_1d = fe_degree+1, int n_components = 1,
+  template <int dim, int fe_degree, int n_q_points_1d = fe_degree+1, int n_components_ = 1,
             typename Number = double,
             typename VectorType = LinearAlgebra::distributed::Vector<Number> >
   class LaplaceOperator
@@ -121,6 +132,11 @@ namespace Poisson
      * size_type needed for preconditioner classes.
      */
     typedef types::global_dof_index size_type;
+
+    /**
+     * Make number of components available as variable
+     */
+    static constexpr unsigned int n_components = n_components_;
 
     /**
      * Constructor.
@@ -223,6 +239,21 @@ namespace Poisson
       this->data->cell_loop (&LaplaceOperator::local_apply_merged,
                              this, dst, src, true);
       internal::set_constrained_entries(data->get_constrained_dofs(0), src, dst);
+    }
+
+    /**
+     * Matrix-vector multiplication.
+     */
+    Number vmult_inner_product(VectorType &dst,
+                               const VectorType &src) const
+    {
+      accumulated_sum = 0;
+      this->data->cell_loop (&LaplaceOperator::local_apply_merged_inner_product,
+                             this, dst, src, true);
+      accumulated_sum +=
+        internal::set_constrained_entries(data->get_constrained_dofs(0), src, dst);
+      return Utilities::MPI::sum(accumulated_sum,
+                                 this->data->get_dof_info(0).vector_partitioner->get_mpi_communicator());
     }
 
     /**
@@ -489,6 +520,76 @@ namespace Poisson
     }
 
     void
+    local_apply_merged_inner_product
+    (const MatrixFree<dim,value_type>           &data,
+     VectorType                                 &dst,
+     const VectorType                           &src,
+     const std::pair<unsigned int,unsigned int> &cell_range) const
+    {
+      FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number> phi(data);
+      constexpr unsigned int n_q_points = Utilities::pow(n_q_points_1d, dim);
+      for (unsigned int cell=cell_range.first; cell<cell_range.second; ++cell)
+        {
+          phi.reinit (cell);
+          phi.read_dof_values(src);
+          phi.evaluate (false,true);
+          VectorizedArray<Number> *phi_grads = phi.begin_gradients();
+          for (unsigned int q=0; q<n_q_points; ++q)
+            {
+              if (dim==2)
+                {
+                  for (unsigned int c=0; c<n_components; ++c)
+                    {
+                      const unsigned int offset = c*dim*n_q_points;
+                      VectorizedArray<Number> tmp = phi_grads[q+offset];
+                      phi_grads[q+offset] = merged_coefficients[cell*n_q_points+q][0] * tmp
+                        + merged_coefficients[cell*n_q_points+q][1] * phi_grads[q+n_q_points+offset];
+                      phi_grads[q+n_q_points+offset] =
+                        merged_coefficients[cell*n_q_points+q][1] * tmp
+                        + merged_coefficients[cell*n_q_points+q][2] * phi_grads[q+n_q_points+offset];
+                    }
+                }
+              else if (dim==3)
+                {
+                  for (unsigned int c=0; c<n_components; ++c)
+                    {
+                      const unsigned int offset = c*dim*n_q_points;
+                      VectorizedArray<Number> tmp0 = phi_grads[q+offset];
+                      VectorizedArray<Number> tmp1 = phi_grads[q+n_q_points+offset];
+                      phi_grads[q+offset] =
+                        (merged_coefficients[cell*n_q_points+q][0] * tmp0
+                         + merged_coefficients[cell*n_q_points+q][1] * tmp1
+                         + merged_coefficients[cell*n_q_points+q][2] * phi_grads[q+2*n_q_points+offset]);
+                      phi_grads[q+n_q_points+offset] =
+                        (merged_coefficients[cell*n_q_points+q][1] * tmp0
+                         + merged_coefficients[cell*n_q_points+q][3] * tmp1
+                         + merged_coefficients[cell*n_q_points+q][4] * phi_grads[q+2*n_q_points+offset]);
+                      phi_grads[q+2*n_q_points+offset] =
+                        (merged_coefficients[cell*n_q_points+q][2] * tmp0
+                         + merged_coefficients[cell*n_q_points+q][4] * tmp1
+                         + merged_coefficients[cell*n_q_points+q][5] * phi_grads[q+2*n_q_points+offset]);
+                    }
+                }
+            }
+
+          VectorizedArray<Number> scratch[Utilities::pow(fe_degree+1,dim)*n_components];
+          for (unsigned int i=0; i<Utilities::pow(fe_degree+1,dim)*n_components; ++i)
+            scratch[i] = phi.begin_dof_values()[i];
+
+          phi.integrate (false,true);
+
+          VectorizedArray<Number> local_sum = VectorizedArray<Number>();
+          for (unsigned int i=0; i<Utilities::pow(fe_degree+1,dim)*n_components; ++i)
+            local_sum += phi.begin_dof_values()[i] * scratch[i];
+
+          phi.distribute_local_to_global (dst);
+
+          for (unsigned int v=0; v<data.n_active_entries_per_cell_batch(cell); ++v)
+            accumulated_sum += local_sum[v];
+        }
+    }
+
+    void
     local_apply_construct_q (const MatrixFree<dim,value_type>           &data,
                              VectorType                                 &dst,
                              const VectorType                           &src,
@@ -543,6 +644,7 @@ namespace Poisson
 
     std::shared_ptr<const MatrixFree<dim,Number> > data;
 
+    mutable Number accumulated_sum;
 
     Quadrature<1> quad_1d;
     // For local_apply_linear_geo:
