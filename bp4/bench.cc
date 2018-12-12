@@ -190,7 +190,7 @@ void test(const unsigned int s,
 
   time.restart();
   for (unsigned int i=0; i<100; ++i)
-    laplace_operator.vmult_linear_geo(output_test, output);
+    laplace_operator.vmult_merged(output_test, output);
   const double t4 = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD).max/100;
   output_test -= input;
   if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0 &&
@@ -229,7 +229,7 @@ void do_test(const int s_in,
                  (std::log2(1024/fe_degree/fe_degree/fe_degree)));
       if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
 #ifdef SHOW_VARIANTS
-        std::cout << " p |  q | n_element |     n_dofs |     time/it |   dofs/s/it | opt_time/it | itCG | time/matvec | timeMVmerge | timeMVcompu | timeMVlinear"
+        std::cout << " p |  q | n_element |     n_dofs |     time/it |   dofs/s/it | opt_time/it | itCG | time/matvec | timeMVmerge | timeMVcompu | timeMVmerged"
                   << std::endl;
 #else
       std::cout << " p |  q | n_element |     n_dofs |     time/it |   dofs/s/it | opt_time/it | itCG | time/matvec"
