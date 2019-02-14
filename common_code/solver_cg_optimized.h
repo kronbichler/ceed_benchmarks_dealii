@@ -258,13 +258,246 @@ public:
         cg_update2<MatrixType::n_components,number>(x, g, d, preconditioner, alpha, beta);
       }
 
-
     // in case of failure: throw exception
     if (conv != dealii::SolverControl::success)
       AssertThrow(false, dealii::SolverControl::NoConvergence(it, res));
     // otherwise exit as normal
   }
 };
+
+
+
+template <int n_components, typename Number>
+dealii::Tensor<1,9>
+cg_update3 (const dealii::LinearAlgebra::distributed::Vector<Number> &r,
+            const dealii::LinearAlgebra::distributed::Vector<Number> &d,
+            const dealii::LinearAlgebra::distributed::Vector<Number> &h,
+            const dealii::DiagonalMatrix<dealii::LinearAlgebra::distributed::Vector<Number>> &preconditioner)
+{
+  static_assert(n_components == 1, "Only single component support");
+
+  const dealii::LinearAlgebra::distributed::Vector<Number> &prec = preconditioner.get_vector();
+  dealii::VectorizedArray<Number> sums[9];
+  for (unsigned int i=0; i<9; ++i)
+    sums[i] = 0.;
+  const dealii::VectorizedArray<Number> *arr_r = reinterpret_cast<const dealii::VectorizedArray<Number>*>(r.begin());
+  const dealii::VectorizedArray<Number> *arr_d = reinterpret_cast<const dealii::VectorizedArray<Number>*>(d.begin());
+  const dealii::VectorizedArray<Number> *arr_h = reinterpret_cast<const dealii::VectorizedArray<Number>*>(h.begin());
+  const dealii::VectorizedArray<Number> *arr_prec = reinterpret_cast<const dealii::VectorizedArray<Number>*>(prec.begin());
+  for (unsigned int i=0; i<r.local_size()/dealii::VectorizedArray<Number>::n_array_elements; ++i)
+    {
+      sums[0] += arr_d[i] * arr_h[i];
+      sums[1] += arr_h[i] * arr_h[i];
+      sums[2] += arr_r[i] * arr_h[i];
+      sums[3] += arr_r[i] * arr_r[i];
+      sums[8] += arr_r[i] * arr_prec[i] * arr_r[i];
+      const dealii::VectorizedArray<Number> zi = arr_prec[i] * arr_h[i];
+      // Kahan summation part 1
+      const dealii::VectorizedArray<Number> tmp1 = arr_r[i] * zi - sums[6];
+      const dealii::VectorizedArray<Number> tmp2 = sums[4] + tmp1;
+      sums[6] = (tmp2 - sums[4]) - tmp1;
+      sums[4] = tmp2;
+      // Kahan summation part 2
+      const dealii::VectorizedArray<Number> tmp3 = arr_h[i] * zi - sums[7];
+      const dealii::VectorizedArray<Number> tmp4 = sums[5] + tmp3;
+      sums[7] = (tmp4 - sums[5]) - tmp3;
+      sums[5] = tmp4;
+    }
+  for (unsigned int i=(r.local_size()/dealii::VectorizedArray<Number>::n_array_elements)*
+         dealii::VectorizedArray<Number>::n_array_elements; i<r.local_size(); ++i)
+    {
+      sums[0][0] += d.local_element(i) * h.local_element(i);
+      sums[1][0] += h.local_element(i) * h.local_element(i);
+      sums[2][0] += r.local_element(i) * h.local_element(i);
+      sums[3][0] += r.local_element(i) * r.local_element(i);
+      sums[8][0] += r.local_element(i) * prec.local_element(i) * r.local_element(i);
+      const Number zi = prec.local_element(i) * h.local_element(i);
+      // Kahan summation part 1
+      const Number tmp1 = r.local_element(i) * zi - sums[6][0];
+      const Number tmp2 = sums[4][0] + tmp1;
+      sums[6][0] = (tmp2 - sums[4][0]) - tmp1;
+      sums[4][0] = tmp2;
+      // Kahan summation part 2
+      const Number tmp3 = h.local_element(i) * zi - sums[7][0];
+      const Number tmp4 = sums[5][0] + tmp3;
+      sums[7][0] = (tmp4 - sums[5][0]) - tmp3;
+      sums[5][0] = tmp4;
+    }
+  dealii::Tensor<1,9> results;
+  for (unsigned int i : {0,1,2,3,8})
+    {
+      results[i] = sums[i][0];
+      for (unsigned int v=1; v<dealii::VectorizedArray<Number>::n_array_elements; ++v)
+        results[i] += sums[i][v];
+    }
+  for (unsigned int i=4; i<6; ++i)
+    {
+      results[i] = sums[i][0];
+      results[i+2] = sums[i+2][0];
+      for (unsigned int v=1; v<dealii::VectorizedArray<Number>::n_array_elements; ++v)
+        {
+          double tmp1 = sums[i][v] - results[i+2];
+          double tmp2 = results[i] + tmp1;
+          results[i+2] = -sums[i+2][v] + ((tmp2 - results[i]) - tmp1);
+          results[i] = tmp2;
+        }
+    }
+  dealii::Utilities::MPI::sum(dealii::ArrayView<const double>(results.begin_raw(), 9),
+                              r.get_partitioner()->get_mpi_communicator(),
+                              dealii::ArrayView<double>(results.begin_raw(), 9));
+  return results;
+}
+
+
+
+template <int n_components, typename Number>
+void cg_update4 (const dealii::LinearAlgebra::distributed::Vector<Number> &h,
+                 dealii::LinearAlgebra::distributed::Vector<Number> &x,
+                 dealii::LinearAlgebra::distributed::Vector<Number> &r,
+                 dealii::LinearAlgebra::distributed::Vector<Number> &p,
+                 const dealii::DiagonalMatrix<dealii::LinearAlgebra::distributed::Vector<Number>> &preconditioner,
+                 const Number alpha,
+                 const Number beta)
+{
+  static_assert(n_components == 1, "Only single component support");
+  const dealii::LinearAlgebra::distributed::Vector<Number> &prec = preconditioner.get_vector();
+
+  dealii::VectorizedArray<Number> *arr_p = reinterpret_cast<dealii::VectorizedArray<Number>*>(p.begin());
+  dealii::VectorizedArray<Number> *arr_x = reinterpret_cast<dealii::VectorizedArray<Number>*>(x.begin());
+  dealii::VectorizedArray<Number> *arr_r = reinterpret_cast<dealii::VectorizedArray<Number>*>(r.begin());
+  const dealii::VectorizedArray<Number> *arr_h = reinterpret_cast<const dealii::VectorizedArray<Number>*>(h.begin());
+  const dealii::VectorizedArray<Number> *arr_prec = reinterpret_cast<const dealii::VectorizedArray<Number>*>(prec.begin());
+  for (unsigned int i=0; i<r.local_size()/dealii::VectorizedArray<Number>::n_array_elements; ++i)
+    {
+      arr_x[i] += alpha * arr_p[i];
+      arr_r[i] += alpha * arr_h[i];
+      arr_p[i] = beta * arr_p[i] - arr_prec[i] * arr_r[i];
+    }
+  for (unsigned int i=(r.local_size()/dealii::VectorizedArray<Number>::n_array_elements)*dealii::VectorizedArray<Number>::n_array_elements; i<r.local_size(); ++i)
+    {
+      x.local_element(i) += alpha * p.local_element(i);
+      r.local_element(i) += alpha * h.local_element(i);
+      p.local_element(i) = beta * p.local_element(i) - prec.local_element(i) * r.local_element(i);
+    }
+}
+
+
+
+template <typename VectorType>
+class SolverCGOptimizedAllreduce : public dealii::Solver<VectorType>
+{
+public:
+  /**
+   * Declare type for container size.
+   */
+  using size_type = dealii::types::global_dof_index;
+
+  /**
+   * Constructor.
+   */
+  SolverCGOptimizedAllreduce(dealii::SolverControl &           cn)
+    : dealii::Solver<VectorType>(cn)
+  {}
+
+
+  /**
+   * Virtual destructor.
+   */
+  virtual ~SolverCGOptimizedAllreduce() override = default;
+
+  /**
+   * Solve the linear system $Ax=b$ for x.
+   */
+  template <typename MatrixType, typename PreconditionerType>
+  void
+  solve(const MatrixType &        A,
+        VectorType &              x,
+        const VectorType &        b,
+        const PreconditionerType &preconditioner)
+  {
+    dealii::SolverControl::State conv = dealii::SolverControl::iterate;
+    using number = typename VectorType::value_type;
+
+    // Memory allocation
+    typename dealii::VectorMemory<VectorType>::Pointer g_pointer(this->memory);
+    typename dealii::VectorMemory<VectorType>::Pointer d_pointer(this->memory);
+    typename dealii::VectorMemory<VectorType>::Pointer h_pointer(this->memory);
+
+    // define some aliases for simpler access
+    VectorType &g = *g_pointer;
+    VectorType &d = *d_pointer;
+    VectorType &h = *h_pointer;
+
+    int    it  = 0;
+    double res_norm = -std::numeric_limits<double>::max();
+
+    // resize the vectors, but do not set the values since they'd be
+    // overwritten soon anyway.
+    g.reinit(x, true);
+    d.reinit(x, true);
+    h.reinit(x, true);
+
+    // compute residual. if vector is zero, then short-circuit the full
+    // computation
+    if (!x.all_zero())
+      {
+        A.vmult(g, x);
+        g.add(-1., b);
+      }
+    else
+      g.equ(-1., b);
+    res_norm = g.l2_norm();
+
+    conv = this->iteration_status(0, res_norm, x);
+    if (conv != dealii::SolverControl::iterate)
+      return;
+
+    preconditioner.vmult(h, g);
+
+    d.equ(-1., h);
+
+    while (conv == dealii::SolverControl::iterate)
+      {
+        it++;
+
+        A.vmult(h, d);
+
+        const dealii::Tensor<1,9> results = cg_update3<MatrixType::n_components,number>(g, d, h, preconditioner);
+
+        Assert(std::abs(results[0]) != 0., dealii::ExcDivideByZero());
+        const number alpha = results[8] / results[0];
+
+        res_norm = std::sqrt(results[3] + 2*alpha*results[2] + alpha*alpha*results[1]);
+        conv = this->iteration_status(it, res_norm, x);
+        if (conv != dealii::SolverControl::iterate)
+          {
+            x.add(alpha, d);
+            break;
+          }
+
+        // Polak-Ribiere like formula to update
+        // r^{k+1}^T M^{-1} * (alpha h) = alpha (r^k + alpha h)^T M^{-1} h
+        //
+        // rather than using results[4] + alpha*results[5] directly, we
+        // use the ingredients present in the Kahan summation that we got
+        // from above
+        const number y = alpha*results[5] - results[6];
+        const number rk_plus_alpha_h = (results[4] + y) + alpha*results[7];
+        const number gh = alpha*rk_plus_alpha_h;
+        const number beta = gh/results[8];
+
+        cg_update4<MatrixType::n_components,number>(h, x, g, d, preconditioner, alpha, beta);
+      }
+
+    // in case of failure: throw exception
+    if (conv != dealii::SolverControl::success)
+      AssertThrow(false, dealii::SolverControl::NoConvergence(it, res_norm));
+    // otherwise exit as normal
+  }
+};
+
+
+
 
 
 #endif
