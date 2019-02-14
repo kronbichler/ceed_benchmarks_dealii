@@ -268,7 +268,7 @@ public:
 
 
 template <int n_components, typename Number>
-dealii::Tensor<1,9>
+dealii::Tensor<1,7>
 cg_update3 (const dealii::LinearAlgebra::distributed::Vector<Number> &r,
             const dealii::LinearAlgebra::distributed::Vector<Number> &d,
             const dealii::LinearAlgebra::distributed::Vector<Number> &h,
@@ -290,18 +290,10 @@ cg_update3 (const dealii::LinearAlgebra::distributed::Vector<Number> &r,
       sums[1] += arr_h[i] * arr_h[i];
       sums[2] += arr_r[i] * arr_h[i];
       sums[3] += arr_r[i] * arr_r[i];
-      sums[8] += arr_r[i] * arr_prec[i] * arr_r[i];
+      sums[6] += arr_r[i] * arr_prec[i] * arr_r[i];
       const dealii::VectorizedArray<Number> zi = arr_prec[i] * arr_h[i];
-      // Kahan summation part 1
-      const dealii::VectorizedArray<Number> tmp1 = arr_r[i] * zi - sums[6];
-      const dealii::VectorizedArray<Number> tmp2 = sums[4] + tmp1;
-      sums[6] = (tmp2 - sums[4]) - tmp1;
-      sums[4] = tmp2;
-      // Kahan summation part 2
-      const dealii::VectorizedArray<Number> tmp3 = arr_h[i] * zi - sums[7];
-      const dealii::VectorizedArray<Number> tmp4 = sums[5] + tmp3;
-      sums[7] = (tmp4 - sums[5]) - tmp3;
-      sums[5] = tmp4;
+      sums[4] += arr_r[i] * zi;
+      sums[5] += arr_h[i] * zi;
     }
   for (unsigned int i=(r.local_size()/dealii::VectorizedArray<Number>::n_array_elements)*
          dealii::VectorizedArray<Number>::n_array_elements; i<r.local_size(); ++i)
@@ -310,41 +302,21 @@ cg_update3 (const dealii::LinearAlgebra::distributed::Vector<Number> &r,
       sums[1][0] += h.local_element(i) * h.local_element(i);
       sums[2][0] += r.local_element(i) * h.local_element(i);
       sums[3][0] += r.local_element(i) * r.local_element(i);
-      sums[8][0] += r.local_element(i) * prec.local_element(i) * r.local_element(i);
+      sums[6][0] += r.local_element(i) * prec.local_element(i) * r.local_element(i);
       const Number zi = prec.local_element(i) * h.local_element(i);
-      // Kahan summation part 1
-      const Number tmp1 = r.local_element(i) * zi - sums[6][0];
-      const Number tmp2 = sums[4][0] + tmp1;
-      sums[6][0] = (tmp2 - sums[4][0]) - tmp1;
-      sums[4][0] = tmp2;
-      // Kahan summation part 2
-      const Number tmp3 = h.local_element(i) * zi - sums[7][0];
-      const Number tmp4 = sums[5][0] + tmp3;
-      sums[7][0] = (tmp4 - sums[5][0]) - tmp3;
-      sums[5][0] = tmp4;
+      sums[4][0] += r.local_element(i) * zi;
+      sums[5][0] += h.local_element(i) * zi;
     }
-  dealii::Tensor<1,9> results;
-  for (unsigned int i : {0,1,2,3,8})
+  dealii::Tensor<1,7> results;
+  for (unsigned int i=0; i<7; ++i)
     {
       results[i] = sums[i][0];
       for (unsigned int v=1; v<dealii::VectorizedArray<Number>::n_array_elements; ++v)
         results[i] += sums[i][v];
     }
-  for (unsigned int i=4; i<6; ++i)
-    {
-      results[i] = sums[i][0];
-      results[i+2] = sums[i+2][0];
-      for (unsigned int v=1; v<dealii::VectorizedArray<Number>::n_array_elements; ++v)
-        {
-          double tmp1 = sums[i][v] - results[i+2];
-          double tmp2 = results[i] + tmp1;
-          results[i+2] = -sums[i+2][v] + ((tmp2 - results[i]) - tmp1);
-          results[i] = tmp2;
-        }
-    }
-  dealii::Utilities::MPI::sum(dealii::ArrayView<const double>(results.begin_raw(), 9),
+  dealii::Utilities::MPI::sum(dealii::ArrayView<const double>(results.begin_raw(), 7),
                               r.get_partitioner()->get_mpi_communicator(),
-                              dealii::ArrayView<double>(results.begin_raw(), 9));
+                              dealii::ArrayView<double>(results.begin_raw(), 7));
   return results;
 }
 
@@ -462,10 +434,10 @@ public:
 
         A.vmult(h, d);
 
-        const dealii::Tensor<1,9> results = cg_update3<MatrixType::n_components,number>(g, d, h, preconditioner);
+        const dealii::Tensor<1,7> results = cg_update3<MatrixType::n_components,number>(g, d, h, preconditioner);
 
         Assert(std::abs(results[0]) != 0., dealii::ExcDivideByZero());
-        const number alpha = results[8] / results[0];
+        const number alpha = results[6] / results[0];
 
         res_norm = std::sqrt(results[3] + 2*alpha*results[2] + alpha*alpha*results[1]);
         conv = this->iteration_status(it, res_norm, x);
@@ -477,14 +449,8 @@ public:
 
         // Polak-Ribiere like formula to update
         // r^{k+1}^T M^{-1} * (alpha h) = alpha (r^k + alpha h)^T M^{-1} h
-        //
-        // rather than using results[4] + alpha*results[5] directly, we
-        // use the ingredients present in the Kahan summation that we got
-        // from above
-        const number y = alpha*results[5] - results[6];
-        const number rk_plus_alpha_h = (results[4] + y) + alpha*results[7];
-        const number gh = alpha*rk_plus_alpha_h;
-        const number beta = gh/results[8];
+        const number gh = alpha*(results[4] + alpha * results[5]);
+        const number beta = gh/results[6];
 
         cg_update4<MatrixType::n_components,number>(h, x, g, d, preconditioner, alpha, beta);
       }
