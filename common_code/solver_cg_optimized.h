@@ -412,17 +412,20 @@ void cg_update4 (const dealii::LinearAlgebra::distributed::Vector<Number> &h,
   dealii::VectorizedArray<Number> *arr_r = reinterpret_cast<dealii::VectorizedArray<Number>*>(r.begin());
   const dealii::VectorizedArray<Number> *arr_h = reinterpret_cast<const dealii::VectorizedArray<Number>*>(h.begin());
   const dealii::VectorizedArray<Number> *arr_prec = reinterpret_cast<const dealii::VectorizedArray<Number>*>(prec.begin());
-  for (unsigned int i=0; i<r.local_size()/dealii::VectorizedArray<Number>::n_array_elements; ++i)
-    {
-      arr_x[i] += alpha * arr_p[i];
-      arr_r[i] += alpha * arr_h[i];
-      arr_p[i] = beta * arr_p[i] - arr_prec[i] * arr_r[i];
-    }
+
+  // run loops backwards because the summation loop was run through in forward
+  // direction
   for (unsigned int i=(r.local_size()/dealii::VectorizedArray<Number>::n_array_elements)*dealii::VectorizedArray<Number>::n_array_elements; i<r.local_size(); ++i)
     {
       x.local_element(i) += alpha * p.local_element(i);
       r.local_element(i) += alpha * h.local_element(i);
       p.local_element(i) = beta * p.local_element(i) - prec.local_element(i) * r.local_element(i);
+    }
+  for (int i=r.local_size()/dealii::VectorizedArray<Number>::n_array_elements-1; i>=0; --i)
+    {
+      arr_x[i] += alpha * arr_p[i];
+      arr_r[i] += alpha * arr_h[i];
+      arr_p[i] = beta * arr_p[i] - arr_prec[i] * arr_r[i];
     }
 }
 

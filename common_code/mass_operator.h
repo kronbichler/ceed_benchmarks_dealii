@@ -129,21 +129,20 @@ namespace Mass
                                     const LinearAlgebra::distributed::BlockVector<Number> &src,
                                     const std::pair<unsigned int,unsigned int>  &cell_range) const
     {
+      FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number> phi_read(data);
       FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number> phi(data);
       for (unsigned int cell=cell_range.first; cell<cell_range.second; ++cell)
         {
           phi.reinit (cell);
-          phi.read_dof_values(src);
+          phi_read.reinit(cell);
+          phi_read.read_dof_values(src);
           phi.evaluate (true,false);
           for (unsigned int q=0; q<phi.n_q_points; ++q)
             phi.submit_value (phi.get_value(q), q);
-          VectorizedArray<Number> scratch[Utilities::pow(fe_degree+1,dim)*n_components];
-          for (unsigned int i=0; i<Utilities::pow(fe_degree+1,dim)*n_components; ++i)
-            scratch[i] = phi.begin_dof_values()[i];
           phi.integrate (true,false);
           VectorizedArray<Number> local_sum = VectorizedArray<Number>();
           for (unsigned int i=0; i<Utilities::pow(fe_degree+1,dim)*n_components; ++i)
-            local_sum += phi.begin_dof_values()[i] * scratch[i];
+            local_sum += phi.begin_dof_values()[i] * phi_read.begin_dof_values()[i];
           phi.distribute_local_to_global (dst);
           for (unsigned int v=0; v<data.n_active_entries_per_cell_batch(cell); ++v)
             accumulated_sum += local_sum[v];
@@ -263,20 +262,19 @@ namespace Mass
                                     const std::pair<unsigned int,unsigned int>  &cell_range) const
     {
       FEEvaluation<dim, fe_degree, n_q_points_1d, 1, Number> phi(data);
+      FEEvaluation<dim, fe_degree, n_q_points_1d, 1, Number> phi_read(data);
       for (unsigned int cell=cell_range.first; cell<cell_range.second; ++cell)
         {
           phi.reinit (cell);
-          phi.read_dof_values(src);
-          phi.evaluate (true,false);
+          phi_read.reinit(cell);
+          phi_read.read_dof_values(src);
+          phi.evaluate (phi_read.begin_dof_values(), true, false);
           for (unsigned int q=0; q<phi.n_q_points; ++q)
             phi.submit_value (phi.get_value(q), q);
-          VectorizedArray<Number> scratch[Utilities::pow(fe_degree+1,dim)];
-          for (unsigned int i=0; i<Utilities::pow(fe_degree+1,dim); ++i)
-            scratch[i] = phi.begin_dof_values()[i];
           phi.integrate (true,false);
           VectorizedArray<Number> local_sum = VectorizedArray<Number>();
           for (unsigned int i=0; i<Utilities::pow(fe_degree+1,dim); ++i)
-            local_sum += phi.begin_dof_values()[i] * scratch[i];
+            local_sum += phi.begin_dof_values()[i] * phi_read.begin_dof_values()[i];
           phi.distribute_local_to_global (dst);
           for (unsigned int v=0; v<data.n_active_entries_per_cell_batch(cell); ++v)
             accumulated_sum += local_sum[v];
