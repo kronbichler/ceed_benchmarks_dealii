@@ -242,7 +242,8 @@ namespace Poisson
     }
 
     /**
-     * Matrix-vector multiplication.
+     * Matrix-vector multiplication including the inner product (locally,
+     * without communicating yet)
      */
     Number vmult_inner_product(VectorType &dst,
                                const VectorType &src) const
@@ -252,8 +253,7 @@ namespace Poisson
                              this, dst, src, true);
       accumulated_sum +=
         internal::set_constrained_entries(data->get_constrained_dofs(0), src, dst);
-      return Utilities::MPI::sum(accumulated_sum,
-                                 this->data->get_dof_info(0).vector_partitioner->get_mpi_communicator());
+      return accumulated_sum;
     }
 
     /**

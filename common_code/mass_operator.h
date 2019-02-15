@@ -75,7 +75,8 @@ namespace Mass
     }
 
     /**
-     * Matrix-vector multiplication including the inner product
+     * Matrix-vector multiplication including the inner product (locally,
+     * without communicating yet)
      */
     Number vmult_inner_product(LinearAlgebra::distributed::BlockVector<Number> &dst,
                                const LinearAlgebra::distributed::BlockVector<Number> &src) const
@@ -83,8 +84,7 @@ namespace Mass
       accumulated_sum = 0;
       this->data->cell_loop (&MassOperator::local_apply_cell_inner_product,
                              this, dst, src, true);
-      return Utilities::MPI::sum(accumulated_sum,
-                                 dst.block(0).get_partitioner()->get_mpi_communicator());
+      return accumulated_sum;
     }
 
     /**
@@ -208,7 +208,8 @@ namespace Mass
     }
 
     /**
-     * Matrix-vector multiplication including the inner product
+     * Matrix-vector multiplication including the inner product (locally,
+     * without communicating yet)
      */
     Number vmult_inner_product(LinearAlgebra::distributed::Vector<Number> &dst,
                                const LinearAlgebra::distributed::Vector<Number> &src) const
@@ -216,8 +217,7 @@ namespace Mass
       accumulated_sum = 0;
       this->data->cell_loop (&MassOperator::local_apply_cell_inner_product,
                              this, dst, src, true);
-      return Utilities::MPI::sum(accumulated_sum,
-                                 dst.get_partitioner()->get_mpi_communicator());
+      return accumulated_sum;
     }
 
     /**

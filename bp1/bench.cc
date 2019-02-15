@@ -150,6 +150,7 @@ void test(const unsigned int s,
       data = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD);
       solver_time2 = std::min(data.max, solver_time2);
     }
+  const unsigned int solver_its2 = solver_control.last_step();
 
   SolverCGOptimizedAllreduce<LinearAlgebra::distributed::Vector<double> > solver3(solver_control);
   double solver_time3 = 1e10;
@@ -188,7 +189,8 @@ void test(const unsigned int s,
               << " | " << std::setw(11) << dof_handler.n_dofs()/solver_time2*solver_control.last_step()
               << " | " << std::setw(11) << solver_time2/solver_control.last_step()
               << " | " << std::setw(11) << solver_time3/solver_control.last_step()
-              << " | " << std::setw(6) << solver_control.last_step()
+              << " |"  << std::setw(3) << solver_its2
+              << " "   << std::setw(3) << solver_control.last_step()
               << " | " << std::setw(11) << matvec_time
               << std::endl;
 }
@@ -202,7 +204,7 @@ void do_test(const int s_in,
   if (s_in < 1)
     {
       if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
-        std::cout << " p |  q | n_elements |      n_dofs |     time/it |op dofs/s/it | opt time/it | op3 time/it | CG_its | time/matvec"
+        std::cout << " p |  q | n_elements |      n_dofs |     time/it |op dofs/s/it | opt time/it | op3 time/it | CG its | time/matvec"
                   << std::endl;
       unsigned int s =
         std::max(3U, static_cast<unsigned int>

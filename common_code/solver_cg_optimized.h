@@ -5,6 +5,26 @@
 #include <deal.II/lac/solver.h>
 #include "diagonal_matrix_blocked.h"
 
+
+
+namespace internal
+{
+  template <typename Number>
+  MPI_Comm
+  get_communicator(dealii::LinearAlgebra::distributed::Vector<Number> &vec)
+  {
+    return vec.get_partitioner()->get_mpi_communicator();
+  }
+
+  template <typename Number>
+  MPI_Comm
+  get_communicator(dealii::LinearAlgebra::distributed::BlockVector<Number> &vec)
+  {
+    return vec.block(0).get_partitioner()->get_mpi_communicator();
+  }
+}
+
+
 template <int n_components, typename Number>
 dealii::Tensor<1,2>
 cg_update1 (dealii::LinearAlgebra::distributed::Vector<Number> &r,
@@ -40,7 +60,7 @@ cg_update1 (dealii::LinearAlgebra::distributed::Vector<Number> &r,
   results[1] = prod_gh[0];
   for (unsigned int v=1; v<dealii::VectorizedArray<Number>::n_array_elements; ++v)
     results[1] += prod_gh[v];
-  return dealii::Utilities::MPI::sum(results, r.get_partitioner()->get_mpi_communicator());
+  return dealii::Utilities::MPI::sum(results, internal::get_communicator(r));
 }
 
 
@@ -84,7 +104,7 @@ cg_update1 (dealii::LinearAlgebra::distributed::BlockVector<Number> &r,
   results[1] = prod_gh[0];
   for (unsigned int v=1; v<dealii::VectorizedArray<Number>::n_array_elements; ++v)
     results[1] += prod_gh[v];
-  return dealii::Utilities::MPI::sum(results, r.block(0).get_partitioner()->get_mpi_communicator());
+  return dealii::Utilities::MPI::sum(results, internal::get_communicator(r));
 }
 
 
@@ -151,7 +171,6 @@ void cg_update2 (dealii::LinearAlgebra::distributed::BlockVector<Number> &x,
         p.block(d).local_element(i) = beta * p.block(d).local_element(i) - prec.local_element(i) * r.block(d).local_element(i);
       }
 }
-
 
 
 template <typename VectorType>
@@ -236,6 +255,7 @@ public:
       {
         it++;
         number alpha = A.vmult_inner_product(h, d);
+        alpha = dealii::Utilities::MPI::sum(alpha, internal::get_communicator(d));
 
         Assert(std::abs(alpha) != 0., dealii::ExcDivideByZero());
         alpha = gh / alpha;
@@ -269,10 +289,63 @@ public:
 
 template <int n_components, typename Number>
 dealii::Tensor<1,7>
-cg_update3 (const dealii::LinearAlgebra::distributed::Vector<Number> &r,
-            const dealii::LinearAlgebra::distributed::Vector<Number> &d,
+cg_update3 (const Number sum_hd,
+            const dealii::LinearAlgebra::distributed::Vector<Number> &r,
             const dealii::LinearAlgebra::distributed::Vector<Number> &h,
             const dealii::DiagonalMatrix<dealii::LinearAlgebra::distributed::Vector<Number>> &preconditioner)
+{
+  static_assert(n_components == 1, "Only single component support");
+
+  const dealii::LinearAlgebra::distributed::Vector<Number> &prec = preconditioner.get_vector();
+  dealii::VectorizedArray<Number> sums[6];
+  for (unsigned int i=0; i<6; ++i)
+    sums[i] = 0.;
+  const dealii::VectorizedArray<Number> *arr_r = reinterpret_cast<const dealii::VectorizedArray<Number>*>(r.begin());
+  const dealii::VectorizedArray<Number> *arr_h = reinterpret_cast<const dealii::VectorizedArray<Number>*>(h.begin());
+  const dealii::VectorizedArray<Number> *arr_prec = reinterpret_cast<const dealii::VectorizedArray<Number>*>(prec.begin());
+  for (unsigned int i=0; i<r.local_size()/dealii::VectorizedArray<Number>::n_array_elements; ++i)
+    {
+      sums[0] += arr_h[i] * arr_h[i];
+      sums[1] += arr_r[i] * arr_h[i];
+      sums[2] += arr_r[i] * arr_r[i];
+      sums[5] += arr_r[i] * arr_prec[i] * arr_r[i];
+      const dealii::VectorizedArray<Number> zi = arr_prec[i] * arr_h[i];
+      sums[3] += arr_r[i] * zi;
+      sums[4] += arr_h[i] * zi;
+    }
+  for (unsigned int i=(r.local_size()/dealii::VectorizedArray<Number>::n_array_elements)*
+         dealii::VectorizedArray<Number>::n_array_elements; i<r.local_size(); ++i)
+    {
+      sums[0][0] += h.local_element(i) * h.local_element(i);
+      sums[1][0] += r.local_element(i) * h.local_element(i);
+      sums[2][0] += r.local_element(i) * r.local_element(i);
+      sums[5][0] += r.local_element(i) * prec.local_element(i) * r.local_element(i);
+      const Number zi = prec.local_element(i) * h.local_element(i);
+      sums[3][0] += r.local_element(i) * zi;
+      sums[4][0] += h.local_element(i) * zi;
+    }
+  dealii::Tensor<1,7> results;
+  results[0] = sum_hd;
+  for (unsigned int i=1; i<7; ++i)
+    {
+      results[i] = sums[i-1][0];
+      for (unsigned int v=1; v<dealii::VectorizedArray<Number>::n_array_elements; ++v)
+        results[i] += sums[i-1][v];
+    }
+  dealii::Utilities::MPI::sum(dealii::ArrayView<const double>(results.begin_raw(), 7),
+                              r.get_partitioner()->get_mpi_communicator(),
+                              dealii::ArrayView<double>(results.begin_raw(), 7));
+  return results;
+}
+
+
+
+template <int n_components, typename Number>
+dealii::Tensor<1,7>
+cg_update3b (const dealii::LinearAlgebra::distributed::Vector<Number> &r,
+             const dealii::LinearAlgebra::distributed::Vector<Number> &d,
+             const dealii::LinearAlgebra::distributed::Vector<Number> &h,
+             const dealii::DiagonalMatrix<dealii::LinearAlgebra::distributed::Vector<Number>> &preconditioner)
 {
   static_assert(n_components == 1, "Only single component support");
 
@@ -432,9 +505,15 @@ public:
       {
         it++;
 
-        A.vmult(h, d);
-
-        const dealii::Tensor<1,7> results = cg_update3<MatrixType::n_components,number>(g, d, h, preconditioner);
+#if 0
+        A.vmult(h,d);
+        const dealii::Tensor<1,7> results =
+          cg_update3b<MatrixType::n_components,number>(g, d, h, preconditioner);
+#else
+        const number loc_sum_hd = A.vmult_inner_product(h, d);
+        const dealii::Tensor<1,7> results =
+          cg_update3<MatrixType::n_components,number>(loc_sum_hd, g, h, preconditioner);
+#endif
 
         Assert(std::abs(results[0]) != 0., dealii::ExcDivideByZero());
         const number alpha = results[6] / results[0];
