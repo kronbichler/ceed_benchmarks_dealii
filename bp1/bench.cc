@@ -75,7 +75,7 @@ void test(const unsigned int s,
                       mf_data);
 
   // renumber Dofs to minimize the number of partitions in import indices of parititoner
-#if 0
+#if 1
   std::vector<std::vector<unsigned int>> processors_involved(dof_handler.locally_owned_dofs().n_elements());
   std::vector<types::global_dof_index> dof_indices(fe.dofs_per_cell);
   for (auto &cell : dof_handler.active_cell_iterators())
@@ -137,9 +137,6 @@ void test(const unsigned int s,
   std::vector<unsigned int> new_numbers;
   new_numbers.reserve(dof_handler.locally_owned_dofs().n_elements());
   for (auto i : sorted_entries[std::vector<unsigned int>()])
-    if (touch_count[i] == 0)
-      new_numbers.push_back(i);
-  for (auto i : sorted_entries[std::vector<unsigned int>()])
     if (touch_count[i] == 1)
       new_numbers.push_back(i);
   const unsigned int single_size = new_numbers.size();
@@ -154,8 +151,13 @@ void test(const unsigned int s,
       new_numbers.push_back(i);
   const unsigned int multiproc_size = new_numbers.size() - single_size - multiple_size;
 
-  std::cout << "P" << Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) << " "
-            << single_size << " " << multiple_size << " " << multiproc_size << std::endl;
+  for (auto i : sorted_entries[std::vector<unsigned int>()])
+    if (touch_count[i] == 0)
+      new_numbers.push_back(i);
+
+  (void)multiproc_size;
+  //std::cout << "P" << Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) << " "
+  //          << single_size << " " << multiple_size << " " << multiproc_size << std::endl;
 
   AssertThrow(new_numbers.size() == dof_handler.locally_owned_dofs().n_elements(),
               ExcMessage("Dimension mismatch " + std::to_string(new_numbers.size()) +
@@ -184,6 +186,42 @@ void test(const unsigned int s,
   mf_data.initialize_mapping = true;
   matrix_free->reinit(mapping, dof_handler, constraints, QGauss<1>(n_q_points),
                       mf_data);
+
+  if (false)
+    {
+      std::cout << "zero list: ";
+      for (unsigned int i=0; i<matrix_free->get_dof_info().vector_zero_range_list_index.size()-1; ++i)
+        {
+          for (unsigned int j=matrix_free->get_dof_info().vector_zero_range_list_index[i];
+               j<matrix_free->get_dof_info().vector_zero_range_list_index[i+1]; ++j)
+            {
+              std::cout << matrix_free->get_dof_info().vector_zero_range_list[j] << " ";
+            }
+          std::cout << std::endl;
+        }
+
+      std::cout << "pre list: ";
+      for (unsigned int i=0; i<matrix_free->get_dof_info().cell_loop_pre_list_index.size()-1; ++i)
+        {
+          for (unsigned int j=matrix_free->get_dof_info().cell_loop_pre_list_index[i];
+               j<matrix_free->get_dof_info().cell_loop_pre_list_index[i+1]; ++j)
+            {
+              std::cout << matrix_free->get_dof_info().cell_loop_pre_list[j] << " ";
+            }
+          std::cout << std::endl;
+        }
+
+      std::cout << "post list: ";
+      for (unsigned int i=0; i<matrix_free->get_dof_info().cell_loop_post_list_index.size()-1; ++i)
+        {
+          for (unsigned int j=matrix_free->get_dof_info().cell_loop_post_list_index[i];
+               j<matrix_free->get_dof_info().cell_loop_post_list_index[i+1]; ++j)
+            {
+              std::cout << matrix_free->get_dof_info().cell_loop_post_list[j] << " ";
+            }
+          std::cout << std::endl;
+        }
+    }
 
   Mass::MassOperator<dim,fe_degree,n_q_points> mass_operator;
   mass_operator.initialize(matrix_free);
@@ -310,6 +348,31 @@ void test(const unsigned int s,
   LIKWID_MARKER_STOP("cg_solver_optv");
 #endif
 
+  SolverCGFullMerge<LinearAlgebra::distributed::Vector<double> > solver4(solver_control);
+  double solver_time4 = 1e10;
+#ifdef LIKWID_PERFMON
+  LIKWID_MARKER_START("cg_solver_optm");
+#endif
+  for (unsigned int t=0; t<4; ++t)
+    {
+      output = 0;
+      time.restart();
+      try
+        {
+          solver4.solve(mass_operator, output, input, diag_mat);
+        }
+      catch (SolverControl::NoConvergence &e)
+        {
+          // prevent the solver to throw an exception in case we should need more
+          // than 100 iterations
+        }
+      data = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD);
+      solver_time4 = std::min(data.max, solver_time4);
+    }
+#ifdef LIKWID_PERFMON
+  LIKWID_MARKER_STOP("cg_solver_optm");
+#endif
+
 #ifdef LIKWID_PERFMON
   LIKWID_MARKER_START("matvec");
 #endif
@@ -334,6 +397,7 @@ void test(const unsigned int s,
               << " | " << std::setw(11) << dof_handler.n_dofs()/solver_time2*solver_control.last_step()
               << " | " << std::setw(11) << solver_time2/solver_control.last_step()
               << " | " << std::setw(11) << solver_time3/solver_control.last_step()
+              << " | " << std::setw(11) << solver_time4/solver_control.last_step()
               << " |"  << std::setw(3) << solver_its2
               << " "   << std::setw(3) << solver_control.last_step()
               << " | " << std::setw(11) << matvec_time

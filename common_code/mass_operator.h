@@ -12,6 +12,7 @@
 #include <deal.II/matrix_free/matrix_free.h>
 #include <deal.II/matrix_free/fe_evaluation.h>
 
+#include "solver_cg_optimized.h"
 
 namespace Mass
 {
@@ -217,6 +218,49 @@ namespace Mass
       this->data->cell_loop (&MassOperator::local_apply_cell_inner_product,
                              this, dst, src, true);
       return accumulated_sum;
+    }
+
+    Tensor<1,7>
+    vmult_with_merged_sums(LinearAlgebra::distributed::Vector<Number> &x,
+                           LinearAlgebra::distributed::Vector<Number> &g,
+                           LinearAlgebra::distributed::Vector<Number> &d,
+                           LinearAlgebra::distributed::Vector<Number> &h,
+                           const DiagonalMatrix<LinearAlgebra::distributed::Vector<Number>> &prec,
+                           const Number alpha,
+                           const Number beta) const
+    {
+      Tensor<1,7,VectorizedArray<Number>> sums;
+      this->data->cell_loop(&MassOperator::local_apply_cell_inner_product,
+                            this, h, d,
+                            [&](const unsigned int start_range,
+                                const unsigned int end_range)
+                            {
+                              do_cg_update4<1,Number,true>(start_range, end_range,
+                                                           h.begin(), x.begin(), g.begin(),
+                                                           d.begin(),
+                                                           prec.get_vector().begin(),
+                                                           alpha, beta);
+                            },
+                            [&](const unsigned int start_range,
+                                const unsigned int end_range)
+                            {
+                              do_cg_update3b<1,Number>(start_range, end_range,
+                                                       g.begin(), d.begin(),
+                                                       h.begin(), prec.get_vector().begin(),
+                                                       sums);
+                            });
+
+      dealii::Tensor<1,7> results;
+      for (unsigned int i=0; i<7; ++i)
+        {
+          results[i] = sums[i][0];
+          for (unsigned int v=1; v<dealii::VectorizedArray<Number>::n_array_elements; ++v)
+            results[i] += sums[i][v];
+        }
+      dealii::Utilities::MPI::sum(dealii::ArrayView<const double>(results.begin_raw(), 7),
+                                  d.get_partitioner()->get_mpi_communicator(),
+                                  dealii::ArrayView<double>(results.begin_raw(), 7));
+      return results;
     }
 
     /**
