@@ -16,6 +16,7 @@
 #include "../common_code/curved_manifold.h"
 #include "../common_code/mass_operator.h"
 #include "../common_code/solver_cg_optimized.h"
+#include "../common_code/renumber_dofs_for_mf.h"
 
 
 #ifdef LIKWID_PERFMON
@@ -69,121 +70,12 @@ void test(const unsigned int s,
   AffineConstraints<double> constraints;
   constraints.close();
   typename MatrixFree<dim,double>::AdditionalData mf_data;
-  mf_data.initialize_mapping = false;
+
+  // renumber Dofs to minimize the number of partitions in import indices of
+  // partitioner
+  renumber_dofs_mf<dim,double>(dof_handler, constraints, mf_data);
+
   std::shared_ptr<MatrixFree<dim,double> > matrix_free(new MatrixFree<dim,double>());
-  matrix_free->reinit(mapping, dof_handler, constraints, QGauss<1>(n_q_points),
-                      mf_data);
-
-  // renumber Dofs to minimize the number of partitions in import indices of parititoner
-#if 1
-  std::vector<std::vector<unsigned int>> processors_involved(dof_handler.locally_owned_dofs().n_elements());
-  std::vector<types::global_dof_index> dof_indices(fe.dofs_per_cell);
-  for (auto &cell : dof_handler.active_cell_iterators())
-    if (cell->is_ghost())
-      {
-        cell->get_dof_indices(dof_indices);
-        for (auto i : dof_indices)
-          {
-            if (dof_handler.locally_owned_dofs().is_element(i))
-              processors_involved[dof_handler.locally_owned_dofs().index_within_set(i)]
-                .push_back(cell->subdomain_id());
-          }
-      }
-  // sort & compress out duplicates
-  for (std::vector<unsigned int> &v : processors_involved)
-    if (v.size() > 1)
-      {
-        std::sort(v.begin(), v.end());
-        v.erase(std::unique(v.begin(), v.end()), v.end());
-      }
-  std::map<std::vector<unsigned int>, std::vector<unsigned int>,
-           std::function<bool(const std::vector<unsigned int> &,
-                              const std::vector<unsigned int> &)>>
-    sorted_entries{[](const std::vector<unsigned int> &a,
-                      const std::vector<unsigned int> &b)
-      {
-        if (a.size() < b.size())
-          return true;
-        if (a.size() == b.size())
-          {
-            for (unsigned int i=0; i<a.size(); ++i)
-              if (a[i] < b[i])
-                return true;
-              else if (a[i] > b[i])
-                return false;
-          }
-        return false;
-      }
-  };
-  for (unsigned int i=0; i<processors_involved.size(); ++i)
-    {
-      std::vector<unsigned int> &v = sorted_entries[processors_involved[i]];
-      v.push_back(i);
-    }
-
-  std::vector<unsigned char> touch_count(dof_handler.locally_owned_dofs().n_elements());
-  std::vector<unsigned int> local_dofs_mf;
-  for (unsigned int cell=0; cell<matrix_free->n_cell_batches(); ++cell)
-    {
-      matrix_free->get_dof_info().get_dof_indices_on_cell_batch(local_dofs_mf, cell, true);
-      std::sort(local_dofs_mf.begin(), local_dofs_mf.end());
-      local_dofs_mf.erase(std::unique(local_dofs_mf.begin(), local_dofs_mf.end()),
-                          local_dofs_mf.end());
-      for (unsigned int i : local_dofs_mf)
-        if (i<dof_handler.locally_owned_dofs().n_elements())
-          touch_count[i]++;
-    }
-
-  std::vector<unsigned int> new_numbers;
-  new_numbers.reserve(dof_handler.locally_owned_dofs().n_elements());
-  for (auto i : sorted_entries[std::vector<unsigned int>()])
-    if (touch_count[i] == 1)
-      new_numbers.push_back(i);
-  const unsigned int single_size = new_numbers.size();
-  for (auto i : sorted_entries[std::vector<unsigned int>()])
-    if (touch_count[i] > 1)
-      new_numbers.push_back(i);
-  const unsigned int multiple_size = new_numbers.size() - single_size;
-  sorted_entries.erase(std::vector<unsigned int>());
-
-  for (auto &it : sorted_entries)
-    for (auto i : it.second)
-      new_numbers.push_back(i);
-  const unsigned int multiproc_size = new_numbers.size() - single_size - multiple_size;
-
-  for (auto i : sorted_entries[std::vector<unsigned int>()])
-    if (touch_count[i] == 0)
-      new_numbers.push_back(i);
-
-  (void)multiproc_size;
-  //std::cout << "P" << Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) << " "
-  //          << single_size << " " << multiple_size << " " << multiproc_size << std::endl;
-
-  AssertThrow(new_numbers.size() == dof_handler.locally_owned_dofs().n_elements(),
-              ExcMessage("Dimension mismatch " + std::to_string(new_numbers.size()) +
-                         " vs " + std::to_string(dof_handler.locally_owned_dofs().n_elements())));
-
-  std::vector<types::global_dof_index> new_global_numbers(dof_handler.locally_owned_dofs().n_elements());
-  for (unsigned int i=0; i<new_numbers.size(); ++i)
-    new_global_numbers[new_numbers[i]] = dof_handler.locally_owned_dofs().nth_index_in_set(i);
-
-  dof_handler.renumber_dofs(new_global_numbers);
-#endif
-
-  if (false)
-  {
-    IndexSet locally_active_dofs;
-    DoFTools::extract_locally_active_dofs(dof_handler, locally_active_dofs);
-    Utilities::MPI::Partitioner partitioner;
-    partitioner.reinit(dof_handler.locally_owned_dofs(), locally_active_dofs,
-                       tria.get_communicator());
-    std::cout << Utilities::MPI::this_mpi_process(MPI_COMM_WORLD)
-              << " n_import_indices " << partitioner.n_import_indices()
-              << " import_indices.size() " << partitioner.import_indices().size()
-              << std::endl;
-  }
-
-  mf_data.initialize_mapping = true;
   matrix_free->reinit(mapping, dof_handler, constraints, QGauss<1>(n_q_points),
                       mf_data);
 

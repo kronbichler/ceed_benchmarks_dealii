@@ -17,6 +17,7 @@
 #include "../common_code/curved_manifold.h"
 #include "../common_code/poisson_operator.h"
 #include "../common_code/solver_cg_optimized.h"
+#include "../common_code/renumber_dofs_for_mf.h"
 
 using namespace dealii;
 
@@ -65,9 +66,15 @@ void test(const unsigned int s,
   VectorTools::interpolate_boundary_values(dof_handler, 0, ZeroFunction<dim>(),
                                            constraints);
   constraints.close();
+  typename MatrixFree<dim,double>::AdditionalData mf_data;
+
+  // renumber Dofs to minimize the number of partitions in import indices of
+  // partitioner
+  renumber_dofs_mf<dim,double>(dof_handler, constraints, mf_data);
+
   std::shared_ptr<MatrixFree<dim,double> > matrix_free(new MatrixFree<dim,double>());
   matrix_free->reinit(dof_handler, constraints, QGaussLobatto<1>(n_q_points),
-                      typename MatrixFree<dim,double>::AdditionalData());
+                      mf_data);
 
   Poisson::LaplaceOperator<dim,fe_degree,n_q_points,1,double,
                            LinearAlgebra::distributed::Vector<double> > laplace_operator;
