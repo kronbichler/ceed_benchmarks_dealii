@@ -155,6 +155,25 @@ void test(const unsigned int s,
       solver_time2 = std::min(data.max, solver_time2);
     }
 
+  SolverCGFullMerge<LinearAlgebra::distributed::Vector<double> > solver4(solver_control);
+  double solver_time4 = 1e10;
+  for (unsigned int t=0; t<4; ++t)
+    {
+      output = 0;
+      time.restart();
+      try
+        {
+          solver4.solve(laplace_operator, output, input, diag_mat);
+        }
+      catch (SolverControl::NoConvergence &e)
+        {
+          // prevent the solver to throw an exception in case we should need more
+          // than 100 iterations
+        }
+      data = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD);
+      solver_time4 = std::min(data.max, solver_time4);
+    }
+
   double matvec_time = 1e10;
   for (unsigned int t=0; t<2; ++t)
     {
@@ -205,6 +224,7 @@ void test(const unsigned int s,
               << " | " << std::setw(11) << solver_time/solver_control.last_step()
               << " | " << std::setw(11) << dof_handler.n_dofs()/solver_time2*solver_control.last_step()
               << " | " << std::setw(11) << solver_time2/solver_control.last_step()
+              << " | " << std::setw(11) << solver_time4/solver_control.last_step()
               << " | " << std::setw(4) << solver_control.last_step()
               << " | " << std::setw(11) << matvec_time
 #ifdef SHOW_VARIANTS
@@ -227,10 +247,10 @@ void do_test(const int s_in,
                  (std::log2(1024/fe_degree/fe_degree/fe_degree)));
       if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
 #ifdef SHOW_VARIANTS
-        std::cout << " p |  q | n_element |     n_dofs |     time/it |  dofs/s/it | opt_time/it | itCG | time/matvec | timeMVbasic | timeMVcompu | timeMVmerged"
+        std::cout << " p |  q | n_element |     n_dofs |     time/it |   dofs/s/it | opt_time/it | opm_time/it | itCG | time/matvec | timeMVbasic | timeMVcompu | timeMVmerged"
                   << std::endl;
 #else
-        std::cout << " p |  q | n_element |     n_dofs |     time/it |   dofs/s/it | opt_time/it | itCG | time/matvec"
+        std::cout << " p |  q | n_element |     n_dofs |     time/it |   dofs/s/it | opt_time/it | opm_time/it | itCG | time/matvec"
 #endif
                   << std::endl;
       while ((2+Utilities::fixed_power<dim>(fe_degree+1))*(1UL<<s)
