@@ -80,40 +80,46 @@ void test(const unsigned int s,
                       mf_data);
 
   if (false)
-    {
-      std::cout << "zero list: ";
-      for (unsigned int i=0; i<matrix_free->get_dof_info().vector_zero_range_list_index.size()-1; ++i)
-        {
-          for (unsigned int j=matrix_free->get_dof_info().vector_zero_range_list_index[i];
-               j<matrix_free->get_dof_info().vector_zero_range_list_index[i+1]; ++j)
-            {
-              std::cout << matrix_free->get_dof_info().vector_zero_range_list[j] << " ";
-            }
-          std::cout << std::endl;
-        }
+    for (unsigned int p=0; p<Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD); ++p)
+      {
+        if (p == Utilities::MPI::this_mpi_process(MPI_COMM_WORLD))
+          {
+            std::cout << "zero list: ";
+            for (unsigned int i=0; i<matrix_free->get_dof_info().vector_zero_range_list_index.size()-1; ++i)
+              {
+                for (unsigned int j=matrix_free->get_dof_info().vector_zero_range_list_index[i];
+                     j<matrix_free->get_dof_info().vector_zero_range_list_index[i+1]; ++j)
+                  {
+                    std::cout << matrix_free->get_dof_info().vector_zero_range_list[j] << " ";
+                  }
+                std::cout << std::endl;
+              }
 
-      std::cout << "pre list: ";
-      for (unsigned int i=0; i<matrix_free->get_dof_info().cell_loop_pre_list_index.size()-1; ++i)
-        {
-          for (unsigned int j=matrix_free->get_dof_info().cell_loop_pre_list_index[i];
-               j<matrix_free->get_dof_info().cell_loop_pre_list_index[i+1]; ++j)
-            {
-              std::cout << matrix_free->get_dof_info().cell_loop_pre_list[j] << " ";
-            }
-          std::cout << std::endl;
-        }
+            std::cout << "pre list: ";
+            for (unsigned int i=0; i<matrix_free->get_dof_info().cell_loop_pre_list_index.size()-1; ++i)
+              {
+                for (unsigned int j=matrix_free->get_dof_info().cell_loop_pre_list_index[i];
+                     j<matrix_free->get_dof_info().cell_loop_pre_list_index[i+1]; ++j)
+                  {
+                    std::cout << matrix_free->get_dof_info().cell_loop_pre_list[j] << " ";
+                  }
+                std::cout << std::endl;
+              }
 
-      std::cout << "post list: ";
-      for (unsigned int i=0; i<matrix_free->get_dof_info().cell_loop_post_list_index.size()-1; ++i)
-        {
-          for (unsigned int j=matrix_free->get_dof_info().cell_loop_post_list_index[i];
-               j<matrix_free->get_dof_info().cell_loop_post_list_index[i+1]; ++j)
-            {
-              std::cout << matrix_free->get_dof_info().cell_loop_post_list[j] << " ";
-            }
-          std::cout << std::endl;
-        }
-    }
+            std::cout << "post list: ";
+            for (unsigned int i=0; i<matrix_free->get_dof_info().cell_loop_post_list_index.size()-1; ++i)
+              {
+                for (unsigned int j=matrix_free->get_dof_info().cell_loop_post_list_index[i];
+                     j<matrix_free->get_dof_info().cell_loop_post_list_index[i+1]; ++j)
+                  {
+                    std::cout << matrix_free->get_dof_info().cell_loop_post_list[j] << " ";
+                  }
+                std::cout << std::endl;
+              }
+          }
+        usleep(10000);
+        MPI_Barrier(MPI_COMM_WORLD);
+      }
 
   Mass::MassOperator<dim,fe_degree,n_q_points> mass_operator;
   mass_operator.initialize(matrix_free);
