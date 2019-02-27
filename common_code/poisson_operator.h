@@ -10,6 +10,7 @@
 #include <deal.II/numerics/vector_tools.h>
 
 #include "solver_cg_optimized.h"
+#include "vector_access_reduced.h"
 
 namespace Poisson
 {
@@ -148,7 +149,8 @@ namespace Poisson
     /**
      * Initialize function.
      */
-    void initialize(std::shared_ptr<const MatrixFree<dim,Number> > data_)
+    void initialize(std::shared_ptr<const MatrixFree<dim,Number> > data_,
+                    const AffineConstraints<double> &constraints)
     {
       this->data = data_;
       quad_1d = QGauss<1>(n_q_points_1d);
@@ -156,15 +158,28 @@ namespace Poisson
       const std::size_t n_q_points = Utilities::fixed_power<dim>(quad_1d.size());
       merged_coefficients.resize(n_q_points*data->n_macro_cells());
       quadrature_points.resize(n_q_points*dim*data->n_macro_cells());
+
+      if (fe_degree > 2)
+        {
+          compressed_dof_indices.resize(Utilities::pow(3,dim) *
+                                        VectorizedArray<Number>::n_array_elements *
+                                        data->n_macro_cells(),
+                                        numbers::invalid_unsigned_int);
+          all_indices_uniform.resize(Utilities::pow(3,dim) *
+                                     data->n_macro_cells(), 1);
+        }
+
       FE_Nothing<dim> dummy_fe;
       FEValues<dim> fe_values(dummy_fe, Quadrature<dim>(quad_1d),
                               update_quadrature_points | update_jacobians |
                               update_JxW_values);
+      std::vector<types::global_dof_index> dof_indices
+        (data->get_dof_handler().get_fe().dofs_per_cell);
       for (unsigned int c=0; c<data->n_macro_cells(); ++c)
         {
           for (unsigned int l=0; l<data->n_components_filled(c); ++l)
             {
-              const typename Triangulation<dim>::cell_iterator cell
+              const typename DoFHandler<dim>::cell_iterator cell
                 = data->get_cell_iterator(c, l);
               if (dim == 2)
                 {
@@ -201,7 +216,7 @@ namespace Poisson
                 AssertThrow(false, ExcNotImplemented());
 
               // compute coefficients for other methods
-              fe_values.reinit(cell);
+              fe_values.reinit(typename Triangulation<dim>::cell_iterator(cell));
               for (unsigned int q=0; q<n_q_points; ++q)
                 {
                   Tensor<2,dim> merged_coefficient = fe_values.JxW(q) *
@@ -214,6 +229,61 @@ namespace Poisson
                     quadrature_points[c*dim*n_q_points+d*n_q_points+q][l] = fe_values.quadrature_point(q)[d];
                 }
 
+              if (fe_degree > 2)
+                {
+                  cell->get_dof_indices(dof_indices);
+                  constexpr unsigned int n_lanes = VectorizedArray<Number>::n_array_elements;
+                  const unsigned int offset =
+                    Utilities::pow(3,dim) * (n_lanes * c) + l;
+                  const Utilities::MPI::Partitioner &part =
+                    *data->get_dof_info().vector_partitioner;
+                  unsigned int cc=0, cf=0;
+                  for (; cf<GeometryInfo<dim>::vertices_per_cell; ++cf, cc+=n_lanes)
+                    if (!constraints.is_constrained(dof_indices[cf]))
+                      compressed_dof_indices[offset+cc] = part.global_to_local(dof_indices[cf]);
+
+                  for (unsigned int line=0; line<GeometryInfo<dim>::lines_per_cell; ++line)
+                    {
+                      if (!constraints.is_constrained(dof_indices[cf]))
+                        {
+                          for (unsigned int i=0; i<fe_degree-1; ++i)
+                            AssertThrow(dof_indices[cf+i] == dof_indices[cf]+i,
+                                        ExcMessage("Expected contiguous numbering"));
+                          compressed_dof_indices[offset+cc] = part.global_to_local(dof_indices[cf]);
+                        }
+                      cc += n_lanes;
+                      cf += fe_degree-1;
+                    }
+                  for (unsigned int quad=0; quad<GeometryInfo<dim>::quads_per_cell; ++quad)
+                    {
+                      if (!constraints.is_constrained(dof_indices[cf]))
+                        {
+                          for (unsigned int i=0; i<(fe_degree-1)*(fe_degree-1); ++i)
+                            AssertThrow(dof_indices[cf+i] == dof_indices[cf]+i,
+                                        ExcMessage("Expected contiguous numbering"));
+                          compressed_dof_indices[offset+cc] = part.global_to_local(dof_indices[cf]);
+                        }
+                      cc += n_lanes;
+                      cf += (fe_degree-1)*(fe_degree-1);
+                    }
+                  for (unsigned int hex=0; hex<GeometryInfo<dim>::hexes_per_cell; ++hex)
+                    {
+                      if (!constraints.is_constrained(dof_indices[cf]))
+                        {
+                          for (unsigned int i=0; i<(fe_degree-1)*(fe_degree-1)*(fe_degree-1); ++i)
+                            AssertThrow(dof_indices[cf+i] == dof_indices[cf]+i,
+                                        ExcMessage("Expected contiguous numbering"));
+                          compressed_dof_indices[offset+cc] = part.global_to_local(dof_indices[cf]);
+                        }
+                      cc += n_lanes;
+                      cf += (fe_degree-1)*(fe_degree-1)*(fe_degree-1);
+                    }
+                  AssertThrow(cc == n_lanes*Utilities::pow(3,dim),
+                              ExcMessage("Expected 3^dim dofs, got " + std::to_string(cc)));
+                  AssertThrow(cf == dof_indices.size(),
+                              ExcMessage("Expected (fe_degree+1)^dim dofs, got " +
+                                         std::to_string(cf)));
+                }
             }
           // insert dummy entries to prevent geometry from degeneration and
           // subsequent division by zero, assuming a Cartesian geometry
@@ -221,6 +291,14 @@ namespace Poisson
                l<VectorizedArray<Number>::n_array_elements; ++l)
             for (unsigned int d=0; d<dim; ++d)
               cell_vertex_coefficients[c][d+1][d][l] = 1.;
+
+          if (fe_degree > 2)
+            {
+              for (unsigned int i=0; i<Utilities::pow(3,dim); ++i)
+                for (unsigned int v=0; v<VectorizedArray<Number>::n_array_elements; ++v)
+                  if (compressed_dof_indices[Utilities::pow(3,dim) * (VectorizedArray<Number>::n_array_elements * c) + i*VectorizedArray<Number>::n_array_elements + v] == numbers::invalid_unsigned_int)
+                    all_indices_uniform[Utilities::pow(3,dim) * c + i] = 0;
+            }
         }
     }
 
@@ -415,7 +493,16 @@ namespace Poisson
       for (unsigned int cell=cell_range.first; cell<cell_range.second; ++cell)
         {
           phi.reinit (cell);
-          phi.read_dof_values(src);
+          read_dof_values_compressed<dim,fe_degree,value_type>
+            (src, compressed_dof_indices, all_indices_uniform, cell, phi.begin_dof_values());
+          //phi.read_dof_values(src);
+          /*
+          bool error = false;
+          for (unsigned int v=0; v<4; ++v)
+            for (unsigned int i=0; i<n_q_points; ++i)
+              std::cout << cell << " " << v << " " << i << " "
+                        << dofs[i][v] << " " << phi.begin_dof_values()[i][v] << std::endl;
+          */
           phi.evaluate (false,true);
           const std::array<Tensor<1,dim,VectorizedArray<Number> >,GeometryInfo<dim>::vertices_per_cell> &v
             = cell_vertex_coefficients[cell];
@@ -431,7 +518,8 @@ namespace Poisson
                       const double q_weight = quad_1d.weight(qy) * quad_1d.weight(qx);
                       Tensor<2,dim,VectorizedArray<Number>> jac;
                       jac[1] = v[2] + quad_1d.point(qx)[0]*v[3];
-                      jac[0] = x_con;
+                      for (unsigned int d=0; d<2; ++d)
+                        jac[0][d] = x_con[d];
                       const VectorizedArray<Number> det = do_invert(jac);
 
                       for (unsigned int c=0; c<n_components; ++c)
@@ -461,26 +549,30 @@ namespace Poisson
                 {
                   for (unsigned int qy = 0; qy<n_q_points_1d; ++qy)
                     {
+                      const VectorizedArray<Number> z = make_vectorized_array<Number>(quad_1d.point(qz)[0]);
+                      const VectorizedArray<Number> y = make_vectorized_array<Number>(quad_1d.point(qy)[0]);
                       // x-derivative, already complete
-                      Tensor<1,dim,VectorizedArray<Number>> x_con = v[1] + quad_1d.point(qz)[0]*v[5];
-                      x_con += quad_1d.point(qy)[0]*(v[4]+quad_1d.point(qz)[0]*v[7]);
+                      Tensor<1,dim,VectorizedArray<Number>> x_con = v[1] + z*v[5];
+                      x_con += y*(v[4]+z*v[7]);
                       // y-derivative, constant part
-                      Tensor<1,dim,VectorizedArray<Number>> y_con = v[2] + quad_1d.point(qz)[0]*v[6];
+                      Tensor<1,dim,VectorizedArray<Number>> y_con = v[2] + z*v[6];
                       // y-derivative, xi-dependent part
-                      Tensor<1,dim,VectorizedArray<Number>> y_var = v[4] + quad_1d.point(qz)[0]*v[7];
+                      Tensor<1,dim,VectorizedArray<Number>> y_var = v[4] + z*v[7];
                       // z-derivative, constant part
-                      Tensor<1,dim,VectorizedArray<Number>> z_con = v[3] + quad_1d.point(qy)[0]*v[6];
+                      Tensor<1,dim,VectorizedArray<Number>> z_con = v[3] + y*v[6];
                       // z-derivative, variable part
-                      Tensor<1,dim,VectorizedArray<Number>> z_var = v[5] + quad_1d.point(qy)[0]*v[7];
+                      Tensor<1,dim,VectorizedArray<Number>> z_var = v[5] + y*v[7];
                       double q_weight_tmp = quad_1d.weight(qz) * quad_1d.weight(qy);
                       for (unsigned int qx=0; qx<n_q_points_1d; ++qx, ++q)
                         {
-                          const double q_weight = q_weight_tmp * quad_1d.weight(qx);
+                          const VectorizedArray<Number> x = make_vectorized_array<Number>(quad_1d.point(qx)[0]);
                           Tensor<2,dim,VectorizedArray<Number>> jac;
-                          jac[1] = y_con + quad_1d.point(qx)[0]*y_var;
-                          jac[2] = z_con + quad_1d.point(qx)[0]*z_var;
-                          jac[0] = x_con;
-                          const VectorizedArray<Number> det = do_invert(jac);
+                          jac[1] = y_con + x*y_var;
+                          jac[2] = z_con + x*z_var;
+                          for (unsigned int d=0; d<dim; ++d)
+                            jac[0][d] = x_con[d];
+                          VectorizedArray<Number> det = do_invert(jac);
+                          det = det * (q_weight_tmp * quad_1d.weight(qx));
 
                           for (unsigned int c=0; c<n_components; ++c)
                             {
@@ -491,7 +583,7 @@ namespace Poisson
                                   tmp[d] = jac[d][0] * phi_grads[q+offset];
                                   for (unsigned int e=1; e<dim; ++e)
                                     tmp[d] += jac[d][e] * phi_grads[q+e*n_q_points+offset];
-                                  tmp[d] *= det * q_weight;
+                                  tmp[d] *= det;
                                 }
                               for (unsigned int d=0; d<dim; ++d)
                                 {
@@ -521,7 +613,9 @@ namespace Poisson
                 accumulated_sum += local_sum[v];
             }
 
-          phi.distribute_local_to_global (dst);
+          //phi.distribute_local_to_global (dst);
+          distribute_local_to_global_compressed<dim,fe_degree,Number>
+            (dst, compressed_dof_indices, all_indices_uniform, cell, phi.begin_dof_values());
         }
     }
 
@@ -651,6 +745,9 @@ namespace Poisson
     // for local_apply_construct_q:
     // Data in all quadrature points in collocated space
     AlignedVector<VectorizedArray<Number> > quadrature_points;
+
+    std::vector<unsigned int> compressed_dof_indices;
+    std::vector<unsigned char> all_indices_uniform;
   };
 }
 

@@ -26,7 +26,7 @@ template <int dim, int fe_degree, int n_q_points>
 void test(const unsigned int s,
           const bool short_output)
 {
-  warmup_code();
+  //warmup_code();
 
   if (short_output == true)
     deallog.depth_console(0);
@@ -72,13 +72,20 @@ void test(const unsigned int s,
   // partitioner
   renumber_dofs_mf<dim,double>(dof_handler, constraints, mf_data);
 
+  DoFTools::extract_locally_relevant_dofs(dof_handler, relevant_dofs);
+  constraints.clear();
+  constraints.reinit(relevant_dofs);
+  VectorTools::interpolate_boundary_values(dof_handler, 0, ZeroFunction<dim>(),
+                                           constraints);
+  constraints.close();
+
   std::shared_ptr<MatrixFree<dim,double> > matrix_free(new MatrixFree<dim,double>());
   matrix_free->reinit(dof_handler, constraints, QGaussLobatto<1>(n_q_points),
                       mf_data);
 
   Poisson::LaplaceOperator<dim,fe_degree,n_q_points,1,double,
                            LinearAlgebra::distributed::Vector<double> > laplace_operator;
-  laplace_operator.initialize(matrix_free);
+  laplace_operator.initialize(matrix_free, constraints);
 
   LinearAlgebra::distributed::Vector<double> input, output, output_test;
   laplace_operator.initialize_dof_vector(input);
