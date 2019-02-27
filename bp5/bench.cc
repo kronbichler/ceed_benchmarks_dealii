@@ -26,7 +26,7 @@ template <int dim, int fe_degree, int n_q_points>
 void test(const unsigned int s,
           const bool short_output)
 {
-  //warmup_code();
+  warmup_code();
 
   if (short_output == true)
     deallog.depth_console(0);

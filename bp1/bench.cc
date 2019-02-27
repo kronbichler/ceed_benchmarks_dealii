@@ -122,7 +122,7 @@ void test(const unsigned int s,
       }
 
   Mass::MassOperator<dim,fe_degree,n_q_points> mass_operator;
-  mass_operator.initialize(matrix_free);
+  mass_operator.initialize(matrix_free, constraints);
 
   LinearAlgebra::distributed::Vector<double> input, output;
   matrix_free->initialize_dof_vector(input);
@@ -311,7 +311,7 @@ void do_test(const int s_in,
   if (s_in < 1)
     {
       if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
-        std::cout << " p |  q | n_elements |      n_dofs |     time/it |op dofs/s/it | opt time/it | op3 time/it | CG its | time/matvec"
+        std::cout << " p |  q | n_elements |      n_dofs |     time/it |op_dofs/s/it | opt_time/it | op3_time/it | opm_time/it | CG_its | time/matvec"
                   << std::endl;
       unsigned int s =
         std::max(3U, static_cast<unsigned int>

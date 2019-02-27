@@ -13,6 +13,7 @@
 #include <deal.II/matrix_free/fe_evaluation.h>
 
 #include "solver_cg_optimized.h"
+#include "vector_access_reduced.h"
 
 namespace Mass
 {
@@ -184,9 +185,94 @@ namespace Mass
     /**
      * Initialize function.
      */
-    void initialize(std::shared_ptr<const MatrixFree<dim,Number> > data_)
+    void initialize(std::shared_ptr<const MatrixFree<dim,Number> > data_,
+                    const AffineConstraints<double> &constraints)
     {
       this->data = data_;
+
+
+      if (fe_degree > 2)
+        {
+          compressed_dof_indices.resize(Utilities::pow(3,dim) *
+                                        VectorizedArray<Number>::n_array_elements *
+                                        data->n_macro_cells(),
+                                        numbers::invalid_unsigned_int);
+          all_indices_uniform.resize(Utilities::pow(3,dim) *
+                                     data->n_macro_cells(), 1);
+        }
+      std::vector<types::global_dof_index> dof_indices
+        (data->get_dof_handler().get_fe().dofs_per_cell);
+      for (unsigned int c=0; c<data->n_macro_cells(); ++c)
+        {
+          for (unsigned int l=0; l<data->n_components_filled(c); ++l)
+            {
+              const typename DoFHandler<dim>::cell_iterator cell
+                = data->get_cell_iterator(c, l);
+              if (fe_degree > 2)
+                {
+                  cell->get_dof_indices(dof_indices);
+                  constexpr unsigned int n_lanes = VectorizedArray<Number>::n_array_elements;
+                  const unsigned int offset =
+                    Utilities::pow(3,dim) * (n_lanes * c) + l;
+                  const Utilities::MPI::Partitioner &part =
+                    *data->get_dof_info().vector_partitioner;
+                  unsigned int cc=0, cf=0;
+                  for (; cf<GeometryInfo<dim>::vertices_per_cell; ++cf, cc+=n_lanes)
+                    if (!constraints.is_constrained(dof_indices[cf]))
+                      compressed_dof_indices[offset+cc] = part.global_to_local(dof_indices[cf]);
+
+                  for (unsigned int line=0; line<GeometryInfo<dim>::lines_per_cell; ++line)
+                    {
+                      if (!constraints.is_constrained(dof_indices[cf]))
+                        {
+                          for (unsigned int i=0; i<fe_degree-1; ++i)
+                            AssertThrow(dof_indices[cf+i] == dof_indices[cf]+i,
+                                        ExcMessage("Expected contiguous numbering"));
+                          compressed_dof_indices[offset+cc] = part.global_to_local(dof_indices[cf]);
+                        }
+                      cc += n_lanes;
+                      cf += fe_degree-1;
+                    }
+                  for (unsigned int quad=0; quad<GeometryInfo<dim>::quads_per_cell; ++quad)
+                    {
+                      if (!constraints.is_constrained(dof_indices[cf]))
+                        {
+                          for (unsigned int i=0; i<(fe_degree-1)*(fe_degree-1); ++i)
+                            AssertThrow(dof_indices[cf+i] == dof_indices[cf]+i,
+                                        ExcMessage("Expected contiguous numbering"));
+                          compressed_dof_indices[offset+cc] = part.global_to_local(dof_indices[cf]);
+                        }
+                      cc += n_lanes;
+                      cf += (fe_degree-1)*(fe_degree-1);
+                    }
+                  for (unsigned int hex=0; hex<GeometryInfo<dim>::hexes_per_cell; ++hex)
+                    {
+                      if (!constraints.is_constrained(dof_indices[cf]))
+                        {
+                          for (unsigned int i=0; i<(fe_degree-1)*(fe_degree-1)*(fe_degree-1); ++i)
+                            AssertThrow(dof_indices[cf+i] == dof_indices[cf]+i,
+                                        ExcMessage("Expected contiguous numbering"));
+                          compressed_dof_indices[offset+cc] = part.global_to_local(dof_indices[cf]);
+                        }
+                      cc += n_lanes;
+                      cf += (fe_degree-1)*(fe_degree-1)*(fe_degree-1);
+                    }
+                  AssertThrow(cc == n_lanes*Utilities::pow(3,dim),
+                              ExcMessage("Expected 3^dim dofs, got " + std::to_string(cc)));
+                  AssertThrow(cf == dof_indices.size(),
+                              ExcMessage("Expected (fe_degree+1)^dim dofs, got " +
+                                         std::to_string(cf)));
+                }
+
+              if (fe_degree > 2)
+                {
+                  for (unsigned int i=0; i<Utilities::pow(3,dim); ++i)
+                    for (unsigned int v=0; v<VectorizedArray<Number>::n_array_elements; ++v)
+                      if (compressed_dof_indices[Utilities::pow(3,dim) * (VectorizedArray<Number>::n_array_elements * c) + i*VectorizedArray<Number>::n_array_elements + v] == numbers::invalid_unsigned_int)
+                        all_indices_uniform[Utilities::pow(3,dim) * c + i] = 0;
+                }
+            }
+        }
     }
 
     /**
@@ -286,12 +372,20 @@ namespace Mass
       for (unsigned int cell=cell_range.first; cell<cell_range.second; ++cell)
         {
           phi.reinit (cell);
-          phi.read_dof_values(src);
+          if (fe_degree > 2)
+            read_dof_values_compressed<dim,fe_degree,value_type>
+              (src, compressed_dof_indices, all_indices_uniform, cell, phi.begin_dof_values());
+          else
+            phi.read_dof_values(src);
           phi.evaluate (true,false);
           for (unsigned int q=0; q<phi.n_q_points; ++q)
             phi.submit_value (phi.get_value(q), q);
           phi.integrate (true,false);
-          phi.distribute_local_to_global (dst);
+          if (fe_degree > 2)
+            distribute_local_to_global_compressed<dim,fe_degree,Number>
+              (dst, compressed_dof_indices, all_indices_uniform, cell, phi.begin_dof_values());
+          else
+            phi.distribute_local_to_global (dst);
         }
     }
 
@@ -327,6 +421,9 @@ namespace Mass
 
     std::shared_ptr<const MatrixFree<dim,Number> > data;
     mutable Number accumulated_sum;
+
+    std::vector<unsigned int> compressed_dof_indices;
+    std::vector<unsigned char> all_indices_uniform;
   };
 
 }

@@ -493,16 +493,11 @@ namespace Poisson
       for (unsigned int cell=cell_range.first; cell<cell_range.second; ++cell)
         {
           phi.reinit (cell);
-          read_dof_values_compressed<dim,fe_degree,value_type>
-            (src, compressed_dof_indices, all_indices_uniform, cell, phi.begin_dof_values());
-          //phi.read_dof_values(src);
-          /*
-          bool error = false;
-          for (unsigned int v=0; v<4; ++v)
-            for (unsigned int i=0; i<n_q_points; ++i)
-              std::cout << cell << " " << v << " " << i << " "
-                        << dofs[i][v] << " " << phi.begin_dof_values()[i][v] << std::endl;
-          */
+          if (fe_degree > 2)
+            read_dof_values_compressed<dim,fe_degree,value_type>
+              (src, compressed_dof_indices, all_indices_uniform, cell, phi.begin_dof_values());
+          else
+            phi.read_dof_values(src);
           phi.evaluate (false,true);
           const std::array<Tensor<1,dim,VectorizedArray<Number> >,GeometryInfo<dim>::vertices_per_cell> &v
             = cell_vertex_coefficients[cell];
@@ -613,9 +608,11 @@ namespace Poisson
                 accumulated_sum += local_sum[v];
             }
 
-          //phi.distribute_local_to_global (dst);
-          distribute_local_to_global_compressed<dim,fe_degree,Number>
-            (dst, compressed_dof_indices, all_indices_uniform, cell, phi.begin_dof_values());
+          if (fe_degree > 2)
+            distribute_local_to_global_compressed<dim,fe_degree,Number>
+              (dst, compressed_dof_indices, all_indices_uniform, cell, phi.begin_dof_values());
+          else
+            phi.distribute_local_to_global(dst);
         }
     }
 

@@ -17,6 +17,7 @@
 #include "../common_code/curved_manifold.h"
 #include "../common_code/poisson_operator.h"
 #include "../common_code/solver_cg_optimized.h"
+#include "../common_code/renumber_dofs_for_mf.h"
 
 using namespace dealii;
 
@@ -65,6 +66,19 @@ void test(const unsigned int s,
   VectorTools::interpolate_boundary_values(dof_handler, 0, ZeroFunction<dim>(),
                                            constraints);
   constraints.close();
+  typename MatrixFree<dim,double>::AdditionalData mf_data;
+
+  // renumber Dofs to minimize the number of partitions in import indices of
+  // partitioner
+  renumber_dofs_mf<dim,double>(dof_handler, constraints, mf_data);
+
+  DoFTools::extract_locally_relevant_dofs(dof_handler, relevant_dofs);
+  constraints.clear();
+  constraints.reinit(relevant_dofs);
+  VectorTools::interpolate_boundary_values(dof_handler, 0, ZeroFunction<dim>(),
+                                           constraints);
+  constraints.close();
+
   std::shared_ptr<MatrixFree<dim,double> > matrix_free(new MatrixFree<dim,double>());
 
   // create preconditioner based on the diagonal of the GLL quadrature with
@@ -76,7 +90,7 @@ void test(const unsigned int s,
 
     Poisson::LaplaceOperator<dim,fe_degree,fe_degree+1,1,double,
                              LinearAlgebra::distributed::Vector<double> > laplace_operator;
-    laplace_operator.initialize(matrix_free);
+    laplace_operator.initialize(matrix_free, constraints);
 
     diag_mat.get_vector() = laplace_operator.compute_inverse_diagonal();
   }
@@ -93,7 +107,7 @@ void test(const unsigned int s,
 
   Poisson::LaplaceOperator<dim,fe_degree,n_q_points,1,double,
                            LinearAlgebra::distributed::Vector<double> > laplace_operator;
-  laplace_operator.initialize(matrix_free);
+  laplace_operator.initialize(matrix_free, constraints);
 
   LinearAlgebra::distributed::Vector<double> input, output, output_test;
   laplace_operator.initialize_dof_vector(input);
@@ -168,6 +182,25 @@ void test(const unsigned int s,
       solver_time2 = std::min(data.max, solver_time2);
     }
 
+  SolverCGFullMerge<LinearAlgebra::distributed::Vector<double> > solver4(solver_control);
+  double solver_time4 = 1e10;
+  for (unsigned int t=0; t<4; ++t)
+    {
+      output = 0;
+      time.restart();
+      try
+        {
+          solver4.solve(laplace_operator, output, input, diag_mat);
+        }
+      catch (SolverControl::NoConvergence &e)
+        {
+          // prevent the solver to throw an exception in case we should need more
+          // than 100 iterations
+        }
+      data = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD);
+      solver_time4 = std::min(data.max, solver_time4);
+    }
+
   double matvec_time = 1e10;
   for (unsigned int t=0; t<2; ++t)
     {
@@ -216,6 +249,7 @@ void test(const unsigned int s,
               << " | " << std::setw(11) << solver_time/solver_control.last_step()
               << " | " << std::setw(11) << dof_handler.n_dofs()/solver_time2*solver_control.last_step()
               << " | " << std::setw(11) << solver_time2/solver_control.last_step()
+              << " | " << std::setw(11) << solver_time4/solver_control.last_step()
               << " | " << std::setw(4) << solver_control.last_step()
               << " | " << std::setw(11) << matvec_time
               << " | " << std::setw(11) << t2
@@ -235,7 +269,7 @@ void do_test(const int s_in,
         std::max(3U, static_cast<unsigned int>
                  (std::log2(1024/fe_degree/fe_degree/fe_degree)));
       if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
-        std::cout << " p |  q | n_element |     n_dofs |     time/it |  dofs/s/it | opt_time/it | itCG | time/matvec | timeMVbasic | timeMVcompu | timeMVlinear"
+        std::cout << " p |  q | n_element |     n_dofs |     time/it |   dofs/s/it | opt_time/it | opm_time/it | itCG | time/matvec | timeMVbasic | timeMVcompu | timeMVmerged"
                   << std::endl;
       while ((8+Utilities::fixed_power<dim>(fe_degree+1))*(1UL<<s)
              < 3000000ULL*Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD))
