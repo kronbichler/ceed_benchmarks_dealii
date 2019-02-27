@@ -680,48 +680,92 @@ namespace Poisson
     {
       FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number> phi(data);
       constexpr unsigned int n_q_points = Utilities::pow(n_q_points_1d, dim);
-      VectorizedArray<Number> jacobians[dim*dim*n_q_points];
+      VectorizedArray<Number> jacobians_z[dim*n_q_points];
       for (unsigned int cell=cell_range.first; cell<cell_range.second; ++cell)
         {
           phi.reinit (cell);
-          phi.read_dof_values(src);
+          if (fe_degree > 2)
+            read_dof_values_compressed<dim,fe_degree,value_type>
+              (src, compressed_dof_indices, all_indices_uniform, cell, phi.begin_dof_values());
+          else
+            phi.read_dof_values(src);
           phi.evaluate (false,true);
-          dealii::internal::FEEvaluationImplCollocation<dim,n_q_points_1d-1,dim,VectorizedArray<Number>>
-            ::evaluate(data.get_shape_info(),
-                       quadrature_points.begin()+cell*dim*n_q_points,
-                       nullptr, jacobians, nullptr, nullptr,
-                       false, true, false);
           VectorizedArray<Number> *phi_grads = phi.begin_gradients();
-          for (unsigned int q=0; q<phi.n_q_points; ++q)
+          if (dim==3)
+            for (unsigned int d=0; d<dim; ++d)
+              dealii::internal::EvaluatorTensorProduct<dealii::internal::evaluate_evenodd,
+                                                       dim, n_q_points_1d,n_q_points_1d,
+                                                       VectorizedArray<Number>,
+                                                       VectorizedArray<Number>>::
+                template apply<2,true,false,1>(data.get_shape_info().shape_gradients_collocation_eo.begin(),
+                                               quadrature_points.begin()+
+                                               (cell*dim+d)*n_q_points,
+                                               jacobians_z + d*n_q_points);
+          for (unsigned int q2=0, q=0; q2<(dim==3 ? n_q_points_1d : 1); ++q2)
             {
-              Tensor<2,dim,VectorizedArray<Number>> jac;
+              constexpr unsigned int n_q_points_2d = n_q_points_1d*n_q_points_1d;
+              VectorizedArray<Number> jacobians_y[dim*n_q_points_2d];
               for (unsigned int d=0; d<dim; ++d)
-                for (unsigned int e=0; e<dim; ++e)
-                  jac[d][e] = jacobians[(e*dim+d)*n_q_points+q];
-              const VectorizedArray<Number> det = do_invert(jac);
-              const Number q_weight = data.get_quadrature().weight(q);
-
-              for (unsigned int c=0; c<n_components; ++c)
+                dealii::internal::EvaluatorTensorProduct<dealii::internal::evaluate_evenodd,
+                                                         2, n_q_points_1d,n_q_points_1d,
+                                                         VectorizedArray<Number>,
+                                                         VectorizedArray<Number>>::
+                  template apply<1,true,false,1>(data.get_shape_info().shape_gradients_collocation_eo.begin(),
+                                                 quadrature_points.begin()+
+                                                 (cell*dim+d)*n_q_points+q2*n_q_points_2d,
+                                                 jacobians_y + d*n_q_points_2d);
+              for (unsigned int q1=0; q1<n_q_points_1d; ++q1)
                 {
-                  const unsigned int offset = c*dim*n_q_points;
-                  VectorizedArray<Number> tmp[dim];
+                  VectorizedArray<Number> jacobians_x[dim*n_q_points_1d];
                   for (unsigned int d=0; d<dim; ++d)
+                    dealii::internal::EvaluatorTensorProduct<dealii::internal::evaluate_evenodd,
+                                                             1, n_q_points_1d,n_q_points_1d,
+                                                             VectorizedArray<Number>,
+                                                             VectorizedArray<Number>>::
+                      template apply<0,true,false,1>(data.get_shape_info().shape_gradients_collocation_eo.begin(),
+                                                     quadrature_points.begin()+
+                                                     (cell*dim+d)*n_q_points+q2*n_q_points_2d
+                                                     +q1*n_q_points_1d,
+                                                     jacobians_x + d*n_q_points_1d);
+                  for (unsigned int q0=0; q0<n_q_points_1d; ++q0, ++q)
                     {
-                      tmp[d] = jac[d][0] * phi_grads[q+offset];
-                      for (unsigned int e=1; e<dim; ++e)
-                        tmp[d] += jac[d][e] * phi_grads[q+e*n_q_points+offset];
-                      tmp[d] *= det * q_weight;
-                    }
-                  for (unsigned int d=0; d<dim; ++d)
-                    {
-                      phi_grads[q+d*n_q_points+offset] = jac[0][d] * tmp[0];
-                      for (unsigned int e=1; e<dim; ++e)
-                        phi_grads[q+d*n_q_points+offset] += jac[e][d] * tmp[e];
+                      Tensor<2,dim,VectorizedArray<Number>> jac;
+                      for (unsigned int e=0; e<dim; ++e)
+                        jac[2][e] = jacobians_z[e*n_q_points+q];
+                      for (unsigned int e=0; e<dim; ++e)
+                        jac[1][e] = jacobians_y[e*n_q_points_2d+q1*n_q_points_1d+q0];
+                      for (unsigned int e=0; e<dim; ++e)
+                        jac[0][e] = jacobians_x[e*n_q_points_1d+q0];
+                      VectorizedArray<Number> det = do_invert(jac);
+                      det = det * (data.get_quadrature().weight(q));
+
+                      for (unsigned int c=0; c<n_components; ++c)
+                        {
+                          const unsigned int offset = c*dim*n_q_points;
+                          VectorizedArray<Number> tmp[dim];
+                          for (unsigned int d=0; d<dim; ++d)
+                            {
+                              tmp[d] = jac[d][0] * phi_grads[q+offset];
+                              for (unsigned int e=1; e<dim; ++e)
+                                tmp[d] += jac[d][e] * phi_grads[q+e*n_q_points+offset];
+                              tmp[d] *= det;
+                            }
+                          for (unsigned int d=0; d<dim; ++d)
+                            {
+                              phi_grads[q+d*n_q_points+offset] = jac[0][d] * tmp[0];
+                              for (unsigned int e=1; e<dim; ++e)
+                                phi_grads[q+d*n_q_points+offset] += jac[e][d] * tmp[e];
+                            }
+                        }
                     }
                 }
             }
           phi.integrate (false,true);
-          phi.distribute_local_to_global (dst);
+          if (fe_degree > 2)
+            distribute_local_to_global_compressed<dim,fe_degree,Number>
+              (dst, compressed_dof_indices, all_indices_uniform, cell, phi.begin_dof_values());
+          else
+            phi.distribute_local_to_global(dst);
         }
     }
 
