@@ -19,6 +19,12 @@
 #include "../common_code/solver_cg_optimized.h"
 #include "../common_code/renumber_dofs_for_mf.h"
 
+
+#ifdef LIKWID_PERFMON
+#include <likwid.h>
+#endif
+
+
 using namespace dealii;
 
 
@@ -129,6 +135,9 @@ void test(const unsigned int s,
   ReductionControl solver_control(100, 1e-15, 1e-8);
   SolverCG<LinearAlgebra::distributed::Vector<double> > solver(solver_control);
 
+#ifdef LIKWID_PERFMON
+  LIKWID_MARKER_START("cg_solver");
+#endif
   double solver_time = 1e10;
   for (unsigned int t=0; t<2; ++t)
     {
@@ -146,6 +155,9 @@ void test(const unsigned int s,
       data = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD);
       solver_time = std::min(data.max, solver_time);
     }
+#ifdef LIKWID_PERFMON
+  LIKWID_MARKER_STOP("cg_solver");
+#endif
 
   if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0 &&
       short_output==false)
@@ -165,6 +177,9 @@ void test(const unsigned int s,
 
   SolverCGOptimized<LinearAlgebra::distributed::Vector<double> > solver2(solver_control);
   double solver_time2 = 1e10;
+#ifdef LIKWID_PERFMON
+  LIKWID_MARKER_START("cg_solver_opt");
+#endif
   for (unsigned int t=0; t<2; ++t)
     {
       output = 0;
@@ -181,9 +196,15 @@ void test(const unsigned int s,
       data = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD);
       solver_time2 = std::min(data.max, solver_time2);
     }
+#ifdef LIKWID_PERFMON
+  LIKWID_MARKER_STOP("cg_solver_opt");
+#endif
 
   SolverCGFullMerge<LinearAlgebra::distributed::Vector<double> > solver4(solver_control);
   double solver_time4 = 1e10;
+#ifdef LIKWID_PERFMON
+  LIKWID_MARKER_START("cg_solver_optm");
+#endif
   for (unsigned int t=0; t<4; ++t)
     {
       output = 0;
@@ -200,7 +221,13 @@ void test(const unsigned int s,
       data = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD);
       solver_time4 = std::min(data.max, solver_time4);
     }
+#ifdef LIKWID_PERFMON
+  LIKWID_MARKER_STOP("cg_solver_optm");
+#endif
 
+#ifdef LIKWID_PERFMON
+  LIKWID_MARKER_START("matvec");
+#endif
   double matvec_time = 1e10;
   for (unsigned int t=0; t<2; ++t)
     {
@@ -210,10 +237,19 @@ void test(const unsigned int s,
       data = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD);
       matvec_time = std::min(data.max/50, matvec_time);
     }
+#ifdef LIKWID_PERFMON
+  LIKWID_MARKER_STOP("matvec");
+#endif
 
+#ifdef LIKWID_PERFMON
+  LIKWID_MARKER_START("matvec_basic");
+#endif
   time.restart();
   for (unsigned int i=0; i<100; ++i)
     laplace_operator.vmult_basic(output_test, output);
+#ifdef LIKWID_PERFMON
+  LIKWID_MARKER_STOP("matvec_basic");
+#endif
   const double t2 = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD).max/100;
   output_test -= input;
   if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0 &&
@@ -221,20 +257,35 @@ void test(const unsigned int s,
     std::cout << "Error merged coefficient tensor:           "
               << output_test.linfty_norm() << std::endl;
 
+#ifdef LIKWID_PERFMON
+  LIKWID_MARKER_START("matvec_q");
+#endif
   time.restart();
   for (unsigned int i=0; i<100; ++i)
     laplace_operator.vmult_construct_q(output_test, output);
   const double t3 = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD).max/100;
+#ifdef LIKWID_PERFMON
+  LIKWID_MARKER_STOP("matvec_q");
+#endif
+
   output_test -= input;
   if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0 &&
       short_output==false)
     std::cout << "Error collocation evaluation of Jacobian:  "
               << output_test.linfty_norm() << std::endl;
 
+#ifdef LIKWID_PERFMON
+  LIKWID_MARKER_START("matvec_merge");
+#endif
   time.restart();
   for (unsigned int i=0; i<100; ++i)
     laplace_operator.vmult_merged(output_test, output);
   const double t4 = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD).max/100;
+
+#ifdef LIKWID_PERFMON
+  LIKWID_MARKER_STOP("matvec_merge");
+#endif
+
   output_test -= input;
   if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0 &&
       short_output==false)
@@ -287,6 +338,10 @@ void do_test(const int s_in,
 
 int main(int argc, char** argv)
 {
+#ifdef LIKWID_PERFMON
+  LIKWID_MARKER_INIT;
+#endif
+
   Utilities::MPI::MPI_InitFinalize mpi(argc, argv, 1);
 
   unsigned int degree = 1;
@@ -323,6 +378,10 @@ int main(int argc, char** argv)
     do_test<3,11,13>(s, compact_output);
   else
     AssertThrow(false, ExcMessage("Only degrees up to 11 implemented"));
+
+#ifdef LIKWID_PERFMON
+  LIKWID_MARKER_CLOSE;
+#endif
 
   return 0;
 }

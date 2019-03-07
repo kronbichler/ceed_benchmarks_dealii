@@ -90,7 +90,8 @@ void test(const unsigned int s,
                 for (unsigned int j=matrix_free->get_dof_info().vector_zero_range_list_index[i];
                      j<matrix_free->get_dof_info().vector_zero_range_list_index[i+1]; ++j)
                   {
-                    std::cout << matrix_free->get_dof_info().vector_zero_range_list[j] << " ";
+                    std::cout << matrix_free->get_dof_info().vector_zero_range_list[j].first << " "
+                              << matrix_free->get_dof_info().vector_zero_range_list[j].second << "   ";
                   }
                 std::cout << std::endl;
               }
@@ -101,7 +102,8 @@ void test(const unsigned int s,
                 for (unsigned int j=matrix_free->get_dof_info().cell_loop_pre_list_index[i];
                      j<matrix_free->get_dof_info().cell_loop_pre_list_index[i+1]; ++j)
                   {
-                    std::cout << matrix_free->get_dof_info().cell_loop_pre_list[j] << " ";
+                    std::cout << matrix_free->get_dof_info().cell_loop_pre_list[j].first << " "
+                              << matrix_free->get_dof_info().cell_loop_pre_list[j].second << "   ";
                   }
                 std::cout << std::endl;
               }
@@ -112,7 +114,8 @@ void test(const unsigned int s,
                 for (unsigned int j=matrix_free->get_dof_info().cell_loop_post_list_index[i];
                      j<matrix_free->get_dof_info().cell_loop_post_list_index[i+1]; ++j)
                   {
-                    std::cout << matrix_free->get_dof_info().cell_loop_post_list[j] << " ";
+                    std::cout << matrix_free->get_dof_info().cell_loop_post_list[j].first << " "
+                              << matrix_free->get_dof_info().cell_loop_post_list[j].second << "   ";
                   }
                 std::cout << std::endl;
               }
