@@ -356,30 +356,32 @@ do_cg_update3b (const unsigned int start,
   const dealii::VectorizedArray<Number> *arr_d = reinterpret_cast<const dealii::VectorizedArray<Number>*>(d);
   const dealii::VectorizedArray<Number> *arr_h = reinterpret_cast<const dealii::VectorizedArray<Number>*>(h);
   const dealii::VectorizedArray<Number> *arr_prec = reinterpret_cast<const dealii::VectorizedArray<Number>*>(prec);
+  dealii::Tensor<1,7,dealii::VectorizedArray<Number>> local_sum;
   for (unsigned int i=start/dealii::VectorizedArray<Number>::n_array_elements;
        i<end/dealii::VectorizedArray<Number>::n_array_elements; ++i)
     {
-      sums[0] += arr_d[i] * arr_h[i];
-      sums[1] += arr_h[i] * arr_h[i];
-      sums[2] += arr_r[i] * arr_h[i];
-      sums[3] += arr_r[i] * arr_r[i];
-      sums[6] += arr_r[i] * arr_prec[i] * arr_r[i];
+      local_sum[0] += arr_d[i] * arr_h[i];
+      local_sum[1] += arr_h[i] * arr_h[i];
+      local_sum[2] += arr_r[i] * arr_h[i];
+      local_sum[3] += arr_r[i] * arr_r[i];
+      local_sum[6] += arr_r[i] * arr_prec[i] * arr_r[i];
       const dealii::VectorizedArray<Number> zi = arr_prec[i] * arr_h[i];
-      sums[4] += arr_r[i] * zi;
-      sums[5] += arr_h[i] * zi;
+      local_sum[4] += arr_r[i] * zi;
+      local_sum[5] += arr_h[i] * zi;
     }
   for (unsigned int i=(end/dealii::VectorizedArray<Number>::n_array_elements)*
          dealii::VectorizedArray<Number>::n_array_elements; i<end; ++i)
     {
-      sums[0][0] += d[i] * h[i];
-      sums[1][0] += h[i] * h[i];
-      sums[2][0] += r[i] * h[i];
-      sums[3][0] += r[i] * r[i];
-      sums[6][0] += r[i] * prec[i] * r[i];
+      local_sum[0][0] += d[i] * h[i];
+      local_sum[1][0] += h[i] * h[i];
+      local_sum[2][0] += r[i] * h[i];
+      local_sum[3][0] += r[i] * r[i];
+      local_sum[6][0] += r[i] * prec[i] * r[i];
       const Number zi = prec[i] * h[i];
-      sums[4][0] += r[i] * zi;
-      sums[5][0] += h[i] * zi;
+      local_sum[4][0] += r[i] * zi;
+      local_sum[5][0] += h[i] * zi;
     }
+  sums += local_sum;
 }
 
 

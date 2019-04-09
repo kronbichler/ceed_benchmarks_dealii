@@ -113,6 +113,41 @@ namespace Poisson
           }
       return sum;
     }
+
+    template <typename VectorType>
+    unsigned int get_n_blocks(const VectorType &)
+    {
+      return 1;
+    }
+
+    template <typename VectorType>
+    VectorType& get_block(VectorType &vec,
+                          const unsigned int )
+    {
+      return vec;
+    }
+
+    template <typename Number>
+    unsigned int get_n_blocks(const LinearAlgebra::distributed::BlockVector<Number> &vec)
+    {
+      return vec.n_blocks();
+    }
+
+    template <typename Number>
+    const LinearAlgebra::distributed::Vector<Number>&
+    get_block(const LinearAlgebra::distributed::BlockVector<Number> &vec,
+              const unsigned int block)
+    {
+      return vec.block(block);
+    }
+
+    template <typename Number>
+    LinearAlgebra::distributed::Vector<Number>&
+    get_block(LinearAlgebra::distributed::BlockVector<Number> &vec,
+              const unsigned int block)
+    {
+      return vec.block(block);
+    }
   }
 
 
@@ -337,13 +372,112 @@ namespace Poisson
     }
 
     Tensor<1,7>
-    vmult_with_merged_sums(LinearAlgebra::distributed::Vector<Number> &x,
-                           LinearAlgebra::distributed::Vector<Number> &g,
-                           LinearAlgebra::distributed::Vector<Number> &d,
-                           LinearAlgebra::distributed::Vector<Number> &h,
+    vmult_with_merged_sums(VectorType &x,
+                           VectorType &g,
+                           VectorType &d,
+                           VectorType &h,
                            const DiagonalMatrix<LinearAlgebra::distributed::Vector<Number>> &prec,
                            const Number alpha,
                            const Number beta) const
+    {
+      Tensor<1,7,VectorizedArray<Number>> sums;
+      this->data->cell_loop(&LaplaceOperator::template local_apply_linear_geo<false>,
+                            this, h, d,
+                            [&](const unsigned int start_range,
+                                const unsigned int end_range)
+                            {
+                              for (unsigned int bl=0; bl<internal::get_n_blocks(x); ++bl)
+                                do_cg_update4<1,Number,true>(start_range, end_range,
+                                                             internal::get_block(h,bl).begin(),
+                                                             internal::get_block(x,bl).begin(),
+                                                             internal::get_block(g,bl).begin(),
+                                                             internal::get_block(d,bl).begin(),
+                                                             prec.get_vector().begin(),
+                                                             alpha, beta);
+                            },
+                            [&](const unsigned int start_range,
+                                const unsigned int end_range)
+                            {
+                              for (unsigned int bl=0; bl<internal::get_n_blocks(x); ++bl)
+                                do_cg_update3b<1,Number>(start_range, end_range,
+                                                         internal::get_block(g,bl).begin(),
+                                                         internal::get_block(d,bl).begin(),
+                                                         internal::get_block(h,bl).begin(),
+                                                         prec.get_vector().begin(),
+                                                         sums);
+                            });
+
+      dealii::Tensor<1,7> results;
+      for (unsigned int i=0; i<7; ++i)
+        {
+          results[i] = sums[i][0];
+          for (unsigned int v=1; v<dealii::VectorizedArray<Number>::n_array_elements; ++v)
+            results[i] += sums[i][v];
+        }
+      dealii::Utilities::MPI::sum(dealii::ArrayView<const double>(results.begin_raw(), 7),
+                                  internal::get_block(g,0).get_partitioner()->get_mpi_communicator(),
+                                  dealii::ArrayView<double>(results.begin_raw(), 7));
+      return results;
+    }
+
+    Tensor<1,7>
+    vmult_with_merged_sums(VectorType &x,
+                           VectorType &g,
+                           VectorType &d,
+                           VectorType &h,
+                           const DiagonalMatrixBlocked<dim,Number> &prec,
+                           const Number alpha,
+                           const Number beta) const
+    {
+      Tensor<1,7,VectorizedArray<Number>> sums;
+      this->data->cell_loop(&LaplaceOperator::template local_apply_linear_geo<false>,
+                            this, h, d,
+                            [&](const unsigned int start_range,
+                                const unsigned int end_range)
+                            {
+                              for (unsigned int bl=0; bl<internal::get_n_blocks(x); ++bl)
+                                do_cg_update4<1,Number,true>(start_range, end_range,
+                                                             internal::get_block(h,bl).begin(),
+                                                             internal::get_block(x,bl).begin(),
+                                                             internal::get_block(g,bl).begin(),
+                                                             internal::get_block(d,bl).begin(),
+                                                             prec.diagonal.begin(),
+                                                             alpha, beta);
+                            },
+                            [&](const unsigned int start_range,
+                                const unsigned int end_range)
+                            {
+                              for (unsigned int bl=0; bl<internal::get_n_blocks(x); ++bl)
+                                do_cg_update3b<1,Number>(start_range, end_range,
+                                                         internal::get_block(g,bl).begin(),
+                                                         internal::get_block(d,bl).begin(),
+                                                         internal::get_block(h,bl).begin(),
+                                                         prec.diagonal.begin(),
+                                                         sums);
+                            });
+
+      dealii::Tensor<1,7> results;
+      for (unsigned int i=0; i<7; ++i)
+        {
+          results[i] = sums[i][0];
+          for (unsigned int v=1; v<dealii::VectorizedArray<Number>::n_array_elements; ++v)
+            results[i] += sums[i][v];
+        }
+      dealii::Utilities::MPI::sum(dealii::ArrayView<const double>(results.begin_raw(), 7),
+                                  internal::get_block(g,0).get_partitioner()->get_mpi_communicator(),
+                                  dealii::ArrayView<double>(results.begin_raw(), 7));
+      return results;
+    }
+
+    /*
+    std::array<Number,7>
+    vmult_with_all_cg_updates(const Number alpha,
+                              const Number beta,
+                              const DiagonalMatrix<LinearAlgebra::distributed::Vector<Number>> &prec,
+                              LinearAlgebra::distributed::Vector<Number> &g,
+                              LinearAlgebra::distributed::Vector<Number> &h,
+                              LinearAlgebra::distributed::Vector<Number> &d,
+                              LinearAlgebra::distributed::Vector<Number> &x) const
     {
       Tensor<1,7,VectorizedArray<Number>> sums;
       this->data->cell_loop(&LaplaceOperator::template local_apply_linear_geo<false>,
@@ -366,18 +500,19 @@ namespace Poisson
                                                        sums);
                             });
 
-      dealii::Tensor<1,7> results;
+      std::array<Number,7> results;
       for (unsigned int i=0; i<7; ++i)
         {
           results[i] = sums[i][0];
           for (unsigned int v=1; v<dealii::VectorizedArray<Number>::n_array_elements; ++v)
             results[i] += sums[i][v];
         }
-      dealii::Utilities::MPI::sum(dealii::ArrayView<const double>(results.begin_raw(), 7),
+      dealii::Utilities::MPI::sum(dealii::ArrayView<const double>(results.data(), 7),
                                   d.get_partitioner()->get_mpi_communicator(),
-                                  dealii::ArrayView<double>(results.begin_raw(), 7));
+                                  dealii::ArrayView<double>(results.data(), 7));
       return results;
     }
+    */
 
     /**
      * Matrix-vector multiplication.
@@ -494,8 +629,9 @@ namespace Poisson
         {
           phi.reinit (cell);
           if (fe_degree > 2)
-            read_dof_values_compressed<dim,fe_degree,value_type>
-              (src, compressed_dof_indices, all_indices_uniform, cell, phi.begin_dof_values());
+            for (unsigned int bl=0; bl<internal::get_n_blocks(src); ++bl)
+              read_dof_values_compressed<dim,fe_degree,value_type>
+                (internal::get_block(src,bl), compressed_dof_indices, all_indices_uniform, cell, phi.begin_dof_values()+bl*Utilities::pow(fe_degree+1,dim));
           else
             phi.read_dof_values(src);
           phi.evaluate (false,true);
@@ -609,8 +745,9 @@ namespace Poisson
             }
 
           if (fe_degree > 2)
-            distribute_local_to_global_compressed<dim,fe_degree,Number>
-              (dst, compressed_dof_indices, all_indices_uniform, cell, phi.begin_dof_values());
+            for (unsigned int bl=0; bl<internal::get_n_blocks(src); ++bl)
+              distribute_local_to_global_compressed<dim,fe_degree,Number>
+                (internal::get_block(dst,bl), compressed_dof_indices, all_indices_uniform, cell, phi.begin_dof_values()+bl*Utilities::pow(fe_degree+1,dim));
           else
             phi.distribute_local_to_global(dst);
         }
@@ -685,8 +822,9 @@ namespace Poisson
         {
           phi.reinit (cell);
           if (fe_degree > 2)
-            read_dof_values_compressed<dim,fe_degree,value_type>
-              (src, compressed_dof_indices, all_indices_uniform, cell, phi.begin_dof_values());
+            for (unsigned int bl=0; bl<internal::get_n_blocks(src); ++bl)
+              read_dof_values_compressed<dim,fe_degree,value_type>
+                (internal::get_block(src,bl), compressed_dof_indices, all_indices_uniform, cell, phi.begin_dof_values()+bl*Utilities::pow(fe_degree+1,dim));
           else
             phi.read_dof_values(src);
           phi.evaluate (false,true);
@@ -762,8 +900,9 @@ namespace Poisson
             }
           phi.integrate (false,true);
           if (fe_degree > 2)
-            distribute_local_to_global_compressed<dim,fe_degree,Number>
-              (dst, compressed_dof_indices, all_indices_uniform, cell, phi.begin_dof_values());
+            for (unsigned int bl=0; bl<internal::get_n_blocks(src); ++bl)
+              distribute_local_to_global_compressed<dim,fe_degree,Number>
+                (internal::get_block(dst,bl), compressed_dof_indices, all_indices_uniform, cell, phi.begin_dof_values()+bl*Utilities::pow(fe_degree+1,dim));
           else
             phi.distribute_local_to_global(dst);
         }

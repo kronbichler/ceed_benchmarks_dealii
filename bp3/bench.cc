@@ -158,6 +158,7 @@ void test(const unsigned int s,
 #ifdef LIKWID_PERFMON
   LIKWID_MARKER_STOP("cg_solver");
 #endif
+  const unsigned int iterations_basic = solver_control.last_step();
 
   if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0 &&
       short_output==false)
@@ -199,6 +200,11 @@ void test(const unsigned int s,
 #ifdef LIKWID_PERFMON
   LIKWID_MARKER_STOP("cg_solver_opt");
 #endif
+  AssertThrow(solver_control.last_step() == iterations_basic,
+              ExcMessage("Iteration numbers differ " +
+                         std::to_string(solver_control.last_step())
+                         + " vs default solver "
+                         + std::to_string(iterations_basic)));
 
   SolverCGFullMerge<LinearAlgebra::distributed::Vector<double> > solver4(solver_control);
   double solver_time4 = 1e10;
@@ -224,6 +230,11 @@ void test(const unsigned int s,
 #ifdef LIKWID_PERFMON
   LIKWID_MARKER_STOP("cg_solver_optm");
 #endif
+  AssertThrow(solver_control.last_step() == iterations_basic,
+              ExcMessage("Iteration numbers differ " +
+                         std::to_string(solver_control.last_step())
+                         + " vs default solver "
+                         + std::to_string(iterations_basic)));
 
 #ifdef LIKWID_PERFMON
   LIKWID_MARKER_START("matvec");
@@ -252,10 +263,13 @@ void test(const unsigned int s,
 #endif
   const double t2 = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD).max/100;
   output_test -= input;
-  if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0 &&
-      short_output==false)
-    std::cout << "Error merged coefficient tensor:           "
-              << output_test.linfty_norm() << std::endl;
+  if (short_output == false)
+    {
+      const double norm = output_test.linfty_norm();
+      if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
+        std::cout << "Error merged coefficient tensor:           "
+                  << norm << std::endl;
+    }
 
 #ifdef LIKWID_PERFMON
   LIKWID_MARKER_START("matvec_q");
@@ -269,10 +283,13 @@ void test(const unsigned int s,
 #endif
 
   output_test -= input;
-  if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0 &&
-      short_output==false)
-    std::cout << "Error collocation evaluation of Jacobian:  "
-              << output_test.linfty_norm() << std::endl;
+  if (short_output == false)
+    {
+      const double norm = output_test.linfty_norm();
+      if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
+        std::cout << "Error collocation evaluation of Jacobian:  "
+                  << norm << std::endl;
+    }
 
 #ifdef LIKWID_PERFMON
   LIKWID_MARKER_START("matvec_merge");
@@ -287,10 +304,13 @@ void test(const unsigned int s,
 #endif
 
   output_test -= input;
-  if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0 &&
-      short_output==false)
-    std::cout << "Error trilinear interpolation of Jacobian: "
-              << output_test.linfty_norm() << std::endl;
+  if (short_output == false)
+    {
+      const double norm = output_test.linfty_norm();
+      if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
+        std::cout << "Error trilinear interpolation of Jacobian: "
+                  << norm << std::endl;
+    }
 
   if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0 &&
       short_output == true)
