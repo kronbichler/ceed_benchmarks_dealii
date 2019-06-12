@@ -204,6 +204,7 @@ namespace Mass
         (data->get_dof_handler().get_fe().dofs_per_cell);
       for (unsigned int c=0; c<data->n_macro_cells(); ++c)
         {
+          constexpr unsigned int n_lanes = VectorizedArray<Number>::n_array_elements;
           for (unsigned int l=0; l<data->n_components_filled(c); ++l)
             {
               const typename DoFHandler<dim>::cell_iterator cell
@@ -211,7 +212,6 @@ namespace Mass
               if (fe_degree > 2)
                 {
                   cell->get_dof_indices(dof_indices);
-                  constexpr unsigned int n_lanes = VectorizedArray<Number>::n_array_elements;
                   const unsigned int offset =
                     Utilities::pow(3,dim) * (n_lanes * c) + l;
                   const Utilities::MPI::Partitioner &part =
@@ -263,14 +263,13 @@ namespace Mass
                               ExcMessage("Expected (fe_degree+1)^dim dofs, got " +
                                          std::to_string(cf)));
                 }
-
-              if (fe_degree > 2)
-                {
-                  for (unsigned int i=0; i<Utilities::pow(3,dim); ++i)
-                    for (unsigned int v=0; v<VectorizedArray<Number>::n_array_elements; ++v)
-                      if (compressed_dof_indices[Utilities::pow(3,dim) * (VectorizedArray<Number>::n_array_elements * c) + i*VectorizedArray<Number>::n_array_elements + v] == numbers::invalid_unsigned_int)
-                        all_indices_uniform[Utilities::pow(3,dim) * c + i] = 0;
-                }
+            }
+          if (fe_degree > 2)
+            {
+              for (unsigned int i=0; i<Utilities::pow(3,dim); ++i)
+                for (unsigned int v=0; v<n_lanes; ++v)
+                  if (compressed_dof_indices[Utilities::pow(3,dim) * (n_lanes * c) + i*n_lanes + v] == numbers::invalid_unsigned_int)
+                    all_indices_uniform[Utilities::pow(3,dim) * c + i] = 0;
             }
         }
     }
@@ -294,6 +293,16 @@ namespace Mass
     }
 
     /**
+     * Matrix-vector multiplication.
+     */
+    void vmult_add(LinearAlgebra::distributed::Vector<Number>       &dst,
+                   const LinearAlgebra::distributed::Vector<Number> &src) const
+    {
+      this->data->cell_loop (&MassOperator::local_apply_cell,
+                             this, dst, src, false);
+    }
+
+    /**
      * Matrix-vector multiplication including the inner product (locally,
      * without communicating yet)
      */
@@ -313,19 +322,21 @@ namespace Mass
                            LinearAlgebra::distributed::Vector<Number> &h,
                            const DiagonalMatrix<LinearAlgebra::distributed::Vector<Number>> &prec,
                            const Number alpha,
-                           const Number beta) const
+                           const Number beta,
+                           const Number alpha_old,
+                           const Number beta_old) const
     {
       Tensor<1,7,VectorizedArray<Number>> sums;
-      this->data->cell_loop(&MassOperator::local_apply_cell_inner_product,
+      this->data->cell_loop(&MassOperator::local_apply_cell,
                             this, h, d,
                             [&](const unsigned int start_range,
                                 const unsigned int end_range)
                             {
-                              do_cg_update4<1,Number,true>(start_range, end_range,
-                                                           h.begin(), x.begin(), g.begin(),
-                                                           d.begin(),
-                                                           prec.get_vector().begin(),
-                                                           alpha, beta);
+                              do_cg_update4b<1,Number,true>(start_range, end_range,
+                                                            h.begin(), x.begin(), g.begin(),
+                                                            d.begin(),
+                                                            prec.get_vector().begin(),
+                                                            alpha, beta, alpha_old, beta_old);
                             },
                             [&](const unsigned int start_range,
                                 const unsigned int end_range)

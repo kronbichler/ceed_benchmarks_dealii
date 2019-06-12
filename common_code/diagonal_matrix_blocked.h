@@ -22,6 +22,12 @@ public:
       }
   }
 
+  const dealii::LinearAlgebra::distributed::Vector<Number> &
+  get_vector() const
+  {
+    return diagonal;
+  }
+
   dealii::LinearAlgebra::distributed::Vector<Number> diagonal;
 };
 

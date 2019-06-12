@@ -127,9 +127,10 @@ void test(const unsigned int s,
   Mass::MassOperator<dim,fe_degree,n_q_points> mass_operator;
   mass_operator.initialize(matrix_free, constraints);
 
-  LinearAlgebra::distributed::Vector<double> input, output;
+  LinearAlgebra::distributed::Vector<double> input, output, tmp;
   matrix_free->initialize_dof_vector(input);
   matrix_free->initialize_dof_vector(output);
+  matrix_free->initialize_dof_vector(tmp);
   for (unsigned int i=0; i<input.local_size(); ++i)
     input.local_element(i) = i%8;
 
@@ -181,6 +182,12 @@ void test(const unsigned int s,
 #ifdef LIKWID_PERFMON
   LIKWID_MARKER_STOP("cg_solver");
 #endif
+  if (short_output==false)
+    {
+      tmp.equ(-1.0, input);
+      mass_operator.vmult_add(tmp, output);
+      deallog << "True residual norm: " << tmp.l2_norm() << std::endl;
+    }
 
   if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0 &&
       short_output==false)
@@ -222,6 +229,12 @@ void test(const unsigned int s,
 #ifdef LIKWID_PERFMON
   LIKWID_MARKER_STOP("cg_solver_opt");
 #endif
+  if (short_output==false)
+    {
+      tmp.equ(-1.0, input);
+      mass_operator.vmult_add(tmp, output);
+      deallog << "True residual norm: " << tmp.l2_norm() << std::endl;
+    }
   const unsigned int solver_its2 = solver_control.last_step();
 
   SolverCGOptimizedAllreduce<LinearAlgebra::distributed::Vector<double> > solver3(solver_control);
@@ -249,6 +262,13 @@ void test(const unsigned int s,
   LIKWID_MARKER_STOP("cg_solver_optv");
 #endif
 
+  if (short_output==false)
+    {
+      tmp.equ(-1.0, input);
+      mass_operator.vmult_add(tmp, output);
+      deallog << "True residual norm: " << tmp.l2_norm() << std::endl;
+    }
+
   SolverCGFullMerge<LinearAlgebra::distributed::Vector<double> > solver4(solver_control);
   double solver_time4 = 1e10;
 #ifdef LIKWID_PERFMON
@@ -274,6 +294,13 @@ void test(const unsigned int s,
   LIKWID_MARKER_STOP("cg_solver_optm");
 #endif
 
+  if (short_output==false)
+    {
+      tmp.equ(-1.0, input);
+      mass_operator.vmult_add(tmp, output);
+      deallog << "True residual norm: " << tmp.l2_norm() << std::endl;
+    }
+
 #ifdef LIKWID_PERFMON
   LIKWID_MARKER_START("matvec");
 #endif
@@ -282,7 +309,7 @@ void test(const unsigned int s,
     {
       time.restart();
       for (unsigned int i=0; i<50; ++i)
-        mass_operator.vmult(input, output);
+        mass_operator.vmult(tmp, output);
       data = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD);
       matvec_time = std::min(data.max/50, matvec_time);
     }

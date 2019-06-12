@@ -113,41 +113,6 @@ namespace Poisson
           }
       return sum;
     }
-
-    template <typename VectorType>
-    unsigned int get_n_blocks(const VectorType &)
-    {
-      return 1;
-    }
-
-    template <typename VectorType>
-    VectorType& get_block(VectorType &vec,
-                          const unsigned int )
-    {
-      return vec;
-    }
-
-    template <typename Number>
-    unsigned int get_n_blocks(const LinearAlgebra::distributed::BlockVector<Number> &vec)
-    {
-      return vec.n_blocks();
-    }
-
-    template <typename Number>
-    const LinearAlgebra::distributed::Vector<Number>&
-    get_block(const LinearAlgebra::distributed::BlockVector<Number> &vec,
-              const unsigned int block)
-    {
-      return vec.block(block);
-    }
-
-    template <typename Number>
-    LinearAlgebra::distributed::Vector<Number>&
-    get_block(LinearAlgebra::distributed::BlockVector<Number> &vec,
-              const unsigned int block)
-    {
-      return vec.block(block);
-    }
   }
 
 
@@ -357,6 +322,17 @@ namespace Poisson
     }
 
     /**
+     * Matrix-vector multiplication.
+     */
+    void vmult_add(VectorType &dst,
+                   const VectorType &src) const
+    {
+      this->data->cell_loop (&LaplaceOperator::template local_apply_linear_geo<false>,
+                             this, dst, src, false);
+      internal::set_constrained_entries(data->get_constrained_dofs(0), src, dst);
+    }
+
+    /**
      * Matrix-vector multiplication including the inner product (locally,
      * without communicating yet)
      */
@@ -378,7 +354,9 @@ namespace Poisson
                            VectorType &h,
                            const DiagonalMatrix<LinearAlgebra::distributed::Vector<Number>> &prec,
                            const Number alpha,
-                           const Number beta) const
+                           const Number beta,
+                           const Number alpha_old,
+                           const Number beta_old) const
     {
       Tensor<1,7,VectorizedArray<Number>> sums;
       this->data->cell_loop(&LaplaceOperator::template local_apply_linear_geo<false>,
@@ -386,23 +364,23 @@ namespace Poisson
                             [&](const unsigned int start_range,
                                 const unsigned int end_range)
                             {
-                              for (unsigned int bl=0; bl<internal::get_n_blocks(x); ++bl)
-                                do_cg_update4<1,Number,true>(start_range, end_range,
-                                                             internal::get_block(h,bl).begin(),
-                                                             internal::get_block(x,bl).begin(),
-                                                             internal::get_block(g,bl).begin(),
-                                                             internal::get_block(d,bl).begin(),
-                                                             prec.get_vector().begin(),
-                                                             alpha, beta);
+                              for (unsigned int bl=0; bl<::internal::get_n_blocks(x); ++bl)
+                                do_cg_update4b<1,Number,true>(start_range, end_range,
+                                                              ::internal::get_block(h,bl).begin(),
+                                                              ::internal::get_block(x,bl).begin(),
+                                                              ::internal::get_block(g,bl).begin(),
+                                                              ::internal::get_block(d,bl).begin(),
+                                                              prec.get_vector().begin(),
+                                                              alpha, beta, alpha_old, beta_old);
                             },
                             [&](const unsigned int start_range,
                                 const unsigned int end_range)
                             {
-                              for (unsigned int bl=0; bl<internal::get_n_blocks(x); ++bl)
+                              for (unsigned int bl=0; bl<::internal::get_n_blocks(x); ++bl)
                                 do_cg_update3b<1,Number>(start_range, end_range,
-                                                         internal::get_block(g,bl).begin(),
-                                                         internal::get_block(d,bl).begin(),
-                                                         internal::get_block(h,bl).begin(),
+                                                         ::internal::get_block(g,bl).begin(),
+                                                         ::internal::get_block(d,bl).begin(),
+                                                         ::internal::get_block(h,bl).begin(),
                                                          prec.get_vector().begin(),
                                                          sums);
                             });
@@ -415,7 +393,7 @@ namespace Poisson
             results[i] += sums[i][v];
         }
       dealii::Utilities::MPI::sum(dealii::ArrayView<const double>(results.begin_raw(), 7),
-                                  internal::get_block(g,0).get_partitioner()->get_mpi_communicator(),
+                                  ::internal::get_block(g,0).get_partitioner()->get_mpi_communicator(),
                                   dealii::ArrayView<double>(results.begin_raw(), 7));
       return results;
     }
@@ -427,7 +405,9 @@ namespace Poisson
                            VectorType &h,
                            const DiagonalMatrixBlocked<dim,Number> &prec,
                            const Number alpha,
-                           const Number beta) const
+                           const Number beta,
+                           const Number alpha_old,
+                           const Number beta_old) const
     {
       Tensor<1,7,VectorizedArray<Number>> sums;
       this->data->cell_loop(&LaplaceOperator::template local_apply_linear_geo<false>,
@@ -435,23 +415,23 @@ namespace Poisson
                             [&](const unsigned int start_range,
                                 const unsigned int end_range)
                             {
-                              for (unsigned int bl=0; bl<internal::get_n_blocks(x); ++bl)
-                                do_cg_update4<1,Number,true>(start_range, end_range,
-                                                             internal::get_block(h,bl).begin(),
-                                                             internal::get_block(x,bl).begin(),
-                                                             internal::get_block(g,bl).begin(),
-                                                             internal::get_block(d,bl).begin(),
-                                                             prec.diagonal.begin(),
-                                                             alpha, beta);
+                              for (unsigned int bl=0; bl<::internal::get_n_blocks(x); ++bl)
+                                do_cg_update4b<1,Number,true>(start_range, end_range,
+                                                              ::internal::get_block(h,bl).begin(),
+                                                              ::internal::get_block(x,bl).begin(),
+                                                              ::internal::get_block(g,bl).begin(),
+                                                              ::internal::get_block(d,bl).begin(),
+                                                              prec.diagonal.begin(),
+                                                              alpha, beta, alpha_old, beta_old);
                             },
                             [&](const unsigned int start_range,
                                 const unsigned int end_range)
                             {
-                              for (unsigned int bl=0; bl<internal::get_n_blocks(x); ++bl)
+                              for (unsigned int bl=0; bl<::internal::get_n_blocks(x); ++bl)
                                 do_cg_update3b<1,Number>(start_range, end_range,
-                                                         internal::get_block(g,bl).begin(),
-                                                         internal::get_block(d,bl).begin(),
-                                                         internal::get_block(h,bl).begin(),
+                                                         ::internal::get_block(g,bl).begin(),
+                                                         ::internal::get_block(d,bl).begin(),
+                                                         ::internal::get_block(h,bl).begin(),
                                                          prec.diagonal.begin(),
                                                          sums);
                             });
@@ -464,7 +444,7 @@ namespace Poisson
             results[i] += sums[i][v];
         }
       dealii::Utilities::MPI::sum(dealii::ArrayView<const double>(results.begin_raw(), 7),
-                                  internal::get_block(g,0).get_partitioner()->get_mpi_communicator(),
+                                  ::internal::get_block(g,0).get_partitioner()->get_mpi_communicator(),
                                   dealii::ArrayView<double>(results.begin_raw(), 7));
       return results;
     }
@@ -629,9 +609,9 @@ namespace Poisson
         {
           phi.reinit (cell);
           if (fe_degree > 2)
-            for (unsigned int bl=0; bl<internal::get_n_blocks(src); ++bl)
+            for (unsigned int bl=0; bl<::internal::get_n_blocks(src); ++bl)
               read_dof_values_compressed<dim,fe_degree,value_type>
-                (internal::get_block(src,bl), compressed_dof_indices, all_indices_uniform, cell, phi.begin_dof_values()+bl*Utilities::pow(fe_degree+1,dim));
+                (::internal::get_block(src,bl), compressed_dof_indices, all_indices_uniform, cell, phi.begin_dof_values()+bl*Utilities::pow(fe_degree+1,dim));
           else
             phi.read_dof_values(src);
           phi.evaluate (false,true);
@@ -745,9 +725,9 @@ namespace Poisson
             }
 
           if (fe_degree > 2)
-            for (unsigned int bl=0; bl<internal::get_n_blocks(src); ++bl)
+            for (unsigned int bl=0; bl<::internal::get_n_blocks(src); ++bl)
               distribute_local_to_global_compressed<dim,fe_degree,Number>
-                (internal::get_block(dst,bl), compressed_dof_indices, all_indices_uniform, cell, phi.begin_dof_values()+bl*Utilities::pow(fe_degree+1,dim));
+                (::internal::get_block(dst,bl), compressed_dof_indices, all_indices_uniform, cell, phi.begin_dof_values()+bl*Utilities::pow(fe_degree+1,dim));
           else
             phi.distribute_local_to_global(dst);
         }
@@ -822,9 +802,9 @@ namespace Poisson
         {
           phi.reinit (cell);
           if (fe_degree > 2)
-            for (unsigned int bl=0; bl<internal::get_n_blocks(src); ++bl)
+            for (unsigned int bl=0; bl<::internal::get_n_blocks(src); ++bl)
               read_dof_values_compressed<dim,fe_degree,value_type>
-                (internal::get_block(src,bl), compressed_dof_indices, all_indices_uniform, cell, phi.begin_dof_values()+bl*Utilities::pow(fe_degree+1,dim));
+                (::internal::get_block(src,bl), compressed_dof_indices, all_indices_uniform, cell, phi.begin_dof_values()+bl*Utilities::pow(fe_degree+1,dim));
           else
             phi.read_dof_values(src);
           phi.evaluate (false,true);
@@ -900,9 +880,9 @@ namespace Poisson
             }
           phi.integrate (false,true);
           if (fe_degree > 2)
-            for (unsigned int bl=0; bl<internal::get_n_blocks(src); ++bl)
+            for (unsigned int bl=0; bl<::internal::get_n_blocks(src); ++bl)
               distribute_local_to_global_compressed<dim,fe_degree,Number>
-                (internal::get_block(dst,bl), compressed_dof_indices, all_indices_uniform, cell, phi.begin_dof_values()+bl*Utilities::pow(fe_degree+1,dim));
+                (::internal::get_block(dst,bl), compressed_dof_indices, all_indices_uniform, cell, phi.begin_dof_values()+bl*Utilities::pow(fe_degree+1,dim));
           else
             phi.distribute_local_to_global(dst);
         }

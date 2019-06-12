@@ -115,10 +115,10 @@ void test(const unsigned int s,
                            LinearAlgebra::distributed::Vector<double> > laplace_operator;
   laplace_operator.initialize(matrix_free, constraints);
 
-  LinearAlgebra::distributed::Vector<double> input, output, output_test;
+  LinearAlgebra::distributed::Vector<double> input, output, tmp;
   laplace_operator.initialize_dof_vector(input);
   laplace_operator.initialize_dof_vector(output);
-  laplace_operator.initialize_dof_vector(output_test);
+  laplace_operator.initialize_dof_vector(tmp);
   for (unsigned int i=0; i<input.local_size(); ++i)
     if (!constraints.is_constrained(input.get_partitioner()->local_to_global(i)))
       input.local_element(i) = (i)%8;
@@ -158,6 +158,12 @@ void test(const unsigned int s,
 #ifdef LIKWID_PERFMON
   LIKWID_MARKER_STOP("cg_solver");
 #endif
+  if (short_output==false)
+    {
+      tmp.equ(-1.0, input);
+      laplace_operator.vmult_add(tmp, output);
+      deallog << "True residual norm: " << tmp.l2_norm() << std::endl;
+    }
   const unsigned int iterations_basic = solver_control.last_step();
 
   if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0 &&
@@ -200,6 +206,12 @@ void test(const unsigned int s,
 #ifdef LIKWID_PERFMON
   LIKWID_MARKER_STOP("cg_solver_opt");
 #endif
+  if (short_output==false)
+    {
+      tmp.equ(-1.0, input);
+      laplace_operator.vmult_add(tmp, output);
+      deallog << "True residual norm: " << tmp.l2_norm() << std::endl;
+    }
   AssertThrow(solver_control.last_step() == iterations_basic,
               ExcMessage("Iteration numbers differ " +
                          std::to_string(solver_control.last_step())
@@ -230,6 +242,12 @@ void test(const unsigned int s,
 #ifdef LIKWID_PERFMON
   LIKWID_MARKER_STOP("cg_solver_optm");
 #endif
+  if (short_output==false)
+    {
+      tmp.equ(-1.0, input);
+      laplace_operator.vmult_add(tmp, output);
+      deallog << "True residual norm: " << tmp.l2_norm() << std::endl;
+    }
   AssertThrow(solver_control.last_step() == iterations_basic,
               ExcMessage("Iteration numbers differ " +
                          std::to_string(solver_control.last_step())
@@ -257,15 +275,15 @@ void test(const unsigned int s,
 #endif
   time.restart();
   for (unsigned int i=0; i<100; ++i)
-    laplace_operator.vmult_basic(output_test, output);
+    laplace_operator.vmult_basic(tmp, output);
 #ifdef LIKWID_PERFMON
   LIKWID_MARKER_STOP("matvec_basic");
 #endif
   const double t2 = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD).max/100;
-  output_test -= input;
+  tmp -= input;
   if (short_output == false)
     {
-      const double norm = output_test.linfty_norm();
+      const double norm = tmp.linfty_norm();
       if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
         std::cout << "Error merged coefficient tensor:           "
                   << norm << std::endl;
@@ -276,16 +294,16 @@ void test(const unsigned int s,
 #endif
   time.restart();
   for (unsigned int i=0; i<100; ++i)
-    laplace_operator.vmult_construct_q(output_test, output);
+    laplace_operator.vmult_construct_q(tmp, output);
   const double t3 = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD).max/100;
 #ifdef LIKWID_PERFMON
   LIKWID_MARKER_STOP("matvec_q");
 #endif
 
-  output_test -= input;
+  tmp -= input;
   if (short_output == false)
     {
-      const double norm = output_test.linfty_norm();
+      const double norm = tmp.linfty_norm();
       if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
         std::cout << "Error collocation evaluation of Jacobian:  "
                   << norm << std::endl;
@@ -296,17 +314,17 @@ void test(const unsigned int s,
 #endif
   time.restart();
   for (unsigned int i=0; i<100; ++i)
-    laplace_operator.vmult_merged(output_test, output);
+    laplace_operator.vmult_merged(tmp, output);
   const double t4 = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD).max/100;
 
 #ifdef LIKWID_PERFMON
   LIKWID_MARKER_STOP("matvec_merge");
 #endif
 
-  output_test -= input;
+  tmp -= input;
   if (short_output == false)
     {
-      const double norm = output_test.linfty_norm();
+      const double norm = tmp.linfty_norm();
       if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
         std::cout << "Error trilinear interpolation of Jacobian: "
                   << norm << std::endl;
