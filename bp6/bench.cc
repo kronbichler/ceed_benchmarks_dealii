@@ -18,6 +18,8 @@
 #include "../common_code/poisson_operator.h"
 #include "../common_code/diagonal_matrix_blocked.h"
 #include "../common_code/solver_cg_optimized.h"
+#include "../common_code/renumber_dofs_for_mf.h"
+
 
 using namespace dealii;
 
@@ -66,21 +68,34 @@ void test(const unsigned int s,
   VectorTools::interpolate_boundary_values(dof_handler, 0, ZeroFunction<dim>(),
                                            constraints);
   constraints.close();
+  typename MatrixFree<dim,double>::AdditionalData mf_data;
+
+  // renumber Dofs to minimize the number of partitions in import indices of
+  // partitioner
+  renumber_dofs_mf<dim,double>(dof_handler, constraints, mf_data);
+
+  DoFTools::extract_locally_relevant_dofs(dof_handler, relevant_dofs);
+  constraints.clear();
+  constraints.reinit(relevant_dofs);
+  VectorTools::interpolate_boundary_values(dof_handler, 0, ZeroFunction<dim>(),
+                                           constraints);
+  constraints.close();
+
   std::shared_ptr<MatrixFree<dim,double> > matrix_free(new MatrixFree<dim,double>());
   matrix_free->reinit(dof_handler, constraints, QGaussLobatto<1>(n_q_points),
                       typename MatrixFree<dim,double>::AdditionalData());
 
   Poisson::LaplaceOperator<dim,fe_degree,n_q_points,dim,double,
                            LinearAlgebra::distributed::BlockVector<double> > laplace_operator;
-  laplace_operator.initialize(matrix_free);
+  laplace_operator.initialize(matrix_free, constraints);
 
-  LinearAlgebra::distributed::BlockVector<double> input, output, output_test;
+  LinearAlgebra::distributed::BlockVector<double> input, output, tmp;
   input.reinit(dim);
   laplace_operator.initialize_dof_vector(input);
   output.reinit(dim);
   laplace_operator.initialize_dof_vector(output);
-  output_test.reinit(dim);
-  laplace_operator.initialize_dof_vector(output_test);
+  tmp.reinit(dim);
+  laplace_operator.initialize_dof_vector(tmp);
   for (unsigned int d=0; d<dim; ++d)
     for (unsigned int i=0; i<input.block(0).local_size(); ++i)
       if (!constraints.is_constrained(input.block(0).get_partitioner()->local_to_global(i)))
@@ -124,6 +139,12 @@ void test(const unsigned int s,
       data = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD);
       solver_time = std::min(data.max, solver_time);
     }
+  if (short_output==false)
+    {
+      tmp.equ(-1.0, input);
+      laplace_operator.vmult_add(tmp, output);
+      deallog << "True residual norm: " << tmp.l2_norm() << std::endl;
+    }
 
   if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0 &&
       short_output==false)
@@ -159,6 +180,43 @@ void test(const unsigned int s,
       data = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD);
       solver_time2 = std::min(data.max, solver_time2);
     }
+  if (short_output==false)
+    {
+      tmp.equ(-1.0, input);
+      laplace_operator.vmult_add(tmp, output);
+      deallog << "True residual norm: " << tmp.l2_norm() << std::endl;
+    }
+
+  SolverCGFullMerge<LinearAlgebra::distributed::BlockVector<double> > solver4(solver_control);
+  double solver_time4 = 1e10;
+#ifdef LIKWID_PERFMON
+  LIKWID_MARKER_START("cg_solver_optm");
+#endif
+  for (unsigned int t=0; t<4; ++t)
+    {
+      output = 0;
+      time.restart();
+      try
+        {
+          solver4.solve(laplace_operator, output, input, diag_mat);
+        }
+      catch (SolverControl::NoConvergence &e)
+        {
+          // prevent the solver to throw an exception in case we should need more
+          // than 100 iterations
+        }
+      data = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD);
+      solver_time4 = std::min(data.max, solver_time4);
+    }
+#ifdef LIKWID_PERFMON
+  LIKWID_MARKER_STOP("cg_solver_optm");
+#endif
+  if (short_output==false)
+    {
+      tmp.equ(-1.0, input);
+      laplace_operator.vmult_add(tmp, output);
+      deallog << "True residual norm: " << tmp.l2_norm() << std::endl;
+    }
 
   double matvec_time = 1e10;
   for (unsigned int t=0; t<2; ++t)
@@ -173,33 +231,42 @@ void test(const unsigned int s,
 #ifdef SHOW_VARIANTS
   time.restart();
   for (unsigned int i=0; i<100; ++i)
-    laplace_operator.vmult_basic(output_test, output);
+    laplace_operator.vmult_basic(tmp, output);
   const double t2 = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD).max/100;
-  output_test -= input;
-  if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0 &&
-      short_output==false)
-    std::cout << "Error merged coefficient tensor:           "
-              << output_test.linfty_norm() << std::endl;
+  tmp -= input;
+  if (short_output == false)
+    {
+      const double norm = tmp.linfty_norm();
+      if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
+        std::cout << "Error merged coefficient tensor:           "
+                  << norm << std::endl;
+    }
 
   time.restart();
   for (unsigned int i=0; i<100; ++i)
-    laplace_operator.vmult_construct_q(output_test, output);
+    laplace_operator.vmult_construct_q(tmp, output);
   const double t3 = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD).max/100;
-  output_test -= input;
-  if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0 &&
-      short_output==false)
-    std::cout << "Error collocation evaluation of Jacobian:  "
-              << output_test.linfty_norm() << std::endl;
+  tmp -= input;
+  if (short_output == false)
+    {
+      const double norm = tmp.linfty_norm();
+      if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
+        std::cout << "Error collocation evaluation of Jacobian:  "
+                  << norm << std::endl;
+    }
 
   time.restart();
   for (unsigned int i=0; i<100; ++i)
-    laplace_operator.vmult_merged(output_test, output);
+    laplace_operator.vmult_merged(tmp, output);
   const double t4 = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD).max/100;
-  output_test -= input;
-  if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0 &&
-      short_output==false)
-    std::cout << "Error trilinear interpolation of Jacobian: "
-              << output_test.linfty_norm() << std::endl;
+  tmp -= input;
+  if (short_output == false)
+    {
+      const double norm = tmp.linfty_norm();
+      if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
+        std::cout << "Error trilinear interpolation of Jacobian: "
+                  << norm << std::endl;
+    }
 #endif
 
   if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0 &&
@@ -210,6 +277,7 @@ void test(const unsigned int s,
               << " | " << std::setw(11) << solver_time/solver_control.last_step()
               << " | " << std::setw(11) << dim*dof_handler.n_dofs()/solver_time2*solver_control.last_step()
               << " | " << std::setw(11) << solver_time2/solver_control.last_step()
+              << " | " << std::setw(11) << solver_time4/solver_control.last_step()
               << " | " << std::setw(4) << solver_control.last_step()
               << " | " << std::setw(11) << matvec_time
 #ifdef SHOW_VARIANTS
@@ -227,17 +295,17 @@ void do_test(const int s_in,
 {
   if (s_in < 1)
     {
-      unsigned int s =
-        std::max(3U, static_cast<unsigned int>
-                 (std::log2(1024/fe_degree/fe_degree/fe_degree)));
+      unsigned int s = 1+std::log2(Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD));
+        //std::max(3U, static_cast<unsigned int>
+        //         (std::log2(1024/fe_degree/fe_degree/fe_degree)));
       if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
 #ifdef SHOW_VARIANTS
-        std::cout << " p |  q | n_element |     n_dofs |     time/it |   dofs/s/it | opt_time/it | itCG | time/matvec | timeMVmerge | timeMVcompu | timeMVmerged"
+        std::cout << " p |  q | n_element |     n_dofs |     time/it |   dofs/s/it | opt_time/it | opm_time/it | itCG | time/matvec | timeMVmerge | timeMVcompu | timeMVmerged"
                   << std::endl;
 #else
-      std::cout << " p |  q | n_element |     n_dofs |     time/it |   dofs/s/it | opt_time/it | itCG | time/matvec"
+      std::cout << " p |  q | n_element |     n_dofs |     time/it |   dofs/s/it | opt_time/it | opm_time/it | itCG | time/matvec"
 #endif
-                  << std::endl;
+                << std::endl;
       while (Utilities::fixed_power<dim>(fe_degree+1)*(1UL<<s)*dim
              < 6000000ULL*Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD))
         {
@@ -254,6 +322,11 @@ void do_test(const int s_in,
 
 int main(int argc, char** argv)
 {
+#ifdef LIKWID_PERFMON
+  LIKWID_MARKER_INIT;
+  LIKWID_MARKER_THREADINIT;
+#endif
+
   Utilities::MPI::MPI_InitFinalize mpi(argc, argv, 1);
 
   unsigned int degree = 1;
@@ -290,6 +363,10 @@ int main(int argc, char** argv)
     do_test<3,11,12>(s, compact_output);
   else
     AssertThrow(false, ExcMessage("Only degrees up to 11 implemented"));
+
+#ifdef LIKWID_PERFMON
+  LIKWID_MARKER_CLOSE;
+#endif
 
   return 0;
 }
