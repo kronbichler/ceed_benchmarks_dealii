@@ -21,7 +21,7 @@ void read_dof_values_compressed(const dealii::LinearAlgebra::distributed::Vector
     cell_no * n_lanes * dealii::Utilities::pow(3, dim);
   const unsigned char *unconstrained = all_indices_unconstrained.data() +
     cell_no * dealii::Utilities::pow(3, dim);
-  dealii::internal::VectorReader<Number> reader;
+  dealii::internal::VectorReader<Number,dealii::VectorizedArray<Number>> reader;
   // vertex dofs
   for (unsigned int i2=0; i2<(dim==3?2:1); ++i2)
     for (unsigned int i1=0; i1<2; ++i1)
@@ -252,7 +252,7 @@ void distribute_local_to_global_compressed
     cell_no * n_lanes * dealii::Utilities::pow(3, dim);
   const unsigned char *unconstrained = all_indices_unconstrained.data() +
     cell_no * dealii::Utilities::pow(3, dim);
-  dealii::internal::VectorDistributorLocalToGlobal<Number> distributor;
+  dealii::internal::VectorDistributorLocalToGlobal<Number,dealii::VectorizedArray<Number>> distributor;
 
   // vertex dofs
   for (unsigned int i2=0; i2<(dim==3?2:1); ++i2)
