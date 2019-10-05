@@ -23,7 +23,7 @@ namespace Mass
 
   // general mass matrix operator for block case
   template <int dim, int fe_degree, int n_q_points_1d = fe_degree+1, int n_components_ = 1,
-            typename Number = double>
+            typename Number = double, typename VectorizedArrayType = VectorizedArray<Number>>
   class MassOperator
   {
   public:
@@ -142,7 +142,7 @@ namespace Mass
           for (unsigned int q=0; q<phi.n_q_points; ++q)
             phi.submit_value (phi.get_value(q), q);
           phi.integrate (true,false);
-          VectorizedArray<Number> local_sum = VectorizedArray<Number>();
+          VectorizedArrayType local_sum = VectorizedArrayType();
           for (unsigned int i=0; i<Utilities::pow(fe_degree+1,dim)*n_components; ++i)
             local_sum += phi.begin_dof_values()[i] * phi_read.begin_dof_values()[i];
           phi.distribute_local_to_global (dst);
@@ -194,7 +194,7 @@ namespace Mass
       if (fe_degree > 2)
         {
           compressed_dof_indices.resize(Utilities::pow(3,dim) *
-                                        VectorizedArray<Number>::n_array_elements *
+                                        VectorizedArrayType::n_array_elements *
                                         data->n_macro_cells(),
                                         numbers::invalid_unsigned_int);
           all_indices_uniform.resize(Utilities::pow(3,dim) *
@@ -204,7 +204,7 @@ namespace Mass
         (data->get_dof_handler().get_fe().dofs_per_cell);
       for (unsigned int c=0; c<data->n_macro_cells(); ++c)
         {
-          constexpr unsigned int n_lanes = VectorizedArray<Number>::n_array_elements;
+          constexpr unsigned int n_lanes = VectorizedArrayType::n_array_elements;
           for (unsigned int l=0; l<data->n_components_filled(c); ++l)
             {
               const typename DoFHandler<dim>::cell_iterator cell
@@ -326,7 +326,7 @@ namespace Mass
                            const Number alpha_old,
                            const Number beta_old) const
     {
-      Tensor<1,7,VectorizedArray<Number>> sums;
+      Tensor<1,7,VectorizedArrayType> sums;
       this->data->cell_loop(&MassOperator::local_apply_cell,
                             this, h, d,
                             [&](const unsigned int start_range,
@@ -351,7 +351,7 @@ namespace Mass
       for (unsigned int i=0; i<7; ++i)
         {
           results[i] = sums[i][0];
-          for (unsigned int v=1; v<dealii::VectorizedArray<Number>::n_array_elements; ++v)
+          for (unsigned int v=1; v<dealii::VectorizedArrayType::n_array_elements; ++v)
             results[i] += sums[i][v];
         }
       dealii::Utilities::MPI::sum(dealii::ArrayView<const double>(results.begin_raw(), 7),
@@ -421,7 +421,7 @@ namespace Mass
           for (unsigned int q=0; q<phi.n_q_points; ++q)
             phi.submit_value (phi.get_value(q), q);
           phi.integrate (true,false);
-          VectorizedArray<Number> local_sum = VectorizedArray<Number>();
+          VectorizedArrayType local_sum = VectorizedArrayType();
           for (unsigned int i=0; i<Utilities::pow(fe_degree+1,dim); ++i)
             local_sum += phi.begin_dof_values()[i] * phi_read.begin_dof_values()[i];
           phi.distribute_local_to_global (dst);
