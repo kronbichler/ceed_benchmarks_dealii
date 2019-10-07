@@ -1,8 +1,6 @@
 
 #include <deal.II/base/timer.h>
 #include <deal.II/distributed/tria.h>
-#include <deal.II/distributed/fully_distributed_tria.h>
-#include <deal.II/distributed/fully_distributed_tria_util.h>
 #include <deal.II/fe/fe_system.h>
 #include <deal.II/fe/fe_q.h>
 #include <deal.II/grid/grid_generator.h>

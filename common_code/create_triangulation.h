@@ -1,6 +1,9 @@
 #ifndef create_triangulation_h_
 #define create_triangulation_h_
 
+#include <deal.II/distributed/fully_distributed_tria.h>
+#include <deal.II/distributed/fully_distributed_tria_util.h>
+
 template<int dim, int spacedim = dim>
 std::shared_ptr<parallel::TriangulationBase<dim, spacedim> > create_triangulation(const unsigned int s, MyManifold<dim> & manifold, const bool use_pft = false)
 {

@@ -25,10 +25,12 @@
 
 using namespace dealii;
 
+#include "../common_code/create_triangulation.h"
+
 // VERSION:
 //   0: p:d:t + vectorized over elements; 
 //   1: p:f:t + vectorized within element (not optimized)
-#define VERSION 1 
+#define VERSION 0 
 
 #if VERSION == 0
   typedef dealii::VectorizedArray<double> VectorizedArrayType;
@@ -49,32 +51,13 @@ void test(const unsigned int s,
     deallog.depth_console(2);
 
   Timer time;
-  const unsigned int n_refine = s/3;
-  const unsigned int remainder = s%3;
-  Point<dim> p2;
-  for (unsigned int d=0; d<remainder; ++d)
-    p2[d] = 2;
-  for (unsigned int d=remainder; d<dim; ++d)
-    p2[d] = 1;
-
   MyManifold<dim> manifold;
-  parallel::distributed::Triangulation<dim> tria(MPI_COMM_WORLD);
-  std::vector<unsigned int> subdivisions(dim, 1);
-  for (unsigned int d=0; d<remainder; ++d)
-    subdivisions[d] = 2;
-  GridGenerator::subdivided_hyper_rectangle(tria, subdivisions, Point<dim>(), p2);
-
-  GridTools::transform(std::bind(&MyManifold<dim>::push_forward, manifold,
-                                 std::placeholders::_1),
-                       tria);
-  tria.set_all_manifold_ids(1);
-  tria.set_manifold(1, manifold);
-
-  tria.refine_global(n_refine);
+  
+  const auto tria = create_triangulation(s, manifold, VERSION);
 
   FE_Q<dim> fe(fe_degree);
   MappingQGeneric<dim> mapping(std::min(fe_degree, 6));
-  DoFHandler<dim> dof_handler(tria);
+  DoFHandler<dim> dof_handler(*tria);
   dof_handler.distribute_dofs(fe);
 
   AffineConstraints<double> constraints;
@@ -329,7 +312,7 @@ void test(const unsigned int s,
 
   if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
     std::cout << std::setw(2) << fe_degree << " | " << std::setw(2) << n_q_points
-              << " | " << std::setw(10) << tria.n_global_active_cells()
+              << " | " << std::setw(10) << tria->n_global_active_cells()
               << " | " << std::setw(11) << dof_handler.n_dofs()
               << " | " << std::setw(11) << solver_time/solver_control.last_step()
               << " | " << std::setw(11) << dof_handler.n_dofs()/solver_time2*solver_control.last_step()
