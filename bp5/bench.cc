@@ -15,19 +15,18 @@
 #include <deal.II/matrix_free/fe_evaluation.h>
 #include <deal.II/matrix_free/operators.h>
 #include <deal.II/numerics/vector_tools.h>
-
 #include "../common_code/curved_manifold.h"
 #include "../common_code/poisson_operator.h"
 #include "../common_code/solver_cg_optimized.h"
 #include "../common_code/renumber_dofs_for_mf.h"
 
-
 #ifdef LIKWID_PERFMON
 #include <likwid.h>
 #endif
 
-
 using namespace dealii;
+
+#include "../common_code/create_triangulation.h"
 
 // VERSION:
 //   0: p:d:t + vectorized over elements; 
@@ -39,6 +38,7 @@ using namespace dealii;
 #elif VERSION == 1
   typedef dealii::VectorizedArray<double, 1> VectorizedArrayType;
 #endif
+  
 
 
 template <int dim, int fe_degree, int n_q_points>
@@ -53,54 +53,12 @@ void test(const unsigned int s,
     deallog.depth_console(2);
 
   Timer time;
-  const unsigned int n_refine = s/3;
-  const unsigned int remainder = s%3;
-  Point<dim> p2;
-  for (unsigned int d=0; d<remainder; ++d)
-    p2[d] = 2;
-  for (unsigned int d=remainder; d<dim; ++d)
-    p2[d] = 1;
-
   MyManifold<dim> manifold;
-  std::vector<unsigned int> subdivisions(dim, 1);
-  for (unsigned int d=0; d<remainder; ++d)
-    subdivisions[d] = 2;
-#if VERSION == 0
-  parallel::distributed::Triangulation<dim> tria(MPI_COMM_WORLD);
-  GridGenerator::subdivided_hyper_rectangle(tria, subdivisions, Point<dim>(), p2);
-  GridTools::transform(std::bind(&MyManifold<dim>::push_forward, manifold,
-                                 std::placeholders::_1),
-                       tria);
-  tria.set_all_manifold_ids(1);
-  tria.set_manifold(1, manifold);
-  tria.refine_global(n_refine);
-#elif VERSION == 1
-  dealii::Triangulation<dim> tria_serial;
-  GridGenerator::subdivided_hyper_rectangle(tria_serial, subdivisions, Point<dim>(), p2);
-  GridTools::transform(std::bind(&MyManifold<dim>::push_forward, manifold,
-                                 std::placeholders::_1),
-                       tria_serial);
-  tria_serial.set_all_manifold_ids(1);
-  tria_serial.set_manifold(1, manifold);
-  tria_serial.refine_global(n_refine);
   
-  {
-    const unsigned int n_procs = Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD);
-    const unsigned int n_cells_per_process = (tria_serial.n_active_cells() + n_procs) / n_procs;
-    
-    // partition equally the active cells
-    for(auto cell : tria_serial.active_cell_iterators ())
-      cell->set_subdomain_id (cell->active_cell_index() / n_cells_per_process);
-  }  
-  
-  const auto cd = parallel::fullydistributed::Utilities::create_construction_data_from_triangulation(tria_serial, MPI_COMM_WORLD);
-  
-  parallel::fullydistributed::Triangulation<dim> tria(MPI_COMM_WORLD);
-  tria.create_triangulation(cd);
-#endif
+  const auto tria = create_triangulation(s, manifold, VERSION);
 
   FE_Q<dim> fe_q(fe_degree);
-  DoFHandler<dim> dof_handler(tria);
+  DoFHandler<dim> dof_handler(*tria);
   dof_handler.distribute_dofs(fe_q);
 
   AffineConstraints<double> constraints;
@@ -361,7 +319,7 @@ void test(const unsigned int s,
   if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0 &&
       short_output == true)
     std::cout << std::setw(2) << fe_degree << " | " << std::setw(2) << n_q_points
-              << " |" << std::setw(10) << tria.n_global_active_cells()
+              << " |" << std::setw(10) << tria->n_global_active_cells()
               << " |" << std::setw(11) << dof_handler.n_dofs()
               << " | " << std::setw(11) << solver_time/solver_control.last_step()
               << " | " << std::setw(11) << dof_handler.n_dofs()/solver_time2*solver_control.last_step()
