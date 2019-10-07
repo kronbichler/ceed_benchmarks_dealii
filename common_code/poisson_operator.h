@@ -122,7 +122,7 @@ namespace Poisson
 
   template <int dim, int fe_degree, int n_q_points_1d = fe_degree+1, int n_components_ = 1,
             typename Number = double,
-            typename VectorType = LinearAlgebra::distributed::Vector<Number> >
+            typename VectorType = LinearAlgebra::distributed::Vector<Number>, typename VectorizedArrayType = VectorizedArray<Number>>
   class LaplaceOperator
   {
   public:
@@ -149,7 +149,7 @@ namespace Poisson
     /**
      * Initialize function.
      */
-    void initialize(std::shared_ptr<const MatrixFree<dim,Number> > data_,
+    void initialize(std::shared_ptr<const MatrixFree<dim,Number, VectorizedArrayType> > data_,
                     const AffineConstraints<double> &constraints)
     {
       this->data = data_;
@@ -162,7 +162,7 @@ namespace Poisson
       if (fe_degree > 2)
         {
           compressed_dof_indices.resize(Utilities::pow(3,dim) *
-                                        VectorizedArray<Number>::n_array_elements *
+                                        VectorizedArrayType::n_array_elements *
                                         data->n_macro_cells(),
                                         numbers::invalid_unsigned_int);
           all_indices_uniform.resize(Utilities::pow(3,dim) *
@@ -232,7 +232,7 @@ namespace Poisson
               if (fe_degree > 2)
                 {
                   cell->get_dof_indices(dof_indices);
-                  constexpr unsigned int n_lanes = VectorizedArray<Number>::n_array_elements;
+                  constexpr unsigned int n_lanes = VectorizedArrayType::n_array_elements;
                   const unsigned int offset =
                     Utilities::pow(3,dim) * (n_lanes * c) + l;
                   const Utilities::MPI::Partitioner &part =
@@ -288,15 +288,15 @@ namespace Poisson
           // insert dummy entries to prevent geometry from degeneration and
           // subsequent division by zero, assuming a Cartesian geometry
           for (unsigned int l=data->n_components_filled(c);
-               l<VectorizedArray<Number>::n_array_elements; ++l)
+               l<VectorizedArrayType::n_array_elements; ++l)
             for (unsigned int d=0; d<dim; ++d)
               cell_vertex_coefficients[c][d+1][d][l] = 1.;
 
           if (fe_degree > 2)
             {
               for (unsigned int i=0; i<Utilities::pow(3,dim); ++i)
-                for (unsigned int v=0; v<VectorizedArray<Number>::n_array_elements; ++v)
-                  if (compressed_dof_indices[Utilities::pow(3,dim) * (VectorizedArray<Number>::n_array_elements * c) + i*VectorizedArray<Number>::n_array_elements + v] == numbers::invalid_unsigned_int)
+                for (unsigned int v=0; v<VectorizedArrayType::n_array_elements; ++v)
+                  if (compressed_dof_indices[Utilities::pow(3,dim) * (VectorizedArrayType::n_array_elements * c) + i*VectorizedArrayType::n_array_elements + v] == numbers::invalid_unsigned_int)
                     all_indices_uniform[Utilities::pow(3,dim) * c + i] = 0;
             }
         }
@@ -545,17 +545,17 @@ namespace Poisson
     {
       LinearAlgebra::distributed::Vector<Number> diag;
       data->initialize_dof_vector(diag);
-      FEEvaluation<dim, fe_degree, n_q_points_1d, 1, Number> phi(*data);
+      FEEvaluation<dim, fe_degree, n_q_points_1d, 1, Number,VectorizedArrayType> phi(*data);
 
-      AlignedVector<VectorizedArray<Number> > diagonal(phi.dofs_per_cell);
+      AlignedVector<VectorizedArrayType > diagonal(phi.dofs_per_cell);
       for (unsigned int cell=0; cell<data->n_macro_cells(); ++cell)
         {
           phi.reinit (cell);
           for (unsigned int i=0; i<phi.dofs_per_cell; ++i)
             {
               for (unsigned int j=0; j<phi.dofs_per_cell; ++j)
-                phi.submit_dof_value(VectorizedArray<Number>(), j);
-              phi.submit_dof_value(make_vectorized_array<Number>(1.), i);
+                phi.submit_dof_value(VectorizedArrayType(), j);
+              phi.submit_dof_value(make_vectorized_array<VectorizedArrayType>(1.), i);
 
               phi.evaluate (false, true);
               for (unsigned int q=0; q<phi.n_q_points; ++q)
@@ -578,12 +578,12 @@ namespace Poisson
 
   private:
     void
-    local_apply_basic (const MatrixFree<dim,value_type>           &data,
+    local_apply_basic (const MatrixFree<dim,value_type, VectorizedArrayType>           &data,
                        VectorType                                 &dst,
                        const VectorType                           &src,
                        const std::pair<unsigned int,unsigned int> &cell_range) const
     {
-      FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number> phi(data);
+      FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number,VectorizedArrayType> phi(data);
       for (unsigned int cell=cell_range.first; cell<cell_range.second; ++cell)
         {
           phi.reinit (cell);
@@ -598,12 +598,12 @@ namespace Poisson
 
     template <bool do_sum>
     void
-    local_apply_linear_geo (const MatrixFree<dim,value_type>           &data,
+    local_apply_linear_geo (const MatrixFree<dim,value_type, VectorizedArrayType>           &data,
                             VectorType                                 &dst,
                             const VectorType                           &src,
                             const std::pair<unsigned int,unsigned int> &cell_range) const
     {
-      FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number> phi(data);
+      FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number,VectorizedArrayType> phi(data);
       constexpr unsigned int n_q_points = Utilities::pow(n_q_points_1d,dim);
       for (unsigned int cell=cell_range.first; cell<cell_range.second; ++cell)
         {
@@ -615,28 +615,28 @@ namespace Poisson
           else
             phi.read_dof_values(src);
           phi.evaluate (false,true);
-          const std::array<Tensor<1,dim,VectorizedArray<Number> >,GeometryInfo<dim>::vertices_per_cell> &v
+          const std::array<Tensor<1,dim,VectorizedArrayType >,GeometryInfo<dim>::vertices_per_cell> &v
             = cell_vertex_coefficients[cell];
-          VectorizedArray<Number> *phi_grads = phi.begin_gradients();
+          VectorizedArrayType *phi_grads = phi.begin_gradients();
           if (dim == 2)
             {
               for (unsigned int q=0, qy = 0; qy<n_q_points_1d; ++qy)
                 {
                   // x-derivative, already complete
-                  Tensor<1,dim,VectorizedArray<Number>> x_con = v[1] + quad_1d.point(qy)[0]*v[3];
+                  Tensor<1,dim,VectorizedArrayType> x_con = v[1] + quad_1d.point(qy)[0]*v[3];
                   for (unsigned int qx=0; qx<n_q_points_1d; ++qx, ++q)
                     {
                       const double q_weight = quad_1d.weight(qy) * quad_1d.weight(qx);
-                      Tensor<2,dim,VectorizedArray<Number>> jac;
+                      Tensor<2,dim,VectorizedArrayType> jac;
                       jac[1] = v[2] + quad_1d.point(qx)[0]*v[3];
                       for (unsigned int d=0; d<2; ++d)
                         jac[0][d] = x_con[d];
-                      const VectorizedArray<Number> det = do_invert(jac);
+                      const VectorizedArrayType det = do_invert(jac);
 
                       for (unsigned int c=0; c<n_components; ++c)
                         {
                           const unsigned int offset = c*dim*n_q_points;
-                          VectorizedArray<Number> tmp[dim];
+                          VectorizedArrayType tmp[dim];
                           for (unsigned int d=0; d<dim; ++d)
                             {
                               tmp[d] = jac[d][0] * phi_grads[q+offset];
@@ -660,35 +660,35 @@ namespace Poisson
                 {
                   for (unsigned int qy = 0; qy<n_q_points_1d; ++qy)
                     {
-                      const VectorizedArray<Number> z = make_vectorized_array<Number>(quad_1d.point(qz)[0]);
-                      const VectorizedArray<Number> y = make_vectorized_array<Number>(quad_1d.point(qy)[0]);
+                      const VectorizedArrayType z = make_vectorized_array<VectorizedArrayType>(quad_1d.point(qz)[0]);
+                      const VectorizedArrayType y = make_vectorized_array<VectorizedArrayType>(quad_1d.point(qy)[0]);
                       // x-derivative, already complete
-                      Tensor<1,dim,VectorizedArray<Number>> x_con = v[1] + z*v[5];
+                      Tensor<1,dim,VectorizedArrayType> x_con = v[1] + z*v[5];
                       x_con += y*(v[4]+z*v[7]);
                       // y-derivative, constant part
-                      Tensor<1,dim,VectorizedArray<Number>> y_con = v[2] + z*v[6];
+                      Tensor<1,dim,VectorizedArrayType> y_con = v[2] + z*v[6];
                       // y-derivative, xi-dependent part
-                      Tensor<1,dim,VectorizedArray<Number>> y_var = v[4] + z*v[7];
+                      Tensor<1,dim,VectorizedArrayType> y_var = v[4] + z*v[7];
                       // z-derivative, constant part
-                      Tensor<1,dim,VectorizedArray<Number>> z_con = v[3] + y*v[6];
+                      Tensor<1,dim,VectorizedArrayType> z_con = v[3] + y*v[6];
                       // z-derivative, variable part
-                      Tensor<1,dim,VectorizedArray<Number>> z_var = v[5] + y*v[7];
+                      Tensor<1,dim,VectorizedArrayType> z_var = v[5] + y*v[7];
                       double q_weight_tmp = quad_1d.weight(qz) * quad_1d.weight(qy);
                       for (unsigned int qx=0; qx<n_q_points_1d; ++qx, ++q)
                         {
-                          const VectorizedArray<Number> x = make_vectorized_array<Number>(quad_1d.point(qx)[0]);
-                          Tensor<2,dim,VectorizedArray<Number>> jac;
+                          const VectorizedArrayType x = make_vectorized_array<VectorizedArrayType>(quad_1d.point(qx)[0]);
+                          Tensor<2,dim,VectorizedArrayType> jac;
                           jac[1] = y_con + x*y_var;
                           jac[2] = z_con + x*z_var;
                           for (unsigned int d=0; d<dim; ++d)
                             jac[0][d] = x_con[d];
-                          VectorizedArray<Number> det = do_invert(jac);
+                          VectorizedArrayType det = do_invert(jac);
                           det = det * (q_weight_tmp * quad_1d.weight(qx));
 
                           for (unsigned int c=0; c<n_components; ++c)
                             {
                               const unsigned int offset = c*dim*n_q_points;
-                              VectorizedArray<Number> tmp[dim];
+                              VectorizedArrayType tmp[dim];
                               for (unsigned int d=0; d<dim; ++d)
                                 {
                                   tmp[d] = jac[d][0] * phi_grads[q+offset];
@@ -707,7 +707,7 @@ namespace Poisson
                     }
                 }
             }
-          VectorizedArray<Number> scratch[Utilities::pow(fe_degree+1,dim)*n_components];
+          VectorizedArrayType scratch[Utilities::pow(fe_degree+1,dim)*n_components];
           if (do_sum)
             for (unsigned int i=0; i<Utilities::pow(fe_degree+1,dim)*n_components; ++i)
               scratch[i] = phi.begin_dof_values()[i];
@@ -716,7 +716,7 @@ namespace Poisson
 
           if (do_sum)
             {
-              VectorizedArray<Number> local_sum = VectorizedArray<Number>();
+              VectorizedArrayType local_sum = VectorizedArrayType();
               for (unsigned int i=0; i<Utilities::pow(fe_degree+1,dim)*n_components; ++i)
                 local_sum += phi.begin_dof_values()[i] * scratch[i];
 
@@ -734,19 +734,19 @@ namespace Poisson
     }
 
     void
-    local_apply_merged (const MatrixFree<dim,value_type>           &data,
+    local_apply_merged (const MatrixFree<dim,value_type, VectorizedArrayType>           &data,
                         VectorType                                 &dst,
                         const VectorType                           &src,
                         const std::pair<unsigned int,unsigned int> &cell_range) const
     {
-      FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number> phi(data);
+      FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number,VectorizedArrayType> phi(data);
       constexpr unsigned int n_q_points = Utilities::pow(n_q_points_1d, dim);
       for (unsigned int cell=cell_range.first; cell<cell_range.second; ++cell)
         {
           phi.reinit (cell);
           phi.read_dof_values(src);
           phi.evaluate (false,true);
-          VectorizedArray<Number> *phi_grads = phi.begin_gradients();
+          VectorizedArrayType *phi_grads = phi.begin_gradients();
           for (unsigned int q=0; q<n_q_points; ++q)
             {
               if (dim==2)
@@ -754,7 +754,7 @@ namespace Poisson
                   for (unsigned int c=0; c<n_components; ++c)
                     {
                       const unsigned int offset = c*dim*n_q_points;
-                      VectorizedArray<Number> tmp = phi_grads[q+offset];
+                      VectorizedArrayType tmp = phi_grads[q+offset];
                       phi_grads[q+offset] = merged_coefficients[cell*n_q_points+q][0] * tmp
                         + merged_coefficients[cell*n_q_points+q][1] * phi_grads[q+n_q_points+offset];
                       phi_grads[q+n_q_points+offset] =
@@ -767,8 +767,8 @@ namespace Poisson
                   for (unsigned int c=0; c<n_components; ++c)
                     {
                       const unsigned int offset = c*dim*n_q_points;
-                      VectorizedArray<Number> tmp0 = phi_grads[q+offset];
-                      VectorizedArray<Number> tmp1 = phi_grads[q+n_q_points+offset];
+                      VectorizedArrayType tmp0 = phi_grads[q+offset];
+                      VectorizedArrayType tmp1 = phi_grads[q+n_q_points+offset];
                       phi_grads[q+offset] =
                         (merged_coefficients[cell*n_q_points+q][0] * tmp0
                          + merged_coefficients[cell*n_q_points+q][1] * tmp1
@@ -790,14 +790,14 @@ namespace Poisson
     }
 
     void
-    local_apply_construct_q (const MatrixFree<dim,value_type>           &data,
+    local_apply_construct_q (const MatrixFree<dim,value_type, VectorizedArrayType>           &data,
                              VectorType                                 &dst,
                              const VectorType                           &src,
                              const std::pair<unsigned int,unsigned int> &cell_range) const
     {
-      FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number> phi(data);
+      FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number,VectorizedArrayType> phi(data);
       constexpr unsigned int n_q_points = Utilities::pow(n_q_points_1d, dim);
-      VectorizedArray<Number> jacobians_z[dim*n_q_points];
+      VectorizedArrayType jacobians_z[dim*n_q_points];
       for (unsigned int cell=cell_range.first; cell<cell_range.second; ++cell)
         {
           phi.reinit (cell);
@@ -808,13 +808,13 @@ namespace Poisson
           else
             phi.read_dof_values(src);
           phi.evaluate (false,true);
-          VectorizedArray<Number> *phi_grads = phi.begin_gradients();
+          VectorizedArrayType *phi_grads = phi.begin_gradients();
           if (dim==3)
             for (unsigned int d=0; d<dim; ++d)
               dealii::internal::EvaluatorTensorProduct<dealii::internal::evaluate_evenodd,
                                                        dim, n_q_points_1d,n_q_points_1d,
-                                                       VectorizedArray<Number>,
-                                                       VectorizedArray<Number>>::
+                                                       VectorizedArrayType,
+                                                       VectorizedArrayType>::
                 template apply<2,true,false,1>(data.get_shape_info().shape_gradients_collocation_eo.begin(),
                                                quadrature_points.begin()+
                                                (cell*dim+d)*n_q_points,
@@ -822,24 +822,24 @@ namespace Poisson
           for (unsigned int q2=0, q=0; q2<(dim==3 ? n_q_points_1d : 1); ++q2)
             {
               constexpr unsigned int n_q_points_2d = n_q_points_1d*n_q_points_1d;
-              VectorizedArray<Number> jacobians_y[dim*n_q_points_2d];
+              VectorizedArrayType jacobians_y[dim*n_q_points_2d];
               for (unsigned int d=0; d<dim; ++d)
                 dealii::internal::EvaluatorTensorProduct<dealii::internal::evaluate_evenodd,
                                                          2, n_q_points_1d,n_q_points_1d,
-                                                         VectorizedArray<Number>,
-                                                         VectorizedArray<Number>>::
+                                                         VectorizedArrayType,
+                                                         VectorizedArrayType>::
                   template apply<1,true,false,1>(data.get_shape_info().shape_gradients_collocation_eo.begin(),
                                                  quadrature_points.begin()+
                                                  (cell*dim+d)*n_q_points+q2*n_q_points_2d,
                                                  jacobians_y + d*n_q_points_2d);
               for (unsigned int q1=0; q1<n_q_points_1d; ++q1)
                 {
-                  VectorizedArray<Number> jacobians_x[dim*n_q_points_1d];
+                  VectorizedArrayType jacobians_x[dim*n_q_points_1d];
                   for (unsigned int d=0; d<dim; ++d)
                     dealii::internal::EvaluatorTensorProduct<dealii::internal::evaluate_evenodd,
                                                              1, n_q_points_1d,n_q_points_1d,
-                                                             VectorizedArray<Number>,
-                                                             VectorizedArray<Number>>::
+                                                             VectorizedArrayType,
+                                                             VectorizedArrayType>::
                       template apply<0,true,false,1>(data.get_shape_info().shape_gradients_collocation_eo.begin(),
                                                      quadrature_points.begin()+
                                                      (cell*dim+d)*n_q_points+q2*n_q_points_2d
@@ -847,20 +847,20 @@ namespace Poisson
                                                      jacobians_x + d*n_q_points_1d);
                   for (unsigned int q0=0; q0<n_q_points_1d; ++q0, ++q)
                     {
-                      Tensor<2,dim,VectorizedArray<Number>> jac;
+                      Tensor<2,dim,VectorizedArrayType> jac;
                       for (unsigned int e=0; e<dim; ++e)
                         jac[2][e] = jacobians_z[e*n_q_points+q];
                       for (unsigned int e=0; e<dim; ++e)
                         jac[1][e] = jacobians_y[e*n_q_points_2d+q1*n_q_points_1d+q0];
                       for (unsigned int e=0; e<dim; ++e)
                         jac[0][e] = jacobians_x[e*n_q_points_1d+q0];
-                      VectorizedArray<Number> det = do_invert(jac);
+                      VectorizedArrayType det = do_invert(jac);
                       det = det * (data.get_quadrature().weight(q));
 
                       for (unsigned int c=0; c<n_components; ++c)
                         {
                           const unsigned int offset = c*dim*n_q_points;
-                          VectorizedArray<Number> tmp[dim];
+                          VectorizedArrayType tmp[dim];
                           for (unsigned int d=0; d<dim; ++d)
                             {
                               tmp[d] = jac[d][0] * phi_grads[q+offset];
@@ -888,7 +888,7 @@ namespace Poisson
         }
     }
 
-    std::shared_ptr<const MatrixFree<dim,Number> > data;
+    std::shared_ptr<const MatrixFree<dim,Number, VectorizedArrayType> > data;
 
     mutable Number accumulated_sum;
 
@@ -896,15 +896,15 @@ namespace Poisson
     // For local_apply_linear_geo:
     // A list containing the geometry in terms of the bilinear coefficients,
     // i.e. x_0, x_1-x_0, x_2-x_0, x_4-x_0, x_3-x_2-x_1+x_0, ...
-    AlignedVector<std::array<Tensor<1,dim,VectorizedArray<Number> >,
+    AlignedVector<std::array<Tensor<1,dim,VectorizedArrayType >,
                              GeometryInfo<dim>::vertices_per_cell> > cell_vertex_coefficients;
 
     // For local_apply_merged: dim*(dim+1)/2 coefficients
-    AlignedVector<Tensor<1,(dim*(dim+1)/2),VectorizedArray<Number> > > merged_coefficients;
+    AlignedVector<Tensor<1,(dim*(dim+1)/2),VectorizedArrayType > > merged_coefficients;
 
     // for local_apply_construct_q:
     // Data in all quadrature points in collocated space
-    AlignedVector<VectorizedArray<Number> > quadrature_points;
+    AlignedVector<VectorizedArrayType > quadrature_points;
 
     std::vector<unsigned int> compressed_dof_indices;
     std::vector<unsigned char> all_indices_uniform;

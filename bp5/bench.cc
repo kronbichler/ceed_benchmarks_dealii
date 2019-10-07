@@ -13,19 +13,30 @@
 #include <deal.II/matrix_free/fe_evaluation.h>
 #include <deal.II/matrix_free/operators.h>
 #include <deal.II/numerics/vector_tools.h>
-
 #include "../common_code/curved_manifold.h"
 #include "../common_code/poisson_operator.h"
 #include "../common_code/solver_cg_optimized.h"
 #include "../common_code/renumber_dofs_for_mf.h"
 
-
 #ifdef LIKWID_PERFMON
 #include <likwid.h>
 #endif
 
-
 using namespace dealii;
+
+#include "../common_code/create_triangulation.h"
+
+// VERSION:
+//   0: p:d:t + vectorized over elements; 
+//   1: p:f:t + vectorized within element (not optimized)
+#define VERSION 0 
+
+#if VERSION == 0
+  typedef dealii::VectorizedArray<double> VectorizedArrayType;
+#elif VERSION == 1
+  typedef dealii::VectorizedArray<double, 1> VectorizedArrayType;
+#endif
+  
 
 
 template <int dim, int fe_degree, int n_q_points>
@@ -40,29 +51,12 @@ void test(const unsigned int s,
     deallog.depth_console(2);
 
   Timer time;
-  const unsigned int n_refine = s/3;
-  const unsigned int remainder = s%3;
-  Point<dim> p2;
-  for (unsigned int d=0; d<remainder; ++d)
-    p2[d] = 2;
-  for (unsigned int d=remainder; d<dim; ++d)
-    p2[d] = 1;
-
   MyManifold<dim> manifold;
-  parallel::distributed::Triangulation<dim> tria(MPI_COMM_WORLD);
-  std::vector<unsigned int> subdivisions(dim, 1);
-  for (unsigned int d=0; d<remainder; ++d)
-    subdivisions[d] = 2;
-  GridGenerator::subdivided_hyper_rectangle(tria, subdivisions, Point<dim>(), p2);
-  GridTools::transform(std::bind(&MyManifold<dim>::push_forward, manifold,
-                                 std::placeholders::_1),
-                       tria);
-  tria.set_all_manifold_ids(1);
-  tria.set_manifold(1, manifold);
-  tria.refine_global(n_refine);
+  
+  const auto tria = create_triangulation(s, manifold, VERSION);
 
   FE_Q<dim> fe_q(fe_degree);
-  DoFHandler<dim> dof_handler(tria);
+  DoFHandler<dim> dof_handler(*tria);
   dof_handler.distribute_dofs(fe_q);
 
   AffineConstraints<double> constraints;
@@ -72,11 +66,11 @@ void test(const unsigned int s,
   VectorTools::interpolate_boundary_values(dof_handler, 0, ZeroFunction<dim>(),
                                            constraints);
   constraints.close();
-  typename MatrixFree<dim,double>::AdditionalData mf_data;
+  typename MatrixFree<dim,double, VectorizedArrayType>::AdditionalData mf_data;
 
   // renumber Dofs to minimize the number of partitions in import indices of
   // partitioner
-  renumber_dofs_mf<dim,double>(dof_handler, constraints, mf_data);
+  renumber_dofs_mf<dim,double, VectorizedArrayType>(dof_handler, constraints, mf_data);
 
   DoFTools::extract_locally_relevant_dofs(dof_handler, relevant_dofs);
   constraints.clear();
@@ -85,12 +79,12 @@ void test(const unsigned int s,
                                            constraints);
   constraints.close();
 
-  std::shared_ptr<MatrixFree<dim,double> > matrix_free(new MatrixFree<dim,double>());
+  std::shared_ptr<MatrixFree<dim,double, VectorizedArrayType> > matrix_free(new MatrixFree<dim,double, VectorizedArrayType>());
   matrix_free->reinit(dof_handler, constraints, QGaussLobatto<1>(n_q_points),
                       mf_data);
 
   Poisson::LaplaceOperator<dim,fe_degree,n_q_points,1,double,
-                           LinearAlgebra::distributed::Vector<double> > laplace_operator;
+                           LinearAlgebra::distributed::Vector<double>, VectorizedArrayType > laplace_operator;
   laplace_operator.initialize(matrix_free, constraints);
 
   LinearAlgebra::distributed::Vector<double> input, output, tmp;
@@ -199,7 +193,7 @@ void test(const unsigned int s,
       laplace_operator.vmult_add(tmp, output);
       deallog << "True residual norm: " << tmp.l2_norm() << std::endl;
     }
-  AssertThrow(solver_control.last_step() == iterations_basic,
+  AssertThrow(std::abs( (int)solver_control.last_step() - (int)iterations_basic) < 2,
               ExcMessage("Iteration numbers differ " +
                          std::to_string(solver_control.last_step())
                          + " vs default solver "
@@ -235,7 +229,7 @@ void test(const unsigned int s,
       laplace_operator.vmult_add(tmp, output);
       deallog << "True residual norm: " << tmp.l2_norm() << std::endl;
     }
-  AssertThrow(solver_control.last_step() == iterations_basic,
+  AssertThrow(std::abs((int)solver_control.last_step() - (int)iterations_basic) < 2,
               ExcMessage("Iteration numbers differ " +
                          std::to_string(solver_control.last_step())
                          + " vs default solver "
@@ -323,7 +317,7 @@ void test(const unsigned int s,
   if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0 &&
       short_output == true)
     std::cout << std::setw(2) << fe_degree << " | " << std::setw(2) << n_q_points
-              << " |" << std::setw(10) << tria.n_global_active_cells()
+              << " |" << std::setw(10) << tria->n_global_active_cells()
               << " |" << std::setw(11) << dof_handler.n_dofs()
               << " | " << std::setw(11) << solver_time/solver_control.last_step()
               << " | " << std::setw(11) << dof_handler.n_dofs()/solver_time2*solver_control.last_step()
@@ -410,6 +404,14 @@ int main(int argc, char** argv)
     do_test<3,10,11>(s, compact_output);
   else if (degree == 11)
     do_test<3,11,12>(s, compact_output);
+  else if (degree == 12)
+    do_test<3,12,13>(s, compact_output);
+  else if (degree == 13)
+    do_test<3,13,14>(s, compact_output);
+  else if (degree == 14)
+    do_test<3,14,15>(s, compact_output);
+  else if (degree == 15)
+    do_test<3,15,16>(s, compact_output);
   else
     AssertThrow(false, ExcMessage("Only degrees up to 11 implemented"));
 

@@ -7,15 +7,15 @@
 #include <deal.II/matrix_free/matrix_free.h>
 
 
-template <int dim, typename Number>
+template <int dim, typename Number, typename VectorizedArrayType = dealii::VectorizedArray<Number> >
 void renumber_dofs_mf(dealii::DoFHandler<dim> &dof_handler,
                       const dealii::AffineConstraints<double> &constraints,
-                      const typename dealii::MatrixFree<dim,Number>::AdditionalData &mf_data)
+                      const typename dealii::MatrixFree<dim,Number, VectorizedArrayType>::AdditionalData &mf_data)
 {
-  typename dealii::MatrixFree<dim,Number>::AdditionalData my_mf_data =
+  typename dealii::MatrixFree<dim,Number, VectorizedArrayType>::AdditionalData my_mf_data =
     mf_data;
   my_mf_data.initialize_mapping = false;
-  dealii::MatrixFree<dim,Number> matrix_free;
+  dealii::MatrixFree<dim,Number, VectorizedArrayType> matrix_free;
   matrix_free.reinit(dof_handler, constraints,
                      dealii::QGauss<1>(dof_handler.get_fe().degree+1),
                      my_mf_data);
