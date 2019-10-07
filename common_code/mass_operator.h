@@ -103,12 +103,12 @@ namespace Mass
     /**
      * Cell contribution for the mass matrix
      */
-    void local_apply_cell (const MatrixFree<dim,value_type>            &data,
+    void local_apply_cell (const MatrixFree<dim,value_type, VectorizedArrayType>            &data,
                            LinearAlgebra::distributed::BlockVector<Number> &dst,
                            const LinearAlgebra::distributed::BlockVector<Number> &src,
                            const std::pair<unsigned int,unsigned int>  &cell_range) const
     {
-      FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number> phi(data);
+      FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number, VectorizedArrayType> phi(data);
       for (unsigned int cell=cell_range.first; cell<cell_range.second; ++cell)
         {
           phi.reinit (cell);
@@ -126,13 +126,13 @@ namespace Mass
      * destination
      */
     void
-    local_apply_cell_inner_product (const MatrixFree<dim,value_type>            &data,
+    local_apply_cell_inner_product (const MatrixFree<dim,value_type, VectorizedArrayType>            &data,
                                     LinearAlgebra::distributed::BlockVector<Number> &dst,
                                     const LinearAlgebra::distributed::BlockVector<Number> &src,
                                     const std::pair<unsigned int,unsigned int>  &cell_range) const
     {
-      FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number> phi_read(data);
-      FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number> phi(data);
+      FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number, VectorizedArrayType> phi_read(data);
+      FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number, VectorizedArrayType> phi(data);
       for (unsigned int cell=cell_range.first; cell<cell_range.second; ++cell)
         {
           phi.reinit (cell);
@@ -151,15 +151,15 @@ namespace Mass
         }
     }
 
-    std::shared_ptr<const MatrixFree<dim,Number> > data;
+    std::shared_ptr<const MatrixFree<dim,Number, VectorizedArrayType> > data;
     mutable double accumulated_sum;
   };
 
 
 
   // partial specialization for scalar case with non-block vectors
-  template <int dim, int fe_degree, int n_q_points_1d, typename Number>
-  class MassOperator<dim,fe_degree,n_q_points_1d,1,Number>
+  template <int dim, int fe_degree, int n_q_points_1d, typename Number, typename VectorizedArrayType>
+  class MassOperator<dim,fe_degree,n_q_points_1d,1,Number, VectorizedArrayType>
   {
   public:
     /**
@@ -185,7 +185,7 @@ namespace Mass
     /**
      * Initialize function.
      */
-    void initialize(std::shared_ptr<const MatrixFree<dim,Number> > data_,
+    void initialize(std::shared_ptr<const MatrixFree<dim,Number, VectorizedArrayType> > data_,
                     const AffineConstraints<double> &constraints)
     {
       this->data = data_;
@@ -326,7 +326,7 @@ namespace Mass
                            const Number alpha_old,
                            const Number beta_old) const
     {
-      Tensor<1,7,VectorizedArrayType> sums;
+      Tensor<1,7,VectorizedArray<Number>> sums;
       this->data->cell_loop(&MassOperator::local_apply_cell,
                             this, h, d,
                             [&](const unsigned int start_range,
@@ -351,7 +351,7 @@ namespace Mass
       for (unsigned int i=0; i<7; ++i)
         {
           results[i] = sums[i][0];
-          for (unsigned int v=1; v<dealii::VectorizedArrayType::n_array_elements; ++v)
+          for (unsigned int v=1; v<VectorizedArrayType::n_array_elements; ++v)
             results[i] += sums[i][v];
         }
       dealii::Utilities::MPI::sum(dealii::ArrayView<const double>(results.begin_raw(), 7),
@@ -374,12 +374,12 @@ namespace Mass
     /**
      * For this operator, there is just a cell contribution.
      */
-    void local_apply_cell (const MatrixFree<dim,value_type>            &data,
+    void local_apply_cell (const MatrixFree<dim,value_type, VectorizedArrayType>            &data,
                            LinearAlgebra::distributed::Vector<Number> &dst,
                            const LinearAlgebra::distributed::Vector<Number> &src,
                            const std::pair<unsigned int,unsigned int>  &cell_range) const
     {
-      FEEvaluation<dim, fe_degree, n_q_points_1d, 1, Number> phi(data);
+      FEEvaluation<dim, fe_degree, n_q_points_1d, 1, Number, VectorizedArrayType> phi(data);
       for (unsigned int cell=cell_range.first; cell<cell_range.second; ++cell)
         {
           phi.reinit (cell);
@@ -405,13 +405,13 @@ namespace Mass
      * destination
      */
     void
-    local_apply_cell_inner_product (const MatrixFree<dim,value_type>            &data,
+    local_apply_cell_inner_product (const MatrixFree<dim,value_type, VectorizedArrayType>            &data,
                                     LinearAlgebra::distributed::Vector<Number>  &dst,
                                     const LinearAlgebra::distributed::Vector<Number> &src,
                                     const std::pair<unsigned int,unsigned int>  &cell_range) const
     {
-      FEEvaluation<dim, fe_degree, n_q_points_1d, 1, Number> phi(data);
-      FEEvaluation<dim, fe_degree, n_q_points_1d, 1, Number> phi_read(data);
+      FEEvaluation<dim, fe_degree, n_q_points_1d, 1, Number, VectorizedArrayType> phi(data);
+      FEEvaluation<dim, fe_degree, n_q_points_1d, 1, Number, VectorizedArrayType> phi_read(data);
       for (unsigned int cell=cell_range.first; cell<cell_range.second; ++cell)
         {
           phi.reinit (cell);
@@ -430,7 +430,7 @@ namespace Mass
         }
     }
 
-    std::shared_ptr<const MatrixFree<dim,Number> > data;
+    std::shared_ptr<const MatrixFree<dim,Number, VectorizedArrayType> > data;
     mutable Number accumulated_sum;
 
     std::vector<unsigned int> compressed_dof_indices;

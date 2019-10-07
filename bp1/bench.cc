@@ -25,6 +25,16 @@
 
 using namespace dealii;
 
+// VERSION:
+//   0: p:d:t + vectorized over elements; 
+//   1: p:f:t + vectorized within element (not optimized)
+#define VERSION 1 
+
+#if VERSION == 0
+  typedef dealii::VectorizedArray<double> VectorizedArrayType;
+#elif VERSION == 1
+  typedef dealii::VectorizedArray<double, 1> VectorizedArrayType;
+#endif
 
 
 template <int dim, int fe_degree, int n_q_points>
@@ -69,13 +79,13 @@ void test(const unsigned int s,
 
   AffineConstraints<double> constraints;
   constraints.close();
-  typename MatrixFree<dim,double>::AdditionalData mf_data;
+  typename MatrixFree<dim,double, VectorizedArrayType>::AdditionalData mf_data;
 
   // renumber Dofs to minimize the number of partitions in import indices of
   // partitioner
-  renumber_dofs_mf<dim,double>(dof_handler, constraints, mf_data);
+  renumber_dofs_mf<dim,double, VectorizedArrayType>(dof_handler, constraints, mf_data);
 
-  std::shared_ptr<MatrixFree<dim,double> > matrix_free(new MatrixFree<dim,double>());
+  std::shared_ptr<MatrixFree<dim,double, VectorizedArrayType> > matrix_free(new MatrixFree<dim,double, VectorizedArrayType>());
   matrix_free->reinit(mapping, dof_handler, constraints, QGauss<1>(n_q_points),
                       mf_data);
 
@@ -124,7 +134,7 @@ void test(const unsigned int s,
         MPI_Barrier(MPI_COMM_WORLD);
       }
 
-  Mass::MassOperator<dim,fe_degree,n_q_points> mass_operator;
+  Mass::MassOperator<dim,fe_degree,n_q_points, 1, double, VectorizedArrayType> mass_operator;
   mass_operator.initialize(matrix_free, constraints);
 
   LinearAlgebra::distributed::Vector<double> input, output, tmp;
