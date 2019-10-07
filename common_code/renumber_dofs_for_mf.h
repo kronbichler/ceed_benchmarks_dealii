@@ -7,7 +7,7 @@
 #include <deal.II/matrix_free/matrix_free.h>
 
 
-template <int dim, typename Number, typename VectorizedArrayType>
+template <int dim, typename Number, typename VectorizedArrayType = dealii::VectorizedArray<Number> >
 void renumber_dofs_mf(dealii::DoFHandler<dim> &dof_handler,
                       const dealii::AffineConstraints<double> &constraints,
                       const typename dealii::MatrixFree<dim,Number, VectorizedArrayType>::AdditionalData &mf_data)
