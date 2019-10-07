@@ -193,7 +193,7 @@ void test(const unsigned int s,
       laplace_operator.vmult_add(tmp, output);
       deallog << "True residual norm: " << tmp.l2_norm() << std::endl;
     }
-  AssertThrow(true || solver_control.last_step() == iterations_basic,
+  AssertThrow(std::abs( (int)solver_control.last_step() - (int)iterations_basic) < 2,
               ExcMessage("Iteration numbers differ " +
                          std::to_string(solver_control.last_step())
                          + " vs default solver "
@@ -229,7 +229,7 @@ void test(const unsigned int s,
       laplace_operator.vmult_add(tmp, output);
       deallog << "True residual norm: " << tmp.l2_norm() << std::endl;
     }
-  AssertThrow(true || solver_control.last_step() == iterations_basic,
+  AssertThrow(std::abs((int)solver_control.last_step() - (int)iterations_basic) < 2,
               ExcMessage("Iteration numbers differ " +
                          std::to_string(solver_control.last_step())
                          + " vs default solver "
