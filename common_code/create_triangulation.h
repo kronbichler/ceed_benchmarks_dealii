@@ -4,65 +4,65 @@
 #include <deal.II/distributed/fully_distributed_tria.h>
 #include <deal.II/distributed/fully_distributed_tria_util.h>
 
-template<int dim, int spacedim = dim>
-std::shared_ptr<parallel::TriangulationBase<dim, spacedim> > create_triangulation(const unsigned int s, MyManifold<dim> & manifold, const bool use_pft = false)
+template <int dim, int spacedim = dim>
+std::shared_ptr<parallel::TriangulationBase<dim, spacedim>>
+create_triangulation(const unsigned int s, MyManifold<dim> &manifold, const bool use_pft = false)
 {
-    
-  std::shared_ptr<parallel::TriangulationBase<dim, spacedim> >  tria_shared;    
-    
-  const unsigned int n_refine = s/3;
-  const unsigned int remainder = s%3;
-  Point<dim> p2;
-  for (unsigned int d=0; d<remainder; ++d)
+  std::shared_ptr<parallel::TriangulationBase<dim, spacedim>> tria_shared;
+
+  const unsigned int n_refine  = s / 3;
+  const unsigned int remainder = s % 3;
+  Point<dim>         p2;
+  for (unsigned int d = 0; d < remainder; ++d)
     p2[d] = 2;
-  for (unsigned int d=remainder; d<dim; ++d)
+  for (unsigned int d = remainder; d < dim; ++d)
     p2[d] = 1;
 
   std::vector<unsigned int> subdivisions(dim, 1);
-  for (unsigned int d=0; d<remainder; ++d)
+  for (unsigned int d = 0; d < remainder; ++d)
     subdivisions[d] = 2;
-  
-  if(use_pft == false)
-  {
-    auto tria = new parallel::distributed::Triangulation<dim>(MPI_COMM_WORLD);
-    GridGenerator::subdivided_hyper_rectangle(*tria, subdivisions, Point<dim>(), p2);
-    GridTools::transform(std::bind(&MyManifold<dim>::push_forward, manifold,
-                                   std::placeholders::_1),
-                         *tria);
-    tria->set_all_manifold_ids(1);
-    tria->set_manifold(1, manifold);
-    tria->refine_global(n_refine);
-    
-    tria_shared.reset(tria);
-  }
-  else
-  {
-    dealii::Triangulation<dim> tria_serial;
-    GridGenerator::subdivided_hyper_rectangle(tria_serial, subdivisions, Point<dim>(), p2);
-    GridTools::transform(std::bind(&MyManifold<dim>::push_forward, manifold,
-                                   std::placeholders::_1),
-                         tria_serial);
-    tria_serial.set_all_manifold_ids(1);
-    tria_serial.set_manifold(1, manifold);
-    tria_serial.refine_global(n_refine);
-    
+
+  if (use_pft == false)
     {
-      const unsigned int n_procs = Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD);
-      const unsigned int n_cells_per_process = (tria_serial.n_active_cells() + n_procs) / n_procs;
-      
-      // partition equally the active cells
-      for(auto cell : tria_serial.active_cell_iterators ())
-        cell->set_subdomain_id (cell->active_cell_index() / n_cells_per_process);
-    }  
-    
-    const auto cd = parallel::fullydistributed::Utilities::create_construction_data_from_triangulation(tria_serial, MPI_COMM_WORLD);
-    
-    auto tria = new parallel::fullydistributed::Triangulation<dim>(MPI_COMM_WORLD);
-    tria->create_triangulation(cd);
-    
-    tria_shared.reset(tria);
-  }
-  
+      auto tria = new parallel::distributed::Triangulation<dim>(MPI_COMM_WORLD);
+      GridGenerator::subdivided_hyper_rectangle(*tria, subdivisions, Point<dim>(), p2);
+      GridTools::transform(
+        std::bind(&MyManifold<dim>::push_forward, manifold, std::placeholders::_1), *tria);
+      tria->set_all_manifold_ids(1);
+      tria->set_manifold(1, manifold);
+      tria->refine_global(n_refine);
+
+      tria_shared.reset(tria);
+    }
+  else
+    {
+      dealii::Triangulation<dim> tria_serial;
+      GridGenerator::subdivided_hyper_rectangle(tria_serial, subdivisions, Point<dim>(), p2);
+      GridTools::transform(
+        std::bind(&MyManifold<dim>::push_forward, manifold, std::placeholders::_1), tria_serial);
+      tria_serial.set_all_manifold_ids(1);
+      tria_serial.set_manifold(1, manifold);
+      tria_serial.refine_global(n_refine);
+
+      {
+        const unsigned int n_procs             = Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD);
+        const unsigned int n_cells_per_process = (tria_serial.n_active_cells() + n_procs) / n_procs;
+
+        // partition equally the active cells
+        for (auto cell : tria_serial.active_cell_iterators())
+          cell->set_subdomain_id(cell->active_cell_index() / n_cells_per_process);
+      }
+
+      const auto cd =
+        parallel::fullydistributed::Utilities::create_construction_data_from_triangulation(
+          tria_serial, MPI_COMM_WORLD);
+
+      auto tria = new parallel::fullydistributed::Triangulation<dim>(MPI_COMM_WORLD);
+      tria->create_triangulation(cd);
+
+      tria_shared.reset(tria);
+    }
+
   return tria_shared;
 }
 
