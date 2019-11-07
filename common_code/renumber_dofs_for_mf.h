@@ -1,149 +1,493 @@
-
 #ifndef renumber_dofs_for_mf_h
 #define renumber_dofs_for_mf_h
 
+#include <unordered_set>
+
 #include <deal.II/dofs/dof_handler.h>
-
 #include <deal.II/lac/affine_constraints.h>
-
 #include <deal.II/matrix_free/matrix_free.h>
 
-
-template <int dim, typename Number, typename VectorizedArrayType = dealii::VectorizedArray<Number>>
-void
-renumber_dofs_mf(
-  dealii::DoFHandler<dim> &                                                            dof_handler,
-  const dealii::AffineConstraints<double> &                                            constraints,
-  const typename dealii::MatrixFree<dim, Number, VectorizedArrayType>::AdditionalData &mf_data)
+template<int dim, typename Number>
+class Renumber
 {
-  typename dealii::MatrixFree<dim, Number, VectorizedArrayType>::AdditionalData my_mf_data =
-    mf_data;
-  my_mf_data.initialize_mapping = false;
-  dealii::MatrixFree<dim, Number, VectorizedArrayType> matrix_free;
+public:
+  Renumber(const unsigned int a, const unsigned int r, const unsigned int g)
+    : assembly_strat(a), renumber_strat(r), grouping_strat(g)
+  {
+  }
+
+  void
+  renumber(dealii::DoFHandler<dim> &                                        dof_handler,
+           const dealii::AffineConstraints<double> &                        constraints,
+           const typename dealii::MatrixFree<dim, Number>::AdditionalData & mf_data) const;
+
+  std::string
+  get_renumber_string() const;
+
+private:
+  /* helper functions that handle the different strategy types */
+  std::vector<unsigned int>
+  get_assembly_result(const dealii::MatrixFree<dim, Number> & matrix_free) const;
+  std::function<void(std::vector<unsigned int> &,
+                     unsigned int &,
+                     std::unordered_set<dealii::types::global_dof_index>,
+                     const bool &,
+                     const unsigned int &)>
+  get_renumber_func() const;
+  std::vector<unsigned char>
+  get_grouping_result(const dealii::MatrixFree<dim, Number> & matrix_free) const;
+
+  /* assembly strategies */
+  std::vector<unsigned int>
+  cell_assembly(const dealii::MatrixFree<dim, Number> & matrix_free) const;
+  std::vector<unsigned int>
+  cellbatch_assembly(const dealii::MatrixFree<dim, Number> & matrix_free) const;
+
+  /* renumber strategies */
+  static void
+  first_touch_renumber(std::vector<unsigned int> & numbers_mf_order,
+                       unsigned int &              counter_dof_numbers,
+                       std::unordered_set<dealii::types::global_dof_index> /*set_dofs*/,
+                       const bool &         is_element,
+                       const unsigned int & index_within_set);
+  static void
+  last_touch_renumber(std::vector<unsigned int> &                         numbers_mf_order,
+                      unsigned int &                                      counter_dof_numbers,
+                      std::unordered_set<dealii::types::global_dof_index> set_dofs,
+                      const bool &                                        is_element,
+                      const unsigned int &                                index_within_set);
+
+  std::vector<unsigned int>
+  grouping(const dealii::MatrixFree<dim, Number> & matrix_free,
+           const std::vector<unsigned int> &       numbers_mf_order) const;
+
+  void
+  base_grouping(std::vector<unsigned int> &       new_numbers,
+                const std::vector<unsigned int> & single_domain_dofs,
+                const std::vector<unsigned int> & numbers_mf_order) const;
+
+  void
+  touch_count_grouping(std::vector<unsigned int> &             new_numbers,
+                       const dealii::MatrixFree<dim, Number> & matrix_free,
+                       const std::vector<unsigned int> &       single_domain_dofs,
+                       const std::vector<unsigned int> &       numbers_mf_order) const;
+
+  /* grouping strategies */
+  std::vector<unsigned char>
+  touch_count_cellbatch(const dealii::MatrixFree<dim, Number> & matrix_free) const;
+  std::vector<unsigned char>
+  touch_count_cellbatch_range(const dealii::MatrixFree<dim, Number> & matrix_free) const;
+
+  /// retrieve the dof - processors (domain) mapping
+  std::map<
+    std::vector<unsigned int>,
+    std::vector<unsigned int>,
+    std::function<bool(const std::vector<unsigned int> &, const std::vector<unsigned int> &)>>
+  domain_dof_mapping(const dealii::DoFHandler<dim> & dof_handler) const;
+
+  const unsigned int assembly_strat;
+  const unsigned int renumber_strat;
+  const unsigned int grouping_strat;
+};
+
+template<int dim, typename Number>
+void
+Renumber<dim, Number>::renumber(
+  dealii::DoFHandler<dim> &                                        dof_handler,
+  const dealii::AffineConstraints<double> &                        constraints,
+  const typename dealii::MatrixFree<dim, Number>::AdditionalData & mf_data) const
+{
+  // do nothing, if base strat selected
+  if(renumber_strat == 0)
+    return;
+
+  typename dealii::MatrixFree<dim, Number>::AdditionalData my_mf_data = mf_data;
+  my_mf_data.initialize_mapping                                       = false;
+  dealii::MatrixFree<dim, Number> matrix_free;
   matrix_free.reinit(dof_handler,
                      constraints,
                      dealii::QGauss<1>(dof_handler.get_fe().degree + 1),
                      my_mf_data);
 
-  std::vector<std::vector<unsigned int>> processors_involved(
-    dof_handler.locally_owned_dofs().n_elements());
-  std::vector<dealii::types::global_dof_index> dof_indices(dof_handler.get_fe().dofs_per_cell);
-  for (auto &cell : dof_handler.active_cell_iterators())
-    if (cell->is_ghost())
-      {
-        cell->get_dof_indices(dof_indices);
-        for (auto i : dof_indices)
-          {
-            if (dof_handler.locally_owned_dofs().is_element(i))
-              processors_involved[dof_handler.locally_owned_dofs().index_within_set(i)].push_back(
-                cell->subdomain_id());
-          }
-      }
-  // sort & compress out duplicates
-  for (std::vector<unsigned int> &v : processors_involved)
-    if (v.size() > 1)
-      {
-        std::sort(v.begin(), v.end());
-        v.erase(std::unique(v.begin(), v.end()), v.end());
-      }
-  std::map<
-    std::vector<unsigned int>,
-    std::vector<unsigned int>,
-    std::function<bool(const std::vector<unsigned int> &, const std::vector<unsigned int> &)>>
-    sorted_entries{[](const std::vector<unsigned int> &a, const std::vector<unsigned int> &b) {
-      if (a.size() < b.size())
-        return true;
-      if (a.size() == b.size())
-        {
-          for (unsigned int i = 0; i < a.size(); ++i)
-            if (a[i] < b[i])
-              return true;
-            else if (a[i] > b[i])
-              return false;
-        }
-      return false;
-    }};
-  for (unsigned int i = 0; i < processors_involved.size(); ++i)
-    {
-      std::vector<unsigned int> &v = sorted_entries[processors_involved[i]];
-      v.push_back(i);
-    }
-
-  std::vector<unsigned int>  numbers_mf_order(dof_handler.locally_owned_dofs().n_elements(),
-                                             dealii::numbers::invalid_unsigned_int);
-  unsigned int               counter_dof_numbers = 0;
-  std::vector<unsigned char> touch_count(dof_handler.locally_owned_dofs().n_elements());
-  std::vector<unsigned int>  local_dofs_mf;
-  const unsigned int         fe_degree = dof_handler.get_fe().degree;
-  for (unsigned int cell = 0; cell < matrix_free.n_cell_batches(); ++cell)
-    {
-      matrix_free.get_dof_info().get_dof_indices_on_cell_batch(local_dofs_mf, cell, true);
-      std::sort(local_dofs_mf.begin(), local_dofs_mf.end());
-      local_dofs_mf.erase(std::unique(local_dofs_mf.begin(), local_dofs_mf.end()),
-                          local_dofs_mf.end());
-      for (unsigned int i : local_dofs_mf)
-        if (i < dof_handler.locally_owned_dofs().n_elements())
-          touch_count[i]++;
-
-      // inject the natural ordering of the matrix-free loop order
-      for (unsigned int v = 0; v < matrix_free.n_components_filled(cell); ++v)
-        {
-          matrix_free.get_cell_iterator(cell, v)->get_dof_indices(dof_indices);
-          unsigned int cf = 0;
-          for (; cf < dealii::GeometryInfo<dim>::vertices_per_cell; ++cf)
-            if (dof_handler.locally_owned_dofs().is_element(dof_indices[cf]) &&
-                numbers_mf_order[dof_handler.locally_owned_dofs().index_within_set(
-                  dof_indices[cf])] == dealii::numbers::invalid_unsigned_int)
-              numbers_mf_order[dof_handler.locally_owned_dofs().index_within_set(dof_indices[cf])] =
-                counter_dof_numbers++;
-          for (unsigned int line = 0; line < dealii::GeometryInfo<dim>::lines_per_cell; ++line)
-            {
-              if (dof_handler.locally_owned_dofs().is_element(dof_indices[cf]) &&
-                  numbers_mf_order[dof_handler.locally_owned_dofs().index_within_set(
-                    dof_indices[cf])] == dealii::numbers::invalid_unsigned_int)
-                for (unsigned int i = 0; i < fe_degree - 1; ++i, ++cf)
-                  numbers_mf_order[dof_handler.locally_owned_dofs().index_within_set(
-                    dof_indices[cf])] = counter_dof_numbers++;
-              else
-                cf += fe_degree - 1;
-            }
-          for (unsigned int quad = 0; quad < dealii::GeometryInfo<dim>::quads_per_cell; ++quad)
-            {
-              if (dof_handler.locally_owned_dofs().is_element(dof_indices[cf]) &&
-                  numbers_mf_order[dof_handler.locally_owned_dofs().index_within_set(
-                    dof_indices[cf])] == dealii::numbers::invalid_unsigned_int)
-                for (unsigned int i = 0; i < (fe_degree - 1) * (fe_degree - 1); ++i, ++cf)
-                  numbers_mf_order[dof_handler.locally_owned_dofs().index_within_set(
-                    dof_indices[cf])] = counter_dof_numbers++;
-              else
-                cf += (fe_degree - 1) * (fe_degree - 1);
-            }
-          for (unsigned int hex = 0; hex < dealii::GeometryInfo<dim>::hexes_per_cell; ++hex)
-            {
-              if (dof_handler.locally_owned_dofs().is_element(dof_indices[cf]) &&
-                  numbers_mf_order[dof_handler.locally_owned_dofs().index_within_set(
-                    dof_indices[cf])] == dealii::numbers::invalid_unsigned_int)
-                for (unsigned int i = 0; i < (fe_degree - 1) * (fe_degree - 1) * (fe_degree - 1);
-                     ++i, ++cf)
-                  numbers_mf_order[dof_handler.locally_owned_dofs().index_within_set(
-                    dof_indices[cf])] = counter_dof_numbers++;
-              else
-                cf += (fe_degree - 1) * (fe_degree - 1) * (fe_degree - 1);
-            }
-        }
-    }
-  AssertThrow(counter_dof_numbers == dof_handler.locally_owned_dofs().n_elements(),
+  auto numbers_mf_order = get_assembly_result(matrix_free);
+  AssertThrow(numbers_mf_order.size() == dof_handler.locally_owned_dofs().n_elements(),
               dealii::ExcMessage("Expected " +
                                  std::to_string(dof_handler.locally_owned_dofs().n_elements()) +
-                                 " dofs, touched " + std::to_string(counter_dof_numbers)));
+                                 " dofs, touched " + std::to_string(numbers_mf_order.size())));
 
+  auto new_numbers = grouping(matrix_free, numbers_mf_order);
+  AssertThrow(new_numbers.size() == dof_handler.locally_owned_dofs().n_elements(),
+              dealii::ExcMessage("Dimension mismatch " + std::to_string(new_numbers.size()) +
+                                 " vs " +
+                                 std::to_string(dof_handler.locally_owned_dofs().n_elements())));
 
+  // list of new indices for each dof, enumerated in the same order as current dofs
+  std::vector<dealii::types::global_dof_index> new_global_numbers(
+    dof_handler.locally_owned_dofs().n_elements());
+  for(unsigned int i = 0; i < new_numbers.size(); ++i)
+    new_global_numbers[new_numbers[i]] = dof_handler.locally_owned_dofs().nth_index_in_set(i);
+
+  dof_handler.renumber_dofs(new_global_numbers);
+}
+
+template<int dim, typename Number>
+std::string
+Renumber<dim, Number>::get_renumber_string() const
+{
+  std::stringstream ss;
+  switch(assembly_strat)
+  {
+    case 0:
+      ss << "cell";
+      break;
+    case 1:
+      ss << "cellbatch";
+      break;
+    default:
+      assert(false);
+  }
+  ss << "-";
+  switch(renumber_strat)
+  {
+    case 0:
+      ss << "base";
+      break;
+    case 1:
+      ss << "first";
+      break;
+    case 2:
+      ss << "last";
+      break;
+    default:
+      assert(false);
+  }
+  ss << "-";
+  switch(grouping_strat)
+  {
+    case 0:
+      ss << "base";
+      break;
+    case 1:
+      ss << "cellbatch";
+      break;
+    case 2:
+      ss << "cellbatch_range";
+      break;
+    default:
+      assert(false);
+  }
+  return ss.str();
+}
+
+template<int dim, typename Number>
+std::vector<unsigned int>
+Renumber<dim, Number>::get_assembly_result(
+  const dealii::MatrixFree<dim, Number> & matrix_free) const
+{
+  switch(assembly_strat)
+  {
+    case 0:
+      return cell_assembly(matrix_free);
+    case 1:
+      return cellbatch_assembly(matrix_free);
+    default:
+      assert(false);
+  }
+}
+
+template<int dim, typename Number>
+std::function<void(std::vector<unsigned int> &,
+                   unsigned int &,
+                   std::unordered_set<dealii::types::global_dof_index>,
+                   const bool &,
+                   const unsigned int &)>
+Renumber<dim, Number>::get_renumber_func() const
+{
+  switch(renumber_strat)
+  {
+    case 1:
+      return Renumber::first_touch_renumber;
+    case 2:
+      return Renumber::last_touch_renumber;
+    default:
+      assert(false);
+  }
+}
+
+template<int dim, typename Number>
+std::vector<unsigned char>
+Renumber<dim, Number>::get_grouping_result(
+  const dealii::MatrixFree<dim, Number> & matrix_free) const
+{
+  switch(grouping_strat)
+  {
+    case 1:
+      return touch_count_cellbatch(matrix_free);
+    case 2:
+      return touch_count_cellbatch_range(matrix_free);
+    default:
+      assert(false);
+  }
+}
+
+template<int dim, typename Number>
+std::vector<unsigned int>
+Renumber<dim, Number>::cell_assembly(const dealii::MatrixFree<dim, Number> & matrix_free) const
+{
+  const auto & dof_handler = matrix_free.get_dof_handler();
+  const auto & local_dofs  = dof_handler.locally_owned_dofs();
+
+  std::vector<unsigned int> numbers_mf_order(local_dofs.n_elements(),
+                                             dealii::numbers::invalid_unsigned_int);
+  // contains the dof indices of a cell
+  std::vector<dealii::types::global_dof_index> dof_indices(dof_handler.get_fe().dofs_per_cell);
+  // counter depicting the order that is incremented after each dof is assigned a value
+  unsigned int       counter_dof_numbers = 0;
+  const unsigned int fe_degree           = dof_handler.get_fe().degree;
+
+  auto renumber_func = get_renumber_func();
+
+  for(unsigned int cell_batch = 0; cell_batch < matrix_free.n_cell_batches(); ++cell_batch)
+  {
+    for(unsigned int cell = 0; cell < matrix_free.n_components_filled(cell_batch); ++cell)
+    {
+      // stores the indices for the dofs in cell_batch
+      matrix_free.get_cell_iterator(cell_batch, cell)->get_dof_indices(dof_indices);
+
+      // inclusion of dof_index indicates a previous value assignment within this element
+      // only for last_touch_renumber!!
+      std::unordered_set<dealii::types::global_dof_index> set_dofs;
+      set_dofs.reserve(matrix_free.n_components_filled(cell_batch));
+
+      unsigned int cf = 0;
+      for(; cf < dealii::GeometryInfo<dim>::vertices_per_cell; ++cf)
+        renumber_func(numbers_mf_order,
+                      counter_dof_numbers,
+                      set_dofs,
+                      local_dofs.is_element(dof_indices[cf]),
+                      local_dofs.index_within_set(dof_indices[cf]));
+
+      for(unsigned int line = 0; line < dealii::GeometryInfo<dim>::lines_per_cell; ++line)
+      {
+        for(unsigned int i = 0; i < fe_degree - 1; ++i, ++cf)
+          renumber_func(numbers_mf_order,
+                        counter_dof_numbers,
+                        set_dofs,
+                        local_dofs.is_element(dof_indices[cf]),
+                        local_dofs.index_within_set(dof_indices[cf]));
+      }
+      for(unsigned int quad = 0; quad < dealii::GeometryInfo<dim>::quads_per_cell; ++quad)
+      {
+        for(unsigned int i = 0; i < (fe_degree - 1) * (fe_degree - 1); ++i, ++cf)
+          renumber_func(numbers_mf_order,
+                        counter_dof_numbers,
+                        set_dofs,
+                        local_dofs.is_element(dof_indices[cf]),
+                        local_dofs.index_within_set(dof_indices[cf]));
+      }
+      for(unsigned int hex = 0; hex < dealii::GeometryInfo<dim>::hexes_per_cell; ++hex)
+      {
+        for(unsigned int i = 0; i < (fe_degree - 1) * (fe_degree - 1) * (fe_degree - 1); ++i, ++cf)
+          renumber_func(numbers_mf_order,
+                        counter_dof_numbers,
+                        set_dofs,
+                        local_dofs.is_element(dof_indices[cf]),
+                        local_dofs.index_within_set(dof_indices[cf]));
+      }
+    }
+  }
+  return numbers_mf_order;
+}
+
+template<int dim, typename Number>
+std::vector<unsigned int>
+Renumber<dim, Number>::cellbatch_assembly(const dealii::MatrixFree<dim, Number> & matrix_free) const
+{
+  const auto & dof_handler = matrix_free.get_dof_handler();
+  const auto & local_dofs  = dof_handler.locally_owned_dofs();
+
+  std::vector<unsigned int> numbers_mf_order(local_dofs.n_elements(),
+                                             dealii::numbers::invalid_unsigned_int);
+  // contains the dof indices of a cell
+  std::vector<dealii::types::global_dof_index> dof_indices(dof_handler.get_fe().dofs_per_cell);
+
+  // counter depicting the order that is incremented after each dof is assigned a value
+  unsigned int       counter_dof_numbers = 0;
+  const unsigned int fe_degree           = dof_handler.get_fe().degree;
+
+  auto renumber_func = get_renumber_func();
+  for(unsigned int cell_batch = 0; cell_batch < matrix_free.n_cell_batches(); ++cell_batch)
+  {
+    // inclusion of dof_index indicates a previous value assignment within this element
+    // only for last_touch_renumber!!
+    std::unordered_set<dealii::types::global_dof_index> set_dofs;
+    set_dofs.reserve(matrix_free.n_components_filled(cell_batch) *
+                     dof_handler.get_fe().dofs_per_cell);
+
+    // matrix_free.get_dof_info().get_dof_indices_on_cell_batch(dof_indices, cell_batch, true);
+    unsigned int cf = 0;
+    for(; cf < dealii::GeometryInfo<dim>::vertices_per_cell; ++cf)
+    {
+      for(unsigned int cell = 0; cell < matrix_free.n_components_filled(cell_batch); ++cell)
+      {
+        matrix_free.get_cell_iterator(cell_batch, cell)->get_dof_indices(dof_indices);
+        renumber_func(numbers_mf_order,
+                      counter_dof_numbers,
+                      set_dofs,
+                      local_dofs.is_element(dof_indices[cf]),
+                      local_dofs.index_within_set(dof_indices[cf]));
+      }
+    }
+    for(unsigned int line = 0; line < dealii::GeometryInfo<dim>::lines_per_cell; ++line)
+    {
+      for(unsigned int i = 0; i < fe_degree - 1; ++i, ++cf)
+      {
+        for(unsigned int cell = 0; cell < matrix_free.n_components_filled(cell_batch); ++cell)
+        {
+          matrix_free.get_cell_iterator(cell_batch, cell)->get_dof_indices(dof_indices);
+          renumber_func(numbers_mf_order,
+                        counter_dof_numbers,
+                        set_dofs,
+                        local_dofs.is_element(dof_indices[cf]),
+                        local_dofs.index_within_set(dof_indices[cf]));
+        }
+      }
+    }
+    for(unsigned int quad = 0; quad < dealii::GeometryInfo<dim>::quads_per_cell; ++quad)
+    {
+      for(unsigned int i = 0; i < (fe_degree - 1) * (fe_degree - 1); ++i, ++cf)
+      {
+        for(unsigned int cell = 0; cell < matrix_free.n_components_filled(cell_batch); ++cell)
+        {
+          matrix_free.get_cell_iterator(cell_batch, cell)->get_dof_indices(dof_indices);
+          renumber_func(numbers_mf_order,
+                        counter_dof_numbers,
+                        set_dofs,
+                        local_dofs.is_element(dof_indices[cf]),
+                        local_dofs.index_within_set(dof_indices[cf]));
+        }
+      }
+    }
+    for(unsigned int hex = 0; hex < dealii::GeometryInfo<dim>::hexes_per_cell; ++hex)
+    {
+      for(unsigned int i = 0; i < (fe_degree - 1) * (fe_degree - 1) * (fe_degree - 1); ++i, ++cf)
+      {
+        for(unsigned int cell = 0; cell < matrix_free.n_components_filled(cell_batch); ++cell)
+        {
+          matrix_free.get_cell_iterator(cell_batch, cell)->get_dof_indices(dof_indices);
+          renumber_func(numbers_mf_order,
+                        counter_dof_numbers,
+                        set_dofs,
+                        local_dofs.is_element(dof_indices[cf]),
+                        local_dofs.index_within_set(dof_indices[cf]));
+        }
+      }
+    }
+  }
+  return numbers_mf_order;
+}
+
+template<int dim, typename Number>
+void
+Renumber<dim, Number>::first_touch_renumber(
+  std::vector<unsigned int> & numbers_mf_order,
+  unsigned int &              counter_dof_numbers,
+  std::unordered_set<dealii::types::global_dof_index> /*set_dofs*/,
+  const bool &         is_element,
+  const unsigned int & index_within_set)
+{
+  if(is_element && numbers_mf_order[index_within_set] == dealii::numbers::invalid_unsigned_int)
+  {
+    numbers_mf_order[index_within_set] = counter_dof_numbers++;
+  }
+}
+
+template<int dim, typename Number>
+void
+Renumber<dim, Number>::last_touch_renumber(
+  std::vector<unsigned int> &                         numbers_mf_order,
+  unsigned int &                                      counter_dof_numbers,
+  std::unordered_set<dealii::types::global_dof_index> set_dofs,
+  const bool &                                        is_element,
+  const unsigned int &                                index_within_set)
+{
+  if(is_element && set_dofs.find(index_within_set) == set_dofs.end())
+  {
+    numbers_mf_order[index_within_set] = counter_dof_numbers++;
+    set_dofs.emplace(index_within_set);
+  }
+}
+
+template<int dim, typename Number>
+std::vector<unsigned int>
+Renumber<dim, Number>::grouping(const dealii::MatrixFree<dim, Number> & matrix_free,
+                                const std::vector<unsigned int> &       numbers_mf_order) const
+{
+  const auto & dof_handler = matrix_free.get_dof_handler();
+
+  auto sorted_entries = domain_dof_mapping(dof_handler);
+
+  // retrieve all dofs touched only by a single processor (non-ghost dofs)
+  const std::vector<unsigned int> single_domain_dofs = sorted_entries[std::vector<unsigned int>()];
+  sorted_entries.erase(std::vector<unsigned int>());
+
+  // list of dofs defining the new processing order
   std::vector<unsigned int> new_numbers;
   new_numbers.reserve(dof_handler.locally_owned_dofs().n_elements());
-  std::vector<unsigned int> single_domain_dofs = sorted_entries[std::vector<unsigned int>()];
-  sorted_entries.erase(std::vector<unsigned int>());
-  for (auto i : single_domain_dofs)
-    if (touch_count[i] == 1)
+
+  if(grouping_strat == 0)
+    base_grouping(new_numbers, single_domain_dofs, numbers_mf_order);
+  else
+    touch_count_grouping(new_numbers, matrix_free, single_domain_dofs, numbers_mf_order);
+
+  const unsigned int fill_size = new_numbers.size();
+
+  // add all dofs that are touched by multiple processors (=ghost dofs)
+  for(const auto & [multi_domains, ghost_dofs] : sorted_entries)
+    for(const auto dof : ghost_dofs)
+      new_numbers.push_back(dof);
+
+  // renumber within the chunks to reflect the numbering we want to impose
+  // through the matrix-free loop
+  auto comp = [&](const unsigned int a, const unsigned int b) {
+    return (numbers_mf_order[a] < numbers_mf_order[b]);
+  };
+  std::sort(new_numbers.begin() + fill_size, new_numbers.end(), comp);
+
+  return new_numbers;
+}
+
+template<int dim, typename Number>
+void
+Renumber<dim, Number>::base_grouping(std::vector<unsigned int> &       new_numbers,
+                                     const std::vector<unsigned int> & single_domain_dofs,
+                                     const std::vector<unsigned int> & numbers_mf_order) const
+{
+  // add all dofs that are touched once
+  for(auto i : single_domain_dofs)
+    new_numbers.push_back(i);
+
+  // renumber within the chunks to reflect the numbering we want to impose
+  // through the matrix-free loop
+  auto comp = [&](const unsigned int a, const unsigned int b) {
+    return (numbers_mf_order[a] < numbers_mf_order[b]);
+  };
+  std::sort(new_numbers.begin(), new_numbers.end(), comp);
+}
+
+template<int dim, typename Number>
+void
+Renumber<dim, Number>::touch_count_grouping(
+  std::vector<unsigned int> &             new_numbers,
+  const dealii::MatrixFree<dim, Number> & matrix_free,
+  const std::vector<unsigned int> &       single_domain_dofs,
+  const std::vector<unsigned int> &       numbers_mf_order) const
+{
+  const auto touch_count = get_grouping_result(matrix_free);
+
+  // add all dofs that are touched once
+  for(auto i : single_domain_dofs)
+    if(touch_count[i] == 1)
       new_numbers.push_back(i);
 
   // renumber within the chunks to reflect the numbering we want to impose
@@ -152,52 +496,152 @@ renumber_dofs_mf(
     return (numbers_mf_order[a] < numbers_mf_order[b]);
   };
   std::sort(new_numbers.begin(), new_numbers.end(), comp);
-  const unsigned int single_size = new_numbers.size();
+  const unsigned int fill_size = new_numbers.size();
 
-  for (auto i : single_domain_dofs)
-    if (touch_count[i] > 1)
+  // add all dofs that are touched multiple times
+  for(auto i : single_domain_dofs)
+    if(touch_count[i] > 1)
       new_numbers.push_back(i);
-  std::sort(new_numbers.begin() + single_size, new_numbers.end(), comp);
-  const unsigned int multiple_size = new_numbers.size() - single_size;
 
-  for (auto &it : sorted_entries)
-    for (auto i : it.second)
-      new_numbers.push_back(i);
-  std::sort(new_numbers.begin() + single_size + multiple_size, new_numbers.end(), comp);
-  const unsigned int multiproc_size = new_numbers.size() - single_size - multiple_size;
+  std::sort(new_numbers.begin() + fill_size, new_numbers.end(), comp);
+}
 
-  for (auto i : single_domain_dofs)
-    if (touch_count[i] == 0)
-      new_numbers.push_back(i);
-  std::sort(new_numbers.begin() + single_size + multiple_size + multiproc_size,
-            new_numbers.end(),
-            comp);
+template<int dim, typename Number>
+std::vector<unsigned char>
+Renumber<dim, Number>::touch_count_cellbatch(
+  const dealii::MatrixFree<dim, Number> & matrix_free) const
+{
+  const auto n_dofs = matrix_free.get_dof_handler().locally_owned_dofs().n_elements();
 
-  // std::cout << "P" << Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) << " "
-  //          << single_size << " " << multiple_size << " " << multiproc_size << std::endl;
+  std::vector<unsigned char> touch_count(n_dofs, 0);
 
-  AssertThrow(new_numbers.size() == dof_handler.locally_owned_dofs().n_elements(),
-              dealii::ExcMessage("Dimension mismatch " + std::to_string(new_numbers.size()) +
-                                 " vs " +
-                                 std::to_string(dof_handler.locally_owned_dofs().n_elements())));
+  for(unsigned int cell_batch = 0; cell_batch < matrix_free.n_cell_batches(); ++cell_batch)
+  {
+    // contains local dof indices for a cell batch
+    std::vector<unsigned int> local_dof_indices;
 
-  std::vector<dealii::types::global_dof_index> new_global_numbers(
-    dof_handler.locally_owned_dofs().n_elements());
-  for (unsigned int i = 0; i < new_numbers.size(); ++i)
-    new_global_numbers[new_numbers[i]] = dof_handler.locally_owned_dofs().nth_index_in_set(i);
+    // retrieve the local dof indices for this cell_batch batch
+    matrix_free.get_dof_info().get_dof_indices_on_cell_batch(local_dof_indices, cell_batch, true);
 
-  dof_handler.renumber_dofs(new_global_numbers);
+    // sort & remove duplicates
+    std::sort(local_dof_indices.begin(), local_dof_indices.end());
+    local_dof_indices.erase(std::unique(local_dof_indices.begin(), local_dof_indices.end()),
+                            local_dof_indices.end());
 
-  if (false)
+    // calc touch_count
+    for(unsigned int i : local_dof_indices)
+      if(i < n_dofs)
+        touch_count[i]++;
+  }
+  return touch_count;
+}
+
+template<int dim, typename Number>
+std::vector<unsigned char>
+Renumber<dim, Number>::touch_count_cellbatch_range(
+  const dealii::MatrixFree<dim, Number> & matrix_free) const
+{
+  const auto n_dofs = matrix_free.get_dof_handler().locally_owned_dofs().n_elements();
+
+  std::vector<unsigned char> touch_count(n_dofs, 0);
+
+  // required information to identify cellbatch_ranges
+  const auto & partition_row_index = matrix_free.get_task_info().partition_row_index;
+  const auto & cell_partition_data = matrix_free.get_task_info().cell_partition_data;
+
+  for(auto part = 0u; part < partition_row_index.size() - 2; ++part)
+  {
+    // cellbatch_range loop
+    for(auto i = partition_row_index[part]; i < partition_row_index[part + 1]; ++i)
     {
-      dealii::IndexSet locally_active_dofs;
-      dealii::DoFTools::extract_locally_active_dofs(dof_handler, locally_active_dofs);
-      dealii::Utilities::MPI::Partitioner partitioner;
-      partitioner.reinit(dof_handler.locally_owned_dofs(), locally_active_dofs, MPI_COMM_WORLD);
-      std::cout << dealii::Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) << " n_import_indices "
-                << partitioner.n_import_indices() << " import_indices.size() "
-                << partitioner.import_indices().size() << std::endl;
+      // contains local dof indices for a cellbatch_range
+      std::vector<unsigned int> cellbatch_range_indices;
+
+      for(unsigned int cellbatch = cell_partition_data[i]; cellbatch < cell_partition_data[i + 1];
+          ++cellbatch)
+      {
+        // contains local dof indices for a cellbatch
+        std::vector<unsigned int> cellbatch_indices;
+        // retrieve the local dof indices for this cell_batch batch
+        matrix_free.get_dof_info().get_dof_indices_on_cell_batch(cellbatch_indices,
+                                                                 cellbatch,
+                                                                 true);
+        cellbatch_range_indices.insert(cellbatch_range_indices.end(),
+                                       cellbatch_indices.begin(),
+                                       cellbatch_indices.end());
+      }
+
+      // sort & remove duplicates
+      std::sort(cellbatch_range_indices.begin(), cellbatch_range_indices.end());
+      cellbatch_range_indices.erase(std::unique(cellbatch_range_indices.begin(),
+                                                cellbatch_range_indices.end()),
+                                    cellbatch_range_indices.end());
+
+      // calc touch_count
+      for(unsigned int i : cellbatch_range_indices)
+        if(i < n_dofs)
+          touch_count[i]++;
     }
+  }
+  return touch_count;
+}
+
+template<int dim, typename Number>
+std::map<std::vector<unsigned int>,
+         std::vector<unsigned int>,
+         std::function<bool(const std::vector<unsigned int> &, const std::vector<unsigned int> &)>>
+Renumber<dim, Number>::domain_dof_mapping(const dealii::DoFHandler<dim> & dof_handler) const
+{
+  // contains the ranks the dof is involved with
+  std::vector<std::vector<unsigned int>> processors_involved(
+    dof_handler.locally_owned_dofs().n_elements());
+  // contains the dof indices of a cell
+  std::vector<dealii::types::global_dof_index> dof_indices(dof_handler.get_fe().dofs_per_cell);
+  // retrieves the involved ranks for each dof
+  for(auto & cell : dof_handler.active_cell_iterators())
+    if(cell->is_ghost())
+    {
+      cell->get_dof_indices(dof_indices);
+      for(auto i : dof_indices)
+      {
+        if(dof_handler.locally_owned_dofs().is_element(i))
+          processors_involved[dof_handler.locally_owned_dofs().index_within_set(i)].push_back(
+            cell->subdomain_id());
+      }
+    }
+  // sort & remove duplicates
+  for(std::vector<unsigned int> & v : processors_involved)
+    if(v.size() > 1)
+    {
+      std::sort(v.begin(), v.end());
+      v.erase(std::unique(v.begin(), v.end()), v.end());
+    }
+
+  // calc (vector of processors , the dofs these processors are involved with ) - pairs
+  std::map<
+    std::vector<unsigned int>,
+    std::vector<unsigned int>,
+    std::function<bool(const std::vector<unsigned int> &, const std::vector<unsigned int> &)>>
+    sorted_entries{[](const std::vector<unsigned int> & a, const std::vector<unsigned int> & b) {
+      if(a.size() < b.size())
+        return true;
+      if(a.size() == b.size())
+      {
+        for(unsigned int i = 0; i < a.size(); ++i)
+          if(a[i] < b[i])
+            return true;
+          else if(a[i] > b[i])
+            return false;
+      }
+      return false;
+    }};
+  for(unsigned int i = 0; i < processors_involved.size(); ++i)
+  {
+    std::vector<unsigned int> & v = sorted_entries[processors_involved[i]];
+    v.push_back(i);
+  }
+
+  return sorted_entries;
 }
 
 #endif
