@@ -71,7 +71,8 @@ test(const unsigned int s, const bool short_output)
 
   // renumber Dofs to minimize the number of partitions in import indices of
   // partitioner
-  renumber_dofs_mf<dim, double, VectorizedArrayType>(dof_handler, constraints, mf_data);
+  Renumber<dim, double> renum(0, 1, 2);
+  renum.renumber(dof_handler, constraints, mf_data);
 
   std::shared_ptr<MatrixFree<dim, double, VectorizedArrayType>> matrix_free(
     new MatrixFree<dim, double, VectorizedArrayType>());

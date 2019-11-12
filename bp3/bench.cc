@@ -80,7 +80,8 @@ test(const unsigned int s, const bool short_output)
 
   // renumber Dofs to minimize the number of partitions in import indices of
   // partitioner
-  renumber_dofs_mf<dim, double>(dof_handler, constraints, mf_data);
+  Renumber<dim, double> renum(0, 1, 2);
+  renum.renumber(dof_handler, constraints, mf_data);
 
   DoFTools::extract_locally_relevant_dofs(dof_handler, relevant_dofs);
   constraints.clear();
