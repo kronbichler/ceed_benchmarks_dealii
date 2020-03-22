@@ -20,6 +20,8 @@ namespace Poisson
 {
   using namespace dealii;
 
+  static std::unique_ptr<MPI_Comm, std::function<void(MPI_Comm *)>> comm_sm_ptr;
+
   template <typename Number>
   inline DEAL_II_ALWAYS_INLINE Number do_invert(Tensor<2, 2, Number> &t)
   {
@@ -78,7 +80,17 @@ namespace Poisson
     do_initialize_vector(const std::shared_ptr<const MFType> &       data,
                          LinearAlgebra::SharedMPI::Vector<Number> &vec)
     {
-      data->initialize_dof_vector(vec, MPI_COMM_WORLD /*petrrum*/);
+      if(comm_sm_ptr == nullptr)
+      {
+        int rank;
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+          
+        comm_sm_ptr = {new MPI_Comm, [](MPI_Comm * comm){MPI_Comm_free(comm);}};
+        MPI_Comm_split_type( MPI_COMM_WORLD, MPI_COMM_TYPE_SHARED, rank, MPI_INFO_NULL, comm_sm_ptr.get());
+        
+      }
+      
+      data->initialize_dof_vector(vec, *comm_sm_ptr);
     }
 
     template <typename MFType, typename Number>

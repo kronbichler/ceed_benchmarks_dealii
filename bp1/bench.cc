@@ -140,9 +140,9 @@ test(const unsigned int s, const bool short_output)
   mass_operator.initialize(matrix_free, constraints);
 
   VectorType input, output, tmp;
-  matrix_free->initialize_dof_vector(input);
-  matrix_free->initialize_dof_vector(output);
-  matrix_free->initialize_dof_vector(tmp);
+  mass_operator.initialize_dof_vector(input);
+  mass_operator.initialize_dof_vector(output);
+  mass_operator.initialize_dof_vector(tmp);
   for (unsigned int i = 0; i < input.local_size(); ++i)
     input.local_element(i) = i % 8;
 
@@ -156,7 +156,7 @@ test(const unsigned int s, const bool short_output)
   SolverCG<VectorType> solver(solver_control);
 
   DiagonalMatrix<VectorType> diag_mat;
-  matrix_free->initialize_dof_vector(diag_mat.get_vector());
+  mass_operator.initialize_dof_vector(diag_mat.get_vector());
   output = 1.;
   mass_operator.vmult(diag_mat.get_vector(), output);
   for (unsigned int i = 0; i < diag_mat.get_vector().local_size(); ++i)

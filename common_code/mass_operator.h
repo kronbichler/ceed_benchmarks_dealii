@@ -23,7 +23,47 @@ namespace Mass
 {
   using namespace dealii;
 
+  static std::unique_ptr<MPI_Comm, std::function<void(MPI_Comm *)>> comm_sm_ptr;
 
+
+  namespace internal
+  {
+    template <typename MFType, typename Number>
+    void
+    do_initialize_vector(const std::shared_ptr<const MFType> &       data,
+                         LinearAlgebra::distributed::Vector<Number> &vec)
+    {
+      data->initialize_dof_vector(vec);
+    }
+    
+    template <typename MFType, typename Number>
+    void
+    do_initialize_vector(const std::shared_ptr<const MFType> &       data,
+                         LinearAlgebra::SharedMPI::Vector<Number> &vec)
+    {
+      if(comm_sm_ptr == nullptr)
+      {
+        int rank;
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+          
+        comm_sm_ptr = {new MPI_Comm, [](MPI_Comm * comm){MPI_Comm_free(comm);}};
+        MPI_Comm_split_type( MPI_COMM_WORLD, MPI_COMM_TYPE_SHARED, rank, MPI_INFO_NULL, comm_sm_ptr.get());
+        
+      }
+      
+      data->initialize_dof_vector(vec, *comm_sm_ptr);
+    }
+
+    template <typename MFType, typename Number>
+    void
+    do_initialize_vector(const std::shared_ptr<const MFType> &            data,
+                         LinearAlgebra::distributed::BlockVector<Number> &vec)
+    {
+      for (unsigned int bl = 0; bl < vec.n_blocks(); ++bl)
+        data->initialize_dof_vector(vec.block(bl));
+      vec.collect_sizes();
+    }
+  } // namespace internal
 
   // general mass matrix operator for block case
   template <int dim,
@@ -71,10 +111,7 @@ namespace Mass
     void
     initialize_dof_vector(VectorType &vec) const
     {
-      vec.reinit(dim);
-      for (unsigned int d = 0; d < dim; ++d)
-        data->initialize_dof_vector(vec.block(d));
-      vec.collect_sizes();
+      internal::do_initialize_vector(data, vec);
     }
 
     /**
@@ -305,7 +342,7 @@ namespace Mass
     void
     initialize_dof_vector(VectorType &vec) const
     {
-      data->initialize_dof_vector(vec);
+      internal::do_initialize_vector(data, vec);
     }
 
     /**
