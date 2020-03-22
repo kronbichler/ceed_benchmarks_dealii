@@ -44,7 +44,7 @@ typedef dealii::VectorizedArray<double> VectorizedArrayType;
 typedef dealii::VectorizedArray<double, 1> VectorizedArrayType;
 #endif
 
-
+using VectorType = LinearAlgebra::distributed::Vector<double>;
 
 template <int dim, int fe_degree, int n_q_points>
 void
@@ -94,12 +94,12 @@ test(const unsigned int s, const bool short_output)
                            n_q_points,
                            1,
                            double,
-                           LinearAlgebra::distributed::Vector<double>,
+                           VectorType,
                            VectorizedArrayType>
     laplace_operator;
   laplace_operator.initialize(matrix_free, constraints);
 
-  LinearAlgebra::distributed::Vector<double> input, output, tmp;
+  VectorType input, output, tmp;
   laplace_operator.initialize_dof_vector(input);
   laplace_operator.initialize_dof_vector(output);
   laplace_operator.initialize_dof_vector(tmp);
@@ -107,7 +107,7 @@ test(const unsigned int s, const bool short_output)
     if (!constraints.is_constrained(input.get_partitioner()->local_to_global(i)))
       input.local_element(i) = (i) % 8;
 
-  DiagonalMatrix<LinearAlgebra::distributed::Vector<double>> diag_mat;
+  DiagonalMatrix<VectorType> diag_mat;
   diag_mat.get_vector() = laplace_operator.compute_inverse_diagonal();
   if (short_output == false)
     {
@@ -123,7 +123,7 @@ test(const unsigned int s, const bool short_output)
               << "s" << std::endl;
 
   ReductionControl                                     solver_control(100, 1e-15, 1e-8);
-  SolverCG<LinearAlgebra::distributed::Vector<double>> solver(solver_control);
+  SolverCG<VectorType> solver(solver_control);
 
 #ifdef LIKWID_PERFMON
   LIKWID_MARKER_START("cg_solver");
@@ -167,7 +167,7 @@ test(const unsigned int s, const bool short_output)
                 << "s" << std::endl;
     }
 
-  SolverCGOptimized<LinearAlgebra::distributed::Vector<double>> solver2(solver_control);
+  SolverCGOptimized<VectorType> solver2(solver_control);
   double                                                        solver_time2 = 1e10;
 #ifdef LIKWID_PERFMON
   LIKWID_MARKER_START("cg_solver_opt");
@@ -201,7 +201,7 @@ test(const unsigned int s, const bool short_output)
               ExcMessage("Iteration numbers differ " + std::to_string(solver_control.last_step()) +
                          " vs default solver " + std::to_string(iterations_basic)));
 
-  SolverCGFullMerge<LinearAlgebra::distributed::Vector<double>> solver4(solver_control);
+  SolverCGFullMerge<VectorType> solver4(solver_control);
   double                                                        solver_time4 = 1e10;
 #ifdef LIKWID_PERFMON
   LIKWID_MARKER_START("cg_solver_optm");

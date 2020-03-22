@@ -377,7 +377,7 @@ namespace Poisson
                            VectorType &                                                      g,
                            VectorType &                                                      d,
                            VectorType &                                                      h,
-                           const DiagonalMatrix<LinearAlgebra::distributed::Vector<Number>> &prec,
+                           const DiagonalMatrix<VectorType> &prec,
                            const Number                                                      alpha,
                            const Number                                                      beta,
                            const Number alpha_old,
@@ -488,9 +488,9 @@ namespace Poisson
     std::array<Number,7>
     vmult_with_all_cg_updates(const Number alpha,
                               const Number beta,
-                              const DiagonalMatrix<LinearAlgebra::distributed::Vector<Number>>
-    &prec, LinearAlgebra::distributed::Vector<Number> &g, LinearAlgebra::distributed::Vector<Number>
-    &h, LinearAlgebra::distributed::Vector<Number> &d, LinearAlgebra::distributed::Vector<Number>
+                              const DiagonalMatrix<VectorType>
+    &prec, VectorType &g, VectorType
+    &h, VectorType &d, VectorType
     &x) const
     {
       Tensor<1,7,VectorizedArray<Number>> sums;

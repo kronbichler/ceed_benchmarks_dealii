@@ -8,9 +8,9 @@
 
 #include <deal.II/matrix_free/fe_evaluation.h>
 
-template <int dim, int fe_degree, typename Number, typename VectorizedArrayType>
+template <int dim, int fe_degree, typename Number, typename VectorizedArrayType, typename VectorType>
 void
-read_dof_values_compressed(const dealii::LinearAlgebra::distributed::Vector<Number> &vec,
+read_dof_values_compressed(const VectorType &vec,
                            const std::vector<unsigned int> & compressed_indices,
                            const std::vector<unsigned char> &all_indices_unconstrained,
                            const unsigned int                cell_no,
@@ -257,9 +257,9 @@ read_dof_values_compressed(const dealii::LinearAlgebra::distributed::Vector<Numb
 
 
 
-template <int dim, int fe_degree, typename Number, typename VectorizedArrayType>
+template <int dim, int fe_degree, typename Number, typename VectorizedArrayType, typename VectorType>
 void
-distribute_local_to_global_compressed(dealii::LinearAlgebra::distributed::Vector<Number> &vec,
+distribute_local_to_global_compressed(VectorType &vec,
                                       const std::vector<unsigned int> & compressed_indices,
                                       const std::vector<unsigned char> &all_indices_unconstrained,
                                       const unsigned int                cell_no,

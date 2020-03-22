@@ -43,6 +43,7 @@ typedef dealii::VectorizedArray<double> VectorizedArrayType;
 typedef dealii::VectorizedArray<double, 1> VectorizedArrayType;
 #endif
 
+using VectorType = LinearAlgebra::distributed::Vector<double>;
 
 template <int dim, int fe_degree, int n_q_points>
 void
@@ -133,10 +134,10 @@ test(const unsigned int s, const bool short_output)
         MPI_Barrier(MPI_COMM_WORLD);
       }
 
-  Mass::MassOperator<dim, fe_degree, n_q_points, 1, double, VectorizedArrayType> mass_operator;
+  Mass::MassOperator<dim, fe_degree, n_q_points, 1, double, VectorizedArrayType, VectorType> mass_operator;
   mass_operator.initialize(matrix_free, constraints);
 
-  LinearAlgebra::distributed::Vector<double> input, output, tmp;
+  VectorType input, output, tmp;
   matrix_free->initialize_dof_vector(input);
   matrix_free->initialize_dof_vector(output);
   matrix_free->initialize_dof_vector(tmp);
@@ -150,9 +151,9 @@ test(const unsigned int s, const bool short_output)
               << "s" << std::endl;
 
   ReductionControl                                     solver_control(100, 1e-15, 1e-8);
-  SolverCG<LinearAlgebra::distributed::Vector<double>> solver(solver_control);
+  SolverCG<VectorType> solver(solver_control);
 
-  DiagonalMatrix<LinearAlgebra::distributed::Vector<double>> diag_mat;
+  DiagonalMatrix<VectorType> diag_mat;
   matrix_free->initialize_dof_vector(diag_mat.get_vector());
   output = 1.;
   mass_operator.vmult(diag_mat.get_vector(), output);
@@ -209,7 +210,7 @@ test(const unsigned int s, const bool short_output)
 #ifdef LIKWID_PERFMON
   LIKWID_MARKER_START("cg_solver_opt");
 #endif
-  SolverCGOptimized<LinearAlgebra::distributed::Vector<double>> solver2(solver_control);
+  SolverCGOptimized<VectorType> solver2(solver_control);
   double                                                        solver_time2 = 1e10;
   for (unsigned int t = 0; t < 4; ++t)
     {
@@ -238,7 +239,7 @@ test(const unsigned int s, const bool short_output)
     }
   const unsigned int solver_its2 = solver_control.last_step();
 
-  SolverCGOptimizedAllreduce<LinearAlgebra::distributed::Vector<double>> solver3(solver_control);
+  SolverCGOptimizedAllreduce<VectorType> solver3(solver_control);
   double                                                                 solver_time3 = 1e10;
 #ifdef LIKWID_PERFMON
   LIKWID_MARKER_START("cg_solver_optv");
@@ -270,7 +271,7 @@ test(const unsigned int s, const bool short_output)
       deallog << "True residual norm: " << tmp.l2_norm() << std::endl;
     }
 
-  SolverCGFullMerge<LinearAlgebra::distributed::Vector<double>> solver4(solver_control);
+  SolverCGFullMerge<VectorType> solver4(solver_control);
   double                                                        solver_time4 = 1e10;
 #ifdef LIKWID_PERFMON
   LIKWID_MARKER_START("cg_solver_optm");

@@ -31,7 +31,7 @@ namespace Mass
             int n_q_points_1d            = fe_degree + 1,
             int n_components_            = 1,
             typename Number              = double,
-            typename VectorizedArrayType = VectorizedArray<Number>>
+            typename VectorizedArrayType = VectorizedArray<Number>, typename VectorType = LinearAlgebra::distributed::BlockVector<Number>>
   class MassOperator
   {
   public:
@@ -69,7 +69,7 @@ namespace Mass
      * Initialize function.
      */
     void
-    initialize_dof_vector(LinearAlgebra::distributed::BlockVector<Number> &vec) const
+    initialize_dof_vector(VectorType &vec) const
     {
       vec.reinit(dim);
       for (unsigned int d = 0; d < dim; ++d)
@@ -81,8 +81,8 @@ namespace Mass
      * Matrix-vector multiplication.
      */
     void
-    vmult(LinearAlgebra::distributed::BlockVector<Number> &      dst,
-          const LinearAlgebra::distributed::BlockVector<Number> &src) const
+    vmult(VectorType &      dst,
+          const VectorType &src) const
     {
       this->data->cell_loop(&MassOperator::local_apply_cell, this, dst, src, true);
     }
@@ -92,8 +92,8 @@ namespace Mass
      * without communicating yet)
      */
     Number
-    vmult_inner_product(LinearAlgebra::distributed::BlockVector<Number> &      dst,
-                        const LinearAlgebra::distributed::BlockVector<Number> &src) const
+    vmult_inner_product(VectorType &      dst,
+                        const VectorType &src) const
     {
       accumulated_sum = 0;
       this->data->cell_loop(&MassOperator::local_apply_cell_inner_product, this, dst, src, true);
@@ -105,8 +105,8 @@ namespace Mass
      * symmetric, it does exactly the same as vmult().
      */
     void
-    Tvmult(LinearAlgebra::distributed::BlockVector<Number> &      dst,
-           const LinearAlgebra::distributed::BlockVector<Number> &src) const
+    Tvmult(VectorType &      dst,
+           const VectorType &src) const
     {
       vmult(dst, src);
     }
@@ -117,8 +117,8 @@ namespace Mass
      */
     void
     local_apply_cell(const MatrixFree<dim, value_type, VectorizedArrayType> &data,
-                     LinearAlgebra::distributed::BlockVector<Number> &       dst,
-                     const LinearAlgebra::distributed::BlockVector<Number> & src,
+                     VectorType &       dst,
+                     const VectorType & src,
                      const std::pair<unsigned int, unsigned int> &           cell_range) const
     {
       FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number, VectorizedArrayType> phi(
@@ -141,8 +141,8 @@ namespace Mass
      */
     void
     local_apply_cell_inner_product(const MatrixFree<dim, value_type, VectorizedArrayType> &data,
-                                   LinearAlgebra::distributed::BlockVector<Number> &       dst,
-                                   const LinearAlgebra::distributed::BlockVector<Number> & src,
+                                   VectorType &       dst,
+                                   const VectorType & src,
                                    const std::pair<unsigned int, unsigned int> &cell_range) const
     {
       FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number, VectorizedArrayType>
@@ -178,8 +178,8 @@ namespace Mass
             int fe_degree,
             int n_q_points_1d,
             typename Number,
-            typename VectorizedArrayType>
-  class MassOperator<dim, fe_degree, n_q_points_1d, 1, Number, VectorizedArrayType>
+            typename VectorizedArrayType, typename VectorType>
+  class MassOperator<dim, fe_degree, n_q_points_1d, 1, Number, VectorizedArrayType, VectorType>
   {
   public:
     /**
@@ -303,7 +303,7 @@ namespace Mass
      * Initialize function.
      */
     void
-    initialize_dof_vector(LinearAlgebra::distributed::Vector<Number> &vec) const
+    initialize_dof_vector(VectorType &vec) const
     {
       data->initialize_dof_vector(vec);
     }
@@ -312,8 +312,8 @@ namespace Mass
      * Matrix-vector multiplication.
      */
     void
-    vmult(LinearAlgebra::distributed::Vector<Number> &      dst,
-          const LinearAlgebra::distributed::Vector<Number> &src) const
+    vmult(VectorType &      dst,
+          const VectorType &src) const
     {
       this->data->cell_loop(&MassOperator::local_apply_cell, this, dst, src, true);
     }
@@ -322,8 +322,8 @@ namespace Mass
      * Matrix-vector multiplication.
      */
     void
-    vmult_add(LinearAlgebra::distributed::Vector<Number> &      dst,
-              const LinearAlgebra::distributed::Vector<Number> &src) const
+    vmult_add(VectorType &      dst,
+              const VectorType &src) const
     {
       this->data->cell_loop(&MassOperator::local_apply_cell, this, dst, src, false);
     }
@@ -333,8 +333,8 @@ namespace Mass
      * without communicating yet)
      */
     Number
-    vmult_inner_product(LinearAlgebra::distributed::Vector<Number> &      dst,
-                        const LinearAlgebra::distributed::Vector<Number> &src) const
+    vmult_inner_product(VectorType &      dst,
+                        const VectorType &src) const
     {
       accumulated_sum = 0;
       this->data->cell_loop(&MassOperator::local_apply_cell_inner_product, this, dst, src, true);
@@ -342,11 +342,11 @@ namespace Mass
     }
 
     Tensor<1, 7>
-    vmult_with_merged_sums(LinearAlgebra::distributed::Vector<Number> &                      x,
-                           LinearAlgebra::distributed::Vector<Number> &                      g,
-                           LinearAlgebra::distributed::Vector<Number> &                      d,
-                           LinearAlgebra::distributed::Vector<Number> &                      h,
-                           const DiagonalMatrix<LinearAlgebra::distributed::Vector<Number>> &prec,
+    vmult_with_merged_sums(VectorType &                      x,
+                           VectorType &                      g,
+                           VectorType &                      d,
+                           VectorType &                      h,
+                           const DiagonalMatrix<VectorType> &prec,
                            const Number                                                      alpha,
                            const Number                                                      beta,
                            const Number alpha_old,
@@ -398,8 +398,8 @@ namespace Mass
      * symmetric, it does exactly the same as vmult().
      */
     void
-    Tvmult(LinearAlgebra::distributed::Vector<Number> &      dst,
-           const LinearAlgebra::distributed::Vector<Number> &src) const
+    Tvmult(VectorType &      dst,
+           const VectorType &src) const
     {
       vmult(dst, src);
     }
@@ -410,8 +410,8 @@ namespace Mass
      */
     void
     local_apply_cell(const MatrixFree<dim, value_type, VectorizedArrayType> &data,
-                     LinearAlgebra::distributed::Vector<Number> &            dst,
-                     const LinearAlgebra::distributed::Vector<Number> &      src,
+                     VectorType &            dst,
+                     const VectorType &      src,
                      const std::pair<unsigned int, unsigned int> &           cell_range) const
     {
       FEEvaluation<dim, fe_degree, n_q_points_1d, 1, Number, VectorizedArrayType> phi(data);
@@ -441,8 +441,8 @@ namespace Mass
      */
     void
     local_apply_cell_inner_product(const MatrixFree<dim, value_type, VectorizedArrayType> &data,
-                                   LinearAlgebra::distributed::Vector<Number> &            dst,
-                                   const LinearAlgebra::distributed::Vector<Number> &      src,
+                                   VectorType &            dst,
+                                   const VectorType &      src,
                                    const std::pair<unsigned int, unsigned int> &cell_range) const
     {
       FEEvaluation<dim, fe_degree, n_q_points_1d, 1, Number, VectorizedArrayType> phi(data);
