@@ -103,7 +103,7 @@ test(const unsigned int s, const bool short_output)
       laplace_operator;
     laplace_operator.initialize(matrix_free, constraints);
 
-    diag_mat.diagonal = laplace_operator.compute_inverse_diagonal();
+    laplace_operator.compute_inverse_diagonal(diag_mat.diagonal); // TODO: not sure about this
   }
   if (short_output == false)
     {

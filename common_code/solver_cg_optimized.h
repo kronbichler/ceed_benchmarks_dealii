@@ -11,9 +11,9 @@
 
 namespace internal
 {
-  template <typename Number>
+  template <typename VectorType>
   MPI_Comm
-  get_communicator(dealii::LinearAlgebra::distributed::Vector<Number> &vec)
+  get_communicator(VectorType &vec)
   {
     return vec.get_partitioner()->get_mpi_communicator();
   }

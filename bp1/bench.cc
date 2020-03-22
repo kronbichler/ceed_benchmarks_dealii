@@ -11,6 +11,7 @@
 
 #include <deal.II/lac/diagonal_matrix.h>
 #include <deal.II/lac/la_parallel_vector.h>
+#include <deal.II/lac/la_sm_vector.h>
 #include <deal.II/lac/precondition.h>
 #include <deal.II/lac/solver_cg.h>
 #include <deal.II/lac/solver_control.h>
@@ -43,7 +44,8 @@ typedef dealii::VectorizedArray<double> VectorizedArrayType;
 typedef dealii::VectorizedArray<double, 1> VectorizedArrayType;
 #endif
 
-using VectorType = LinearAlgebra::distributed::Vector<double>;
+//using VectorType = LinearAlgebra::distributed::Vector<double>;
+using VectorType = LinearAlgebra::SharedMPI::Vector<double>;
 
 template <int dim, int fe_degree, int n_q_points>
 void

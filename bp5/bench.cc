@@ -108,7 +108,7 @@ test(const unsigned int s, const bool short_output)
       input.local_element(i) = (i) % 8;
 
   DiagonalMatrix<VectorType> diag_mat;
-  diag_mat.get_vector() = laplace_operator.compute_inverse_diagonal();
+  laplace_operator.compute_inverse_diagonal(diag_mat.get_vector());
   if (short_output == false)
     {
       const double diag_norm = diag_mat.get_vector().l2_norm();

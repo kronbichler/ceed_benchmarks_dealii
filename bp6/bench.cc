@@ -113,7 +113,7 @@ test(const unsigned int s, const bool short_output)
         input.block(d).local_element(i) = (i + d) % 8;
 
   DiagonalMatrixBlocked<dim, double> diag_mat;
-  diag_mat.diagonal = laplace_operator.compute_inverse_diagonal();
+  laplace_operator.compute_inverse_diagonal(diag_mat.diagonal); // TODO: not sure about this
   if (short_output == false)
     {
       const double diag_norm = diag_mat.diagonal.l2_norm();

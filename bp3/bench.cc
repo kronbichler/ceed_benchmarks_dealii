@@ -9,7 +9,8 @@
 #include <deal.II/grid/grid_generator.h>
 #include <deal.II/grid/grid_tools.h>
 
-#include <deal.II/lac/la_parallel_block_vector.h>
+#include <deal.II/lac/la_parallel_vector.h>
+#include <deal.II/lac/la_sm_vector.h>
 #include <deal.II/lac/precondition.h>
 #include <deal.II/lac/solver_cg.h>
 #include <deal.II/lac/solver_control.h>
@@ -32,7 +33,8 @@
 
 using namespace dealii;
 
-using VectorType = LinearAlgebra::distributed::Vector<double>;
+//using VectorType = LinearAlgebra::distributed::Vector<double>;
+using VectorType = LinearAlgebra::SharedMPI::Vector<double>;
 
 template <int dim, int fe_degree, int n_q_points>
 void
@@ -109,7 +111,7 @@ test(const unsigned int s, const bool short_output)
       laplace_operator;
     laplace_operator.initialize(matrix_free, constraints);
 
-    diag_mat.get_vector() = laplace_operator.compute_inverse_diagonal();
+    laplace_operator.compute_inverse_diagonal(diag_mat.get_vector());
   }
   if (short_output == false)
     {

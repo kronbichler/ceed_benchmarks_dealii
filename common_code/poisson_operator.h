@@ -72,6 +72,14 @@ namespace Poisson
     {
       data->initialize_dof_vector(vec);
     }
+    
+    template <typename MFType, typename Number>
+    void
+    do_initialize_vector(const std::shared_ptr<const MFType> &       data,
+                         LinearAlgebra::SharedMPI::Vector<Number> &vec)
+    {
+      data->initialize_dof_vector(vec, MPI_COMM_WORLD /*petrrum*/);
+    }
 
     template <typename MFType, typename Number>
     void
@@ -83,13 +91,13 @@ namespace Poisson
       vec.collect_sizes();
     }
 
-    template <typename Number>
-    Number
+    template <typename VectorType>
+    typename VectorType::value_type
     set_constrained_entries(const std::vector<unsigned int> &                 constrained_entries,
-                            const LinearAlgebra::distributed::Vector<Number> &src,
-                            LinearAlgebra::distributed::Vector<Number> &      dst)
+                            const VectorType &src,
+                            VectorType &      dst)
     {
-      Number sum = 0;
+      typename VectorType::value_type sum = 0;
       for (unsigned int i = 0; i < constrained_entries.size(); ++i)
         {
           dst.local_element(constrained_entries[i]) = src.local_element(constrained_entries[i]);
@@ -571,11 +579,11 @@ namespace Poisson
     /**
      * Compute the diagonal (scalar variant) of the matrix
      */
-    LinearAlgebra::distributed::Vector<Number>
-    compute_inverse_diagonal() const
+    template<typename VectorType_>
+    void
+    compute_inverse_diagonal(VectorType_ &  diag) const
     {
-      LinearAlgebra::distributed::Vector<Number> diag;
-      data->initialize_dof_vector(diag);
+      internal::do_initialize_vector(data, diag);
       FEEvaluation<dim, fe_degree, n_q_points_1d, 1, Number, VectorizedArrayType> phi(*data);
 
       AlignedVector<VectorizedArrayType> diagonal(phi.dofs_per_cell);
@@ -604,7 +612,6 @@ namespace Poisson
           diag.local_element(i) = 1.;
         else
           diag.local_element(i) = 1. / diag.local_element(i);
-      return diag;
     }
 
   private:
