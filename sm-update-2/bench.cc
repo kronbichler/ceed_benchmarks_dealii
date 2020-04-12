@@ -80,14 +80,17 @@ test(ConvergenceTable & table,
       std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now() - temp)
         .count();
 
-    table.add_value(label,
-                    static_cast<double>(dof_handler.n_dofs()) * sizeof(Number) * n_repertitions /
-                      ms / 1000);
+    const auto result =
+      static_cast<double>(dof_handler.n_dofs()) * sizeof(Number) * n_repertitions / ms / 1000;
+
+    table.add_value(label, result);
     table.set_scientific(label, true);
+
+    return result;
   };
 
   // .. for LinearAlgebra::distributed::Vector
-  {
+  const auto result_d = [&]() {
     using VectorType = LinearAlgebra::distributed::Vector<Number>;
 
     // create vectors
@@ -100,7 +103,7 @@ test(ConvergenceTable & table,
                     Utilities::MPI::sum(vec1.get_partitioner()->n_ghost_indices(), comm));
 
     // apply mass matrix
-    run("L::D::V", [&]() {
+    return run("L::D::V", [&]() {
       FEEvaluation<dim, degree, n_points_1d, 1, Number, VectorizedArrayType> phi(matrix_free);
       matrix_free.template cell_loop<VectorType, VectorType>(
         [&](const auto &, auto &dst, const auto &src, const auto cells) {
@@ -118,10 +121,10 @@ test(ConvergenceTable & table,
         vec1,
         vec2);
     });
-  }
+  }();
 
   // .. for LinearAlgebra::SharedMPI::Vector
-  {
+  const auto result_s = [&]() {
     using VectorType = LinearAlgebra::SharedMPI::Vector<Number>;
 
     // create vectors
@@ -130,7 +133,7 @@ test(ConvergenceTable & table,
     matrix_free.initialize_dof_vector(vec2, comm_sm);
 
     // apply mass matrix
-    run("L::S::V", [&]() {
+    return run("L::S::V", [&]() {
       FEEvaluation<dim, degree, n_points_1d, 1, Number, VectorizedArrayType> phi(matrix_free);
       matrix_free.template cell_loop<VectorType, VectorType>(
         [&](const auto &, auto &dst, const auto &src, const auto cells) {
@@ -148,7 +151,10 @@ test(ConvergenceTable & table,
         vec1,
         vec2);
     });
-  }
+  }();
+
+  table.add_value("speedup", result_s / result_d);
+  table.set_scientific("speedup", true);
 }
 
 template <int dim>

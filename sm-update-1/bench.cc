@@ -86,16 +86,28 @@ test(ConvergenceTable & table,
       std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now() - temp)
         .count();
 
-    table.add_value(label,
-                    static_cast<double>(vec.size()) * sizeof(Number) * n_repertitions / ms / 1000);
+    const auto result =
+      static_cast<double>(vec.size()) * sizeof(Number) * n_repertitions / ms / 1000;
+
+    table.add_value(label, result);
     table.set_scientific(label, true);
+    return result;
   };
 
   // clang-format off
-  run("update_ghost_values-sm", [&]() { vec_sm.update_ghost_values(); });
-  run("update_ghost_values"   , [&]() { vec.update_ghost_values(); });
-  run("compress-sm"           , [&]() { vec_sm.compress(VectorOperation::values::add); });
-  run("compress"              , [&]() { vec.compress(VectorOperation::values::add); });
+  
+  // ... update ghost values
+  table.add_value("ghost::speedup", 
+      run("ghost::L::S::V", [&]() { vec_sm.update_ghost_values(); }) /  
+      run("ghost::L::D::V", [&]() { vec.update_ghost_values(); }));
+  table.set_scientific("ghost::speedup", true);
+  
+  // ... compress
+  table.add_value("compress::speedup", 
+      run("compress::L::S::V", [&]() { vec_sm.compress(VectorOperation::values::add); }) /  
+      run("compress::L::D::V", [&]() { vec.compress(VectorOperation::values::add); }));
+      
+  table.set_scientific("compress::speedup", true);
   // clang-format on
 }
 
