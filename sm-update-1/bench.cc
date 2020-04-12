@@ -65,10 +65,6 @@ test(ConvergenceTable & table,
   dealii::MatrixFree<dim, Number> matrix_free;
   matrix_free.reinit(mapping, dof_handler, constraint, quad, additional_data);
 
-  LinearAlgebra::distributed::Vector<Number> vec_rank, vec_offset;
-  matrix_free.initialize_dof_vector(vec_rank);
-  matrix_free.initialize_dof_vector(vec_offset);
-
   // 4) create shared-memory Partitioner and Vector
   LinearAlgebra::SharedMPI::Vector<Number> vec_sm;
   matrix_free.initialize_dof_vector(vec_sm, comm_sm);
@@ -99,9 +95,9 @@ test(ConvergenceTable & table,
 
   // clang-format off
   run("update_ghost_values-sm", [&]() { vec_sm.update_ghost_values(); });
-  run("update_ghost_values   ", [&]() { vec.update_ghost_values(); });
-  run("compress-sm           ", [&]() { vec_sm.compress(VectorOperation::values::add); });
-  run("compress              ", [&]() { vec.compress(VectorOperation::values::add); });
+  run("update_ghost_values"   , [&]() { vec.update_ghost_values(); });
+  run("compress-sm"           , [&]() { vec_sm.compress(VectorOperation::values::add); });
+  run("compress"              , [&]() { vec.compress(VectorOperation::values::add); });
   // clang-format on
 }
 
@@ -137,24 +133,26 @@ namespace hyperdeal
 
       return size_shared_max;
     }
+
+
+
+    std::vector<unsigned int>
+    create_possible_group_sizes(const MPI_Comm &comm)
+    {
+      MPI_Comm           comm_sm       = hyperdeal::mpi::create_sm(comm);
+      const unsigned int n_procs_of_sm = hyperdeal::mpi::n_procs_of_sm(comm, comm_sm);
+      MPI_Comm_free(&comm_sm);
+
+      std::vector<unsigned int> result;
+
+      for (unsigned int i = 1; i <= n_procs_of_sm; i++)
+        if (n_procs_of_sm % i == 0)
+          result.push_back(i);
+
+      return result;
+    }
   } // namespace mpi
 } // namespace hyperdeal
-
-std::vector<unsigned int>
-create_possible_group_sizes(const MPI_Comm &comm)
-{
-  MPI_Comm           comm_sm       = hyperdeal::mpi::create_sm(comm);
-  const unsigned int n_procs_of_sm = hyperdeal::mpi::n_procs_of_sm(comm, comm_sm);
-  MPI_Comm_free(&comm_sm);
-
-  std::vector<unsigned int> result;
-
-  for (unsigned int i = 1; i <= n_procs_of_sm; i++)
-    if (n_procs_of_sm % i == 0)
-      result.push_back(i);
-
-  return result;
-}
 
 int
 main(int argc, char **argv)
@@ -182,7 +180,7 @@ main(int argc, char **argv)
   ConvergenceTable table;
 
   // run tests for different group sizes
-  for (auto size : (group_size == 0 ? create_possible_group_sizes(comm) :
+  for (auto size : (group_size == 0 ? hyperdeal::mpi::create_possible_group_sizes(comm) :
                                       std::vector<unsigned int>{group_size}))
     {
       table.add_value("group_size", size);
