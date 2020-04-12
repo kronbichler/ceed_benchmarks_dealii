@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "../sm-util/mpi.h"
+#include "../sm-util/timers.h"
 
 using namespace dealii;
 
@@ -78,8 +79,11 @@ test(ConvergenceTable & table,
     MPI_Barrier(comm);
     const auto temp = std::chrono::system_clock::now();
     MPI_Barrier(comm);
-    for (unsigned int i = 0; i < n_repertitions; i++)
-      runnable();
+    {
+      hyperdeal::ScopedLikwidTimerWrapper likwid(label);
+      for (unsigned int i = 0; i < n_repertitions; i++)
+        runnable();
+    }
     MPI_Barrier(comm);
 
     const auto ms =
@@ -87,12 +91,17 @@ test(ConvergenceTable & table,
         .count();
 
     const auto result =
-      static_cast<double>(vec.size()) * sizeof(Number) * n_repertitions / ms / 1000;
+      static_cast<double>(Utilities::MPI::sum(vec.get_partitioner()->n_ghost_indices(), comm)) *
+      sizeof(Number) * n_repertitions / ms / 1000;
 
     table.add_value(label, result);
     table.set_scientific(label, true);
     return result;
   };
+
+  table.add_value("size_local", Utilities::MPI::sum(vec.get_partitioner()->local_size(), comm));
+  table.add_value("size_ghost",
+                  Utilities::MPI::sum(vec.get_partitioner()->n_ghost_indices(), comm));
 
   // clang-format off
   
@@ -133,6 +142,12 @@ main(int argc, char **argv)
   const unsigned int degree        = argc < 4 ? 3 : atoi(argv[3]);
   const unsigned int n_refinements = argc < 5 ? 8 : atoi(argv[4]);
 
+
+#ifdef LIKWID_PERFMON
+  LIKWID_MARKER_INIT;
+  LIKWID_MARKER_THREADINIT;
+#endif
+
   // create convergence table
   ConvergenceTable table;
 
@@ -159,4 +174,8 @@ main(int argc, char **argv)
   // print convergence table
   if (pcout.is_active())
     table.write_text(pcout.get_stream());
+
+#ifdef LIKWID_PERFMON
+  LIKWID_MARKER_CLOSE;
+#endif
 }
