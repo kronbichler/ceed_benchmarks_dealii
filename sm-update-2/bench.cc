@@ -21,7 +21,9 @@
 #include <chrono>
 #include <vector>
 
+#include "../common_code/renumber_dofs_for_mf.h"
 #include "../sm-util/mpi.h"
+#include "../sm-util/timers.h"
 
 using namespace dealii;
 
@@ -62,6 +64,12 @@ test(ConvergenceTable & table,
     update_gradients | update_JxW_values | update_quadrature_points;
   additional_data.overlap_communication_computation = true;
 
+  if (false)
+    {
+      Renumber<dim, double> renum(0, 1, 2);
+      renum.renumber(dof_handler, constraint, additional_data);
+    }
+
   dealii::MatrixFree<dim, Number> matrix_free;
   matrix_free.reinit(mapping, dof_handler, constraint, quad, additional_data);
 
@@ -72,8 +80,11 @@ test(ConvergenceTable & table,
     MPI_Barrier(comm);
     const auto temp = std::chrono::system_clock::now();
     MPI_Barrier(comm);
-    for (unsigned int i = 0; i < n_repertitions; i++)
-      runnable();
+    {
+      hyperdeal::ScopedLikwidTimerWrapper likwid(label);
+      for (unsigned int i = 0; i < n_repertitions; i++)
+        runnable();
+    }
     MPI_Barrier(comm);
 
     const auto ms =
@@ -155,6 +166,42 @@ test(ConvergenceTable & table,
 
   table.add_value("speedup", result_s / result_d);
   table.set_scientific("speedup", true);
+
+  // .. for LinearAlgebra::SharedMPI::Vector (skip communication)
+  const auto reduced =
+    [&](const std::string label, const bool do_ghost_value_update, const bool do_compress) {
+      using VectorType = LinearAlgebra::SharedMPI::Vector<Number>;
+
+      // create vectors
+      VectorType vec1(do_ghost_value_update, do_compress);
+      VectorType vec2(do_ghost_value_update, do_compress);
+      matrix_free.initialize_dof_vector(vec1, comm_sm);
+      matrix_free.initialize_dof_vector(vec2, comm_sm);
+
+      // apply mass matrix
+      return run(label, [&]() {
+        FEEvaluation<dim, degree, n_points_1d, 1, Number, VectorizedArrayType> phi(matrix_free);
+        matrix_free.template cell_loop<VectorType, VectorType>(
+          [&](const auto &, auto &dst, const auto &src, const auto cells) {
+            for (unsigned int cell = cells.first; cell < cells.second; cell++)
+              {
+                phi.reinit(cell);
+                phi.gather_evaluate(src, true, false);
+
+                for (unsigned int q = 0; q < phi.n_q_points; q++)
+                  phi.submit_value(phi.get_value(q), q);
+
+                phi.integrate_scatter(true, false, dst);
+              }
+          },
+          vec1,
+          vec2);
+      });
+    };
+
+  reduced("L::N::V::0", false, false);
+  reduced("L::N::V::1", true, false);
+  reduced("L::N::V::2", false, true);
 }
 
 template <int dim>
@@ -196,6 +243,8 @@ main(int argc, char **argv)
   const unsigned int dim           = argc < 3 ? 3 : atoi(argv[2]);
   const unsigned int degree        = argc < 4 ? 3 : atoi(argv[3]);
   const unsigned int n_refinements = argc < 5 ? 8 : atoi(argv[4]);
+
+  hyperdeal::ScopedLikwidInitFinalize likwid;
 
   // create convergence table
   ConvergenceTable table;

@@ -43,6 +43,27 @@ namespace hyperdeal
   private:
     const std::string label;
   };
+
+
+
+  class ScopedLikwidInitFinalize
+  {
+  public:
+    ScopedLikwidInitFinalize()
+    {
+#ifdef LIKWID_PERFMON
+      LIKWID_MARKER_INIT;
+      LIKWID_MARKER_THREADINIT;
+#endif
+    }
+
+    ~ScopedLikwidInitFinalize()
+    {
+#ifdef LIKWID_PERFMON
+      LIKWID_MARKER_CLOSE;
+#endif
+    }
+  };
 } // namespace hyperdeal
 
 #endif

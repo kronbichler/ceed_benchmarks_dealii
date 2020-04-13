@@ -7,6 +7,7 @@
 
 #include <deal.II/dofs/dof_handler.h>
 
+#include <deal.II/fe/fe_dgq.h>
 #include <deal.II/fe/fe_q.h>
 #include <deal.II/fe/mapping_q_generic.h>
 
@@ -142,11 +143,7 @@ main(int argc, char **argv)
   const unsigned int degree        = argc < 4 ? 3 : atoi(argv[3]);
   const unsigned int n_refinements = argc < 5 ? 8 : atoi(argv[4]);
 
-
-#ifdef LIKWID_PERFMON
-  LIKWID_MARKER_INIT;
-  LIKWID_MARKER_THREADINIT;
-#endif
+  hyperdeal::ScopedLikwidInitFinalize likwid;
 
   // create convergence table
   ConvergenceTable table;
@@ -174,8 +171,4 @@ main(int argc, char **argv)
   // print convergence table
   if (pcout.is_active())
     table.write_text(pcout.get_stream());
-
-#ifdef LIKWID_PERFMON
-  LIKWID_MARKER_CLOSE;
-#endif
 }
