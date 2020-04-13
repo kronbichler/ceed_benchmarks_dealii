@@ -78,6 +78,13 @@ test(ConvergenceTable & table,
     const unsigned int n_repertitions = 1000;
 
     MPI_Barrier(comm);
+    {
+      for (unsigned int i = 0; i < 100; i++)
+        runnable();
+    }
+    {
+      MPI_Barrier(comm);
+    }
     const auto temp = std::chrono::system_clock::now();
     MPI_Barrier(comm);
     {
