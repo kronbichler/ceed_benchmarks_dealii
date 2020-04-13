@@ -64,7 +64,7 @@ test(ConvergenceTable & table,
     update_gradients | update_JxW_values | update_quadrature_points;
   additional_data.overlap_communication_computation = true;
 
-  if (false)
+  if (true)
     {
       Renumber<dim, double> renum(0, 1, 2);
       renum.renumber(dof_handler, constraint, additional_data);
