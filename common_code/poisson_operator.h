@@ -695,10 +695,8 @@ namespace Poisson
                 {
                   for (unsigned int qy = 0; qy < n_q_points_1d; ++qy)
                     {
-                      const VectorizedArrayType z =
-                        make_vectorized_array<VectorizedArrayType>(quad_1d.point(qz)[0]);
-                      const VectorizedArrayType y =
-                        make_vectorized_array<VectorizedArrayType>(quad_1d.point(qy)[0]);
+                      const auto z = quad_1d.point(qz)[0];
+                      const auto y = quad_1d.point(qy)[0];
                       // x-derivative, already complete
                       Tensor<1, dim, VectorizedArrayType> x_con = v[1] + z * v[5];
                       x_con += y * (v[4] + z * v[7]);
@@ -713,8 +711,7 @@ namespace Poisson
                       double q_weight_tmp = quad_1d.weight(qz) * quad_1d.weight(qy);
                       for (unsigned int qx = 0; qx < n_q_points_1d; ++qx, ++q)
                         {
-                          const VectorizedArrayType x =
-                            make_vectorized_array<VectorizedArrayType>(quad_1d.point(qx)[0]);
+                          const Number                        x = quad_1d.point(qx)[0];
                           Tensor<2, dim, VectorizedArrayType> jac;
                           jac[1] = y_con + x * y_var;
                           jac[2] = z_con + x * z_var;

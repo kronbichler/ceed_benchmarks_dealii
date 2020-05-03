@@ -9,7 +9,7 @@
 
 #include <unordered_set>
 
-template <int dim, typename Number, typename VectorizedArrayType>
+template <int dim, typename Number, typename VectorizedArrayType = dealii::VectorizedArray<Number>>
 class Renumber
 {
 public:
