@@ -216,7 +216,7 @@ namespace Mass
       if (fe_degree > 2)
         {
           compressed_dof_indices.resize(Utilities::pow(3, dim) *
-                                          VectorizedArrayType::n_array_elements *
+                                          VectorizedArrayType::size() *
                                           data->n_macro_cells(),
                                         numbers::invalid_unsigned_int);
           all_indices_uniform.resize(Utilities::pow(3, dim) * data->n_macro_cells(), 1);
@@ -225,7 +225,7 @@ namespace Mass
         data->get_dof_handler().get_fe().dofs_per_cell);
       for (unsigned int c = 0; c < data->n_macro_cells(); ++c)
         {
-          constexpr unsigned int n_lanes = VectorizedArrayType::n_array_elements;
+          constexpr unsigned int n_lanes = VectorizedArrayType::size();
           for (unsigned int l = 0; l < data->n_components_filled(c); ++l)
             {
               const typename DoFHandler<dim>::cell_iterator cell = data->get_cell_iterator(c, l);
@@ -384,7 +384,7 @@ namespace Mass
       for (unsigned int i = 0; i < 7; ++i)
         {
           results[i] = sums[i][0];
-          for (unsigned int v = 1; v < VectorizedArrayType::n_array_elements; ++v)
+          for (unsigned int v = 1; v < VectorizedArrayType::size(); ++v)
             results[i] += sums[i][v];
         }
       dealii::Utilities::MPI::sum(dealii::ArrayView<const double>(results.begin_raw(), 7),
