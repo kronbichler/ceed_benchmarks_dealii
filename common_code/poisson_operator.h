@@ -170,8 +170,7 @@ namespace Poisson
 
       if (fe_degree > 2)
         {
-          compressed_dof_indices.resize(Utilities::pow(3, dim) *
-                                          VectorizedArrayType::size() *
+          compressed_dof_indices.resize(Utilities::pow(3, dim) * VectorizedArrayType::size() *
                                           data->n_macro_cells(),
                                         numbers::invalid_unsigned_int);
           all_indices_uniform.resize(Utilities::pow(3, dim) * data->n_macro_cells(), 1);
@@ -308,9 +307,7 @@ namespace Poisson
             }
           // insert dummy entries to prevent geometry from degeneration and
           // subsequent division by zero, assuming a Cartesian geometry
-          for (unsigned int l = data->n_components_filled(c);
-               l < VectorizedArrayType::size();
-               ++l)
+          for (unsigned int l = data->n_components_filled(c); l < VectorizedArrayType::size(); ++l)
             for (unsigned int d = 0; d < dim; ++d)
               cell_vertex_coefficients[c][d + 1][d][l] = 1.;
 

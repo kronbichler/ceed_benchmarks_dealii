@@ -23,7 +23,7 @@
 #define USE_STD_SIMD
 
 #ifdef USE_STD_SIMD
-#include <experimental/simd>
+#  include <experimental/simd>
 #endif
 
 #ifdef LIKWID_PERFMON
@@ -46,11 +46,11 @@ using namespace dealii;
 
 #if VERSION == 0
 
-#ifdef USE_STD_SIMD
+#  ifdef USE_STD_SIMD
 typedef std::experimental::native_simd<double> VectorizedArrayType;
-#else
+#  else
 typedef dealii::VectorizedArray<double> VectorizedArrayType;
-#endif
+#  endif
 
 #elif VERSION == 1
 typedef dealii::VectorizedArray<double, 1> VectorizedArrayType;

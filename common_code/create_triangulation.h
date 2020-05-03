@@ -2,6 +2,7 @@
 #define create_triangulation_h_
 
 #include <deal.II/distributed/fully_distributed_tria.h>
+
 #include <deal.II/grid/tria_description.h>
 
 template <int dim, int spacedim = dim>
@@ -54,8 +55,8 @@ create_triangulation(const unsigned int s, MyManifold<dim> &manifold, const bool
       }
 
       const auto cd =
-        TriangulationDescription::Utilities::create_description_from_triangulation(
-          tria_serial, MPI_COMM_WORLD);
+        TriangulationDescription::Utilities::create_description_from_triangulation(tria_serial,
+                                                                                   MPI_COMM_WORLD);
 
       auto tria = new parallel::fullydistributed::Triangulation<dim>(MPI_COMM_WORLD);
       tria->create_triangulation(cd);

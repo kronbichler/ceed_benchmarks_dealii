@@ -215,8 +215,7 @@ namespace Mass
 
       if (fe_degree > 2)
         {
-          compressed_dof_indices.resize(Utilities::pow(3, dim) *
-                                          VectorizedArrayType::size() *
+          compressed_dof_indices.resize(Utilities::pow(3, dim) * VectorizedArrayType::size() *
                                           data->n_macro_cells(),
                                         numbers::invalid_unsigned_int);
           all_indices_uniform.resize(Utilities::pow(3, dim) * data->n_macro_cells(), 1);
