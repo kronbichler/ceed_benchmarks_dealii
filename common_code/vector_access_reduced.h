@@ -8,6 +8,44 @@
 
 #include <deal.II/matrix_free/fe_evaluation.h>
 
+#ifdef USE_STD_SIMD
+
+namespace dealii
+{
+template <typename Number, typename X>
+inline DEAL_II_ALWAYS_INLINE void
+vectorized_load_and_transpose(const unsigned int              n_entries,
+                              const Number *                  in,
+                              const unsigned int *            offsets,
+                              std::experimental::parallelism_v2::simd<Number, X> *out)
+{
+  for (unsigned int i = 0; i < n_entries; ++i)
+    for (unsigned int v = 0; v < std::experimental::parallelism_v2::simd<Number, X>::size(); ++v)
+      out[i][v] = in[offsets[v] + i];
+}
+
+template <typename Number, typename X>
+inline DEAL_II_ALWAYS_INLINE void
+vectorized_transpose_and_store(const bool                            add_into,
+                               const unsigned int                    n_entries,
+                               const std::experimental::parallelism_v2::simd<Number, X> *in,
+                               const unsigned int *                  offsets,
+                               Number *                              out)
+{
+  if (add_into)
+    for (unsigned int i = 0; i < n_entries; ++i)
+      for (unsigned int v = 0; v < std::experimental::parallelism_v2::simd<Number, X>::size(); ++v)
+        out[offsets[v] + i] += in[i][v];
+  else
+    for (unsigned int i = 0; i < n_entries; ++i)
+      for (unsigned int v = 0; v < std::experimental::parallelism_v2::simd<Number, X>::size(); ++v)
+        out[offsets[v] + i] = in[i][v];
+}
+
+}
+
+#endif
+
 template <int dim, int fe_degree, typename Number, typename VectorizedArrayType>
 void
 read_dof_values_compressed(const dealii::LinearAlgebra::distributed::Vector<Number> &vec,

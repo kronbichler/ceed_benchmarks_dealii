@@ -7,7 +7,7 @@
 #include <deal.II/lac/affine_constraints.h>
 #include <deal.II/matrix_free/matrix_free.h>
 
-template<int dim, typename Number>
+template<int dim, typename Number, typename VectorizedArrayType>
 class Renumber
 {
 public:
@@ -19,7 +19,7 @@ public:
   void
   renumber(dealii::DoFHandler<dim> &                                        dof_handler,
            const dealii::AffineConstraints<double> &                        constraints,
-           const typename dealii::MatrixFree<dim, Number>::AdditionalData & mf_data) const;
+           const typename dealii::MatrixFree<dim, Number, VectorizedArrayType>::AdditionalData & mf_data) const;
 
   std::string
   get_renumber_string() const;
@@ -27,7 +27,7 @@ public:
 private:
   /* helper functions that handle the different strategy types */
   std::vector<unsigned int>
-  get_assembly_result(const dealii::MatrixFree<dim, Number> & matrix_free) const;
+  get_assembly_result(const dealii::MatrixFree<dim, Number, VectorizedArrayType> & matrix_free) const;
   std::function<void(std::vector<unsigned int> &,
                      unsigned int &,
                      std::unordered_set<dealii::types::global_dof_index>,
@@ -35,13 +35,13 @@ private:
                      const unsigned int &)>
   get_renumber_func() const;
   std::vector<unsigned char>
-  get_grouping_result(const dealii::MatrixFree<dim, Number> & matrix_free) const;
+  get_grouping_result(const dealii::MatrixFree<dim, Number, VectorizedArrayType> & matrix_free) const;
 
   /* assembly strategies */
   std::vector<unsigned int>
-  cell_assembly(const dealii::MatrixFree<dim, Number> & matrix_free) const;
+  cell_assembly(const dealii::MatrixFree<dim, Number, VectorizedArrayType> & matrix_free) const;
   std::vector<unsigned int>
-  cellbatch_assembly(const dealii::MatrixFree<dim, Number> & matrix_free) const;
+  cellbatch_assembly(const dealii::MatrixFree<dim, Number, VectorizedArrayType> & matrix_free) const;
 
   /* renumber strategies */
   static void
@@ -58,7 +58,7 @@ private:
                       const unsigned int &                                index_within_set);
 
   std::vector<unsigned int>
-  grouping(const dealii::MatrixFree<dim, Number> & matrix_free,
+  grouping(const dealii::MatrixFree<dim, Number, VectorizedArrayType> & matrix_free,
            const std::vector<unsigned int> &       numbers_mf_order) const;
 
   void
@@ -68,15 +68,15 @@ private:
 
   void
   touch_count_grouping(std::vector<unsigned int> &             new_numbers,
-                       const dealii::MatrixFree<dim, Number> & matrix_free,
+                       const dealii::MatrixFree<dim, Number, VectorizedArrayType> & matrix_free,
                        const std::vector<unsigned int> &       single_domain_dofs,
                        const std::vector<unsigned int> &       numbers_mf_order) const;
 
   /* grouping strategies */
   std::vector<unsigned char>
-  touch_count_cellbatch(const dealii::MatrixFree<dim, Number> & matrix_free) const;
+  touch_count_cellbatch(const dealii::MatrixFree<dim, Number, VectorizedArrayType> & matrix_free) const;
   std::vector<unsigned char>
-  touch_count_cellbatch_range(const dealii::MatrixFree<dim, Number> & matrix_free) const;
+  touch_count_cellbatch_range(const dealii::MatrixFree<dim, Number, VectorizedArrayType> & matrix_free) const;
 
   /// retrieve the dof - processors (domain) mapping
   std::map<
@@ -90,20 +90,20 @@ private:
   const unsigned int grouping_strat;
 };
 
-template<int dim, typename Number>
+template<int dim, typename Number, typename VectorizedArrayType>
 void
-Renumber<dim, Number>::renumber(
+Renumber<dim, Number,  VectorizedArrayType>::renumber(
   dealii::DoFHandler<dim> &                                        dof_handler,
   const dealii::AffineConstraints<double> &                        constraints,
-  const typename dealii::MatrixFree<dim, Number>::AdditionalData & mf_data) const
+  const typename dealii::MatrixFree<dim, Number, VectorizedArrayType>::AdditionalData & mf_data) const
 {
   // do nothing, if base strat selected
   if(renumber_strat == 0)
     return;
 
-  typename dealii::MatrixFree<dim, Number>::AdditionalData my_mf_data = mf_data;
+  typename dealii::MatrixFree<dim, Number, VectorizedArrayType>::AdditionalData my_mf_data = mf_data;
   my_mf_data.initialize_mapping                                       = false;
-  dealii::MatrixFree<dim, Number> matrix_free;
+  dealii::MatrixFree<dim, Number, VectorizedArrayType> matrix_free;
   matrix_free.reinit(dof_handler,
                      constraints,
                      dealii::QGauss<1>(dof_handler.get_fe().degree + 1),
@@ -130,9 +130,9 @@ Renumber<dim, Number>::renumber(
   dof_handler.renumber_dofs(new_global_numbers);
 }
 
-template<int dim, typename Number>
+template<int dim, typename Number, typename VectorizedArrayType>
 std::string
-Renumber<dim, Number>::get_renumber_string() const
+Renumber<dim, Number,  VectorizedArrayType>::get_renumber_string() const
 {
   std::stringstream ss;
   switch(assembly_strat)
@@ -179,10 +179,10 @@ Renumber<dim, Number>::get_renumber_string() const
   return ss.str();
 }
 
-template<int dim, typename Number>
+template<int dim, typename Number, typename VectorizedArrayType>
 std::vector<unsigned int>
-Renumber<dim, Number>::get_assembly_result(
-  const dealii::MatrixFree<dim, Number> & matrix_free) const
+Renumber<dim, Number,  VectorizedArrayType>::get_assembly_result(
+  const dealii::MatrixFree<dim, Number, VectorizedArrayType> & matrix_free) const
 {
   switch(assembly_strat)
   {
@@ -195,13 +195,13 @@ Renumber<dim, Number>::get_assembly_result(
   }
 }
 
-template<int dim, typename Number>
+template<int dim, typename Number, typename VectorizedArrayType>
 std::function<void(std::vector<unsigned int> &,
                    unsigned int &,
                    std::unordered_set<dealii::types::global_dof_index>,
                    const bool &,
                    const unsigned int &)>
-Renumber<dim, Number>::get_renumber_func() const
+Renumber<dim, Number,  VectorizedArrayType>::get_renumber_func() const
 {
   switch(renumber_strat)
   {
@@ -214,10 +214,10 @@ Renumber<dim, Number>::get_renumber_func() const
   }
 }
 
-template<int dim, typename Number>
+template<int dim, typename Number, typename VectorizedArrayType>
 std::vector<unsigned char>
-Renumber<dim, Number>::get_grouping_result(
-  const dealii::MatrixFree<dim, Number> & matrix_free) const
+Renumber<dim, Number,  VectorizedArrayType>::get_grouping_result(
+  const dealii::MatrixFree<dim, Number, VectorizedArrayType> & matrix_free) const
 {
   switch(grouping_strat)
   {
@@ -230,9 +230,9 @@ Renumber<dim, Number>::get_grouping_result(
   }
 }
 
-template<int dim, typename Number>
+template<int dim, typename Number, typename VectorizedArrayType>
 std::vector<unsigned int>
-Renumber<dim, Number>::cell_assembly(const dealii::MatrixFree<dim, Number> & matrix_free) const
+Renumber<dim, Number,  VectorizedArrayType>::cell_assembly(const dealii::MatrixFree<dim, Number, VectorizedArrayType> & matrix_free) const
 {
   const auto & dof_handler = matrix_free.get_dof_handler();
   const auto & local_dofs  = dof_handler.locally_owned_dofs();
@@ -299,9 +299,9 @@ Renumber<dim, Number>::cell_assembly(const dealii::MatrixFree<dim, Number> & mat
   return numbers_mf_order;
 }
 
-template<int dim, typename Number>
+template<int dim, typename Number, typename VectorizedArrayType>
 std::vector<unsigned int>
-Renumber<dim, Number>::cellbatch_assembly(const dealii::MatrixFree<dim, Number> & matrix_free) const
+Renumber<dim, Number,  VectorizedArrayType>::cellbatch_assembly(const dealii::MatrixFree<dim, Number, VectorizedArrayType> & matrix_free) const
 {
   const auto & dof_handler = matrix_free.get_dof_handler();
   const auto & local_dofs  = dof_handler.locally_owned_dofs();
@@ -387,9 +387,9 @@ Renumber<dim, Number>::cellbatch_assembly(const dealii::MatrixFree<dim, Number> 
   return numbers_mf_order;
 }
 
-template<int dim, typename Number>
+template<int dim, typename Number, typename VectorizedArrayType>
 void
-Renumber<dim, Number>::first_touch_renumber(
+Renumber<dim, Number,  VectorizedArrayType>::first_touch_renumber(
   std::vector<unsigned int> & numbers_mf_order,
   unsigned int &              counter_dof_numbers,
   std::unordered_set<dealii::types::global_dof_index> /*set_dofs*/,
@@ -402,9 +402,9 @@ Renumber<dim, Number>::first_touch_renumber(
   }
 }
 
-template<int dim, typename Number>
+template<int dim, typename Number, typename VectorizedArrayType>
 void
-Renumber<dim, Number>::last_touch_renumber(
+Renumber<dim, Number,  VectorizedArrayType>::last_touch_renumber(
   std::vector<unsigned int> &                         numbers_mf_order,
   unsigned int &                                      counter_dof_numbers,
   std::unordered_set<dealii::types::global_dof_index> set_dofs,
@@ -418,9 +418,9 @@ Renumber<dim, Number>::last_touch_renumber(
   }
 }
 
-template<int dim, typename Number>
+template<int dim, typename Number, typename VectorizedArrayType>
 std::vector<unsigned int>
-Renumber<dim, Number>::grouping(const dealii::MatrixFree<dim, Number> & matrix_free,
+Renumber<dim, Number,  VectorizedArrayType>::grouping(const dealii::MatrixFree<dim, Number, VectorizedArrayType> & matrix_free,
                                 const std::vector<unsigned int> &       numbers_mf_order) const
 {
   const auto & dof_handler = matrix_free.get_dof_handler();
@@ -457,9 +457,9 @@ Renumber<dim, Number>::grouping(const dealii::MatrixFree<dim, Number> & matrix_f
   return new_numbers;
 }
 
-template<int dim, typename Number>
+template<int dim, typename Number, typename VectorizedArrayType>
 void
-Renumber<dim, Number>::base_grouping(std::vector<unsigned int> &       new_numbers,
+Renumber<dim, Number,  VectorizedArrayType>::base_grouping(std::vector<unsigned int> &       new_numbers,
                                      const std::vector<unsigned int> & single_domain_dofs,
                                      const std::vector<unsigned int> & numbers_mf_order) const
 {
@@ -475,11 +475,11 @@ Renumber<dim, Number>::base_grouping(std::vector<unsigned int> &       new_numbe
   std::sort(new_numbers.begin(), new_numbers.end(), comp);
 }
 
-template<int dim, typename Number>
+template<int dim, typename Number, typename VectorizedArrayType>
 void
-Renumber<dim, Number>::touch_count_grouping(
+Renumber<dim, Number,  VectorizedArrayType>::touch_count_grouping(
   std::vector<unsigned int> &             new_numbers,
-  const dealii::MatrixFree<dim, Number> & matrix_free,
+  const dealii::MatrixFree<dim, Number, VectorizedArrayType> & matrix_free,
   const std::vector<unsigned int> &       single_domain_dofs,
   const std::vector<unsigned int> &       numbers_mf_order) const
 {
@@ -506,10 +506,10 @@ Renumber<dim, Number>::touch_count_grouping(
   std::sort(new_numbers.begin() + fill_size, new_numbers.end(), comp);
 }
 
-template<int dim, typename Number>
+template<int dim, typename Number, typename VectorizedArrayType>
 std::vector<unsigned char>
-Renumber<dim, Number>::touch_count_cellbatch(
-  const dealii::MatrixFree<dim, Number> & matrix_free) const
+Renumber<dim, Number,  VectorizedArrayType>::touch_count_cellbatch(
+  const dealii::MatrixFree<dim, Number, VectorizedArrayType> & matrix_free) const
 {
   const auto n_dofs = matrix_free.get_dof_handler().locally_owned_dofs().n_elements();
 
@@ -536,10 +536,10 @@ Renumber<dim, Number>::touch_count_cellbatch(
   return touch_count;
 }
 
-template<int dim, typename Number>
+template<int dim, typename Number, typename VectorizedArrayType>
 std::vector<unsigned char>
-Renumber<dim, Number>::touch_count_cellbatch_range(
-  const dealii::MatrixFree<dim, Number> & matrix_free) const
+Renumber<dim, Number,  VectorizedArrayType>::touch_count_cellbatch_range(
+  const dealii::MatrixFree<dim, Number, VectorizedArrayType> & matrix_free) const
 {
   const auto n_dofs = matrix_free.get_dof_handler().locally_owned_dofs().n_elements();
 
@@ -586,11 +586,11 @@ Renumber<dim, Number>::touch_count_cellbatch_range(
   return touch_count;
 }
 
-template<int dim, typename Number>
+template<int dim, typename Number, typename VectorizedArrayType>
 std::map<std::vector<unsigned int>,
          std::vector<unsigned int>,
          std::function<bool(const std::vector<unsigned int> &, const std::vector<unsigned int> &)>>
-Renumber<dim, Number>::domain_dof_mapping(const dealii::DoFHandler<dim> & dof_handler) const
+Renumber<dim, Number,  VectorizedArrayType>::domain_dof_mapping(const dealii::DoFHandler<dim> & dof_handler) const
 {
   // contains the ranks the dof is involved with
   std::vector<std::vector<unsigned int>> processors_involved(
