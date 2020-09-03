@@ -20,6 +20,12 @@
 
 #include <deal.II/numerics/vector_tools.h>
 
+//#define USE_STD_SIMD
+
+#ifdef USE_STD_SIMD
+#  include <experimental/simd>
+#endif
+
 #include "../common_code/curved_manifold.h"
 #include "../common_code/poisson_operator.h"
 #include "../common_code/renumber_dofs_for_mf.h"
@@ -39,7 +45,13 @@ using namespace dealii;
 #define VERSION 0
 
 #if VERSION == 0
+
+#  ifdef USE_STD_SIMD
+typedef std::experimental::native_simd<double> VectorizedArrayType;
+#  else
 typedef dealii::VectorizedArray<double> VectorizedArrayType;
+#  endif
+
 #elif VERSION == 1
 typedef dealii::VectorizedArray<double, 1> VectorizedArrayType;
 #endif

@@ -5,6 +5,8 @@
 
 #include <deal.II/dofs/dof_tools.h>
 
+#include <deal.II/fe/fe_q.h>
+
 #include <deal.II/grid/grid_generator.h>
 #include <deal.II/grid/grid_tools.h>
 #include <deal.II/grid/manifold.h>
@@ -18,15 +20,20 @@
 #include <deal.II/matrix_free/fe_evaluation.h>
 #include <deal.II/matrix_free/matrix_free.h>
 
-#include "../common_code/curved_manifold.h"
-#include "../common_code/mass_operator.h"
-#include "../common_code/renumber_dofs_for_mf.h"
-#include "../common_code/solver_cg_optimized.h"
+#define USE_STD_SIMD
 
+#ifdef USE_STD_SIMD
+#  include <experimental/simd>
+#endif
 
 #ifdef LIKWID_PERFMON
 #  include <likwid.h>
 #endif
+
+#include "../common_code/curved_manifold.h"
+#include "../common_code/mass_operator.h"
+#include "../common_code/renumber_dofs_for_mf.h"
+#include "../common_code/solver_cg_optimized.h"
 
 using namespace dealii;
 
@@ -38,7 +45,13 @@ using namespace dealii;
 #define VERSION 0
 
 #if VERSION == 0
+
+#  ifdef USE_STD_SIMD
+typedef std::experimental::native_simd<double> VectorizedArrayType;
+#  else
 typedef dealii::VectorizedArray<double> VectorizedArrayType;
+#  endif
+
 #elif VERSION == 1
 typedef dealii::VectorizedArray<double, 1> VectorizedArrayType;
 #endif
@@ -71,7 +84,7 @@ test(const unsigned int s, const bool short_output)
 
   // renumber Dofs to minimize the number of partitions in import indices of
   // partitioner
-  Renumber<dim, double> renum(0, 1, 2);
+  Renumber<dim, double, VectorizedArrayType> renum(0, 1, 2);
   renum.renumber(dof_handler, constraints, mf_data);
 
   std::shared_ptr<MatrixFree<dim, double, VectorizedArrayType>> matrix_free(
