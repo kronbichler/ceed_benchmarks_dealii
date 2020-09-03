@@ -2,7 +2,7 @@
 #ifndef curved_manifold_h_
 #define curved_manifold_h_
 
-#include <deal.II/base/std_cxx14/memory.h>
+#include <memory>
 
 #include <deal.II/grid/manifold.h>
 
@@ -19,7 +19,7 @@ public:
   virtual std::unique_ptr<dealii::Manifold<dim>>
   clone() const
   {
-    return dealii::std_cxx14::make_unique<MyManifold<dim>>();
+    return std::make_unique<MyManifold<dim>>();
   }
 
   virtual dealii::Point<dim>

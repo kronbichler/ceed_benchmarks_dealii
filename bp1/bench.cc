@@ -20,7 +20,7 @@
 #include <deal.II/matrix_free/fe_evaluation.h>
 #include <deal.II/matrix_free/matrix_free.h>
 
-#define USE_STD_SIMD
+//#define USE_STD_SIMD
 
 #ifdef USE_STD_SIMD
 #  include <experimental/simd>

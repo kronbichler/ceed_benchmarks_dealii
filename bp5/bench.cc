@@ -82,7 +82,7 @@ test(const unsigned int s, const bool short_output)
   IndexSet                  relevant_dofs;
   DoFTools::extract_locally_relevant_dofs(dof_handler, relevant_dofs);
   constraints.reinit(relevant_dofs);
-  VectorTools::interpolate_boundary_values(dof_handler, 0, ZeroFunction<dim>(), constraints);
+  VectorTools::interpolate_boundary_values(dof_handler, 0, Functions::ZeroFunction<dim>(), constraints);
   constraints.close();
   typename MatrixFree<dim, double, VectorizedArrayType>::AdditionalData mf_data;
 
@@ -94,7 +94,7 @@ test(const unsigned int s, const bool short_output)
   DoFTools::extract_locally_relevant_dofs(dof_handler, relevant_dofs);
   constraints.clear();
   constraints.reinit(relevant_dofs);
-  VectorTools::interpolate_boundary_values(dof_handler, 0, ZeroFunction<dim>(), constraints);
+  VectorTools::interpolate_boundary_values(dof_handler, 0, Functions::ZeroFunction<dim>(), constraints);
   constraints.close();
 
   std::shared_ptr<MatrixFree<dim, double, VectorizedArrayType>> matrix_free(

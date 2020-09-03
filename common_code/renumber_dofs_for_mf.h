@@ -462,8 +462,11 @@ Renumber<dim, Number, VectorizedArrayType>::grouping(
 
   // add all dofs that are touched by multiple processors (=ghost dofs)
   for (const auto &[multi_domains, ghost_dofs] : sorted_entries)
-    for (const auto dof : ghost_dofs)
-      new_numbers.push_back(dof);
+    {
+      (void)multi_domains;
+      for (const auto dof : ghost_dofs)
+        new_numbers.push_back(dof);
+    }
 
   // renumber within the chunks to reflect the numbering we want to impose
   // through the matrix-free loop

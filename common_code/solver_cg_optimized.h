@@ -239,7 +239,7 @@ cg_update2(dealii::LinearAlgebra::distributed::BlockVector<Number> &      x,
 
 
 template <typename VectorType>
-class SolverCGOptimized : public dealii::Solver<VectorType>
+class SolverCGOptimized : public dealii::SolverBase<VectorType>
 {
 public:
   /**
@@ -251,7 +251,7 @@ public:
    * Constructor.
    */
   SolverCGOptimized(dealii::SolverControl &cn)
-    : dealii::Solver<VectorType>(cn)
+    : dealii::SolverBase<VectorType>(cn)
   {}
 
 
@@ -680,7 +680,7 @@ cg_update4(
 
 
 template <typename VectorType>
-class SolverCGOptimizedAllreduce : public dealii::Solver<VectorType>
+class SolverCGOptimizedAllreduce : public dealii::SolverBase<VectorType>
 {
 public:
   /**
@@ -692,7 +692,7 @@ public:
    * Constructor.
    */
   SolverCGOptimizedAllreduce(dealii::SolverControl &cn)
-    : dealii::Solver<VectorType>(cn)
+    : dealii::SolverBase<VectorType>(cn)
   {}
 
 
@@ -795,7 +795,7 @@ public:
 
 
 template <typename VectorType>
-class SolverCGFullMerge : public dealii::Solver<VectorType>
+class SolverCGFullMerge : public dealii::SolverBase<VectorType>
 {
 public:
   /**
@@ -807,7 +807,7 @@ public:
    * Constructor.
    */
   SolverCGFullMerge(dealii::SolverControl &cn)
-    : dealii::Solver<VectorType>(cn)
+    : dealii::SolverBase<VectorType>(cn)
   {}
 
 

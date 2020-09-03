@@ -74,19 +74,23 @@ test(const unsigned int s, const bool short_output)
   IndexSet                  relevant_dofs;
   DoFTools::extract_locally_relevant_dofs(dof_handler, relevant_dofs);
   constraints.reinit(relevant_dofs);
-  VectorTools::interpolate_boundary_values(dof_handler, 0, ZeroFunction<dim>(), constraints);
+  VectorTools::interpolate_boundary_values(dof_handler, 0,
+                                           Functions::ZeroFunction<dim>(),
+                                           constraints);
   constraints.close();
   typename MatrixFree<dim, double>::AdditionalData mf_data;
 
   // renumber Dofs to minimize the number of partitions in import indices of
   // partitioner
-  Renumber<dim, double> renum(0, 1, 2);
-  renum.renumber(dof_handler, constraints, mf_data);
+  //Renumber<dim, double> renum(0, 1, 2);
+  //renum.renumber(dof_handler, constraints, mf_data);
 
   DoFTools::extract_locally_relevant_dofs(dof_handler, relevant_dofs);
   constraints.clear();
   constraints.reinit(relevant_dofs);
-  VectorTools::interpolate_boundary_values(dof_handler, 0, ZeroFunction<dim>(), constraints);
+  VectorTools::interpolate_boundary_values(dof_handler, 0,
+                                           Functions::ZeroFunction<dim>(),
+                                           constraints);
   constraints.close();
 
   std::shared_ptr<MatrixFree<dim, double>> matrix_free(new MatrixFree<dim, double>());
