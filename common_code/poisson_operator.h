@@ -23,14 +23,13 @@ namespace Poisson
   template <typename Number>
   inline DEAL_II_ALWAYS_INLINE Number do_invert(Tensor<2, 2, Number> &t)
   {
-    const Number det     = (t[0][0] * t[1][1] - t[1][0] * t[0][1]);
+    const Number det     = t[0][0] * t[1][1] - t[1][0] * t[0][1];
     const Number inv_det = 1.0 / det;
     const Number tmp     = inv_det * t[0][0];
     t[0][0]              = inv_det * t[1][1];
     t[0][1]              = -inv_det * t[0][1];
     t[1][0]              = -inv_det * t[1][0];
     t[1][1]              = tmp;
-
     return det;
   }
 
@@ -38,26 +37,24 @@ namespace Poisson
   template <typename Number>
   inline DEAL_II_ALWAYS_INLINE Number do_invert(Tensor<2, 3, Number> &t)
   {
-    const Number t4 = t[0][0] * t[1][1], t6 = t[0][0] * t[1][2], t8 = t[0][1] * t[1][0],
-                 t00 = t[0][2] * t[1][0], t01 = t[0][1] * t[2][0], t04 = t[0][2] * t[2][0],
-                 det = (t4 * t[2][2] - t6 * t[2][1] - t8 * t[2][2] + t00 * t[2][1] + t01 * t[1][2] -
-                        t04 * t[1][1]),
-                 inv_det = 1.0 / det;
-    const Number tr00    = inv_det * (t[1][1] * t[2][2] - t[1][2] * t[2][1]);
-    const Number tr01    = inv_det * (t[0][2] * t[2][1] - t[0][1] * t[2][2]);
-    const Number tr02    = inv_det * (t[0][1] * t[1][2] - t[0][2] * t[1][1]);
-    const Number tr10    = inv_det * (t[1][2] * t[2][0] - t[1][0] * t[2][2]);
-    const Number tr11    = inv_det * (t[0][0] * t[2][2] - t04);
-    t[1][2]              = inv_det * (t00 - t6);
-    t[2][0]              = inv_det * (t[1][0] * t[2][1] - t[1][1] * t[2][0]);
-    t[2][1]              = inv_det * (t01 - t[0][0] * t[2][1]);
-    t[2][2]              = inv_det * (t4 - t8);
-    t[0][0]              = tr00;
-    t[0][1]              = tr01;
-    t[0][2]              = tr02;
-    t[1][0]              = tr10;
-    t[1][1]              = tr11;
-
+    const Number tr00    = t[1][1] * t[2][2] - t[1][2] * t[2][1];
+    const Number tr10    = t[1][2] * t[2][0] - t[1][0] * t[2][2];
+    const Number tr20    = t[1][0] * t[2][1] - t[1][1] * t[2][0];
+    const Number det     = t[0][0] * tr00 + t[0][1] * tr10 + t[0][2] * tr20;
+    const Number inv_det = 1.0 / det;
+    const Number tr01    = t[0][2] * t[2][1] - t[0][1] * t[2][2];
+    const Number tr02    = t[0][1] * t[1][2] - t[0][2] * t[1][1];
+    const Number tr11    = t[0][0] * t[2][2] - t[0][2] * t[2][0];
+    const Number tr12    = t[0][2] * t[1][0] - t[0][0] * t[1][2];
+    t[2][1]              = inv_det * (t[0][1] * t[2][0] - t[0][0] * t[2][1]);
+    t[2][2]              = inv_det * (t[0][0] * t[1][1] - t[0][1] * t[1][0]);
+    t[0][0]              = inv_det * tr00;
+    t[0][1]              = inv_det * tr01;
+    t[0][2]              = inv_det * tr02;
+    t[1][0]              = inv_det * tr10;
+    t[1][1]              = inv_det * tr11;
+    t[1][2]              = inv_det * tr12;
+    t[2][0]              = inv_det * tr20;
     return det;
   }
 
