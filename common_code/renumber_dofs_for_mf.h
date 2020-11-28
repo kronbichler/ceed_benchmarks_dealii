@@ -457,6 +457,8 @@ Renumber<dim, Number, VectorizedArrayType>::grouping(
     base_grouping(new_numbers, single_domain_dofs, numbers_mf_order);
   else
     touch_count_grouping(new_numbers, matrix_free, single_domain_dofs, numbers_mf_order);
+  
+  AssertDimension(new_numbers.size(), single_domain_dofs.size());
 
   const unsigned int fill_size = new_numbers.size();
 
@@ -523,6 +525,11 @@ Renumber<dim, Number, VectorizedArrayType>::touch_count_grouping(
   // add all dofs that are touched multiple times
   for (auto i : single_domain_dofs)
     if (touch_count[i] > 1)
+      new_numbers.push_back(i);
+  
+  // add all dofs that are never touched (e.g., in the case constraints)
+  for(auto i : single_domain_dofs)
+    if(touch_count[i] == 0)
       new_numbers.push_back(i);
 
   std::sort(new_numbers.begin() + fill_size, new_numbers.end(), comp);
