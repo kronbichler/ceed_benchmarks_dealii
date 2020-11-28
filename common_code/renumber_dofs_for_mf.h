@@ -3,6 +3,8 @@
 
 #include <deal.II/dofs/dof_handler.h>
 
+#include <deal.II/fe/mapping_q_generic.h>
+
 #include <deal.II/lac/affine_constraints.h>
 
 #include <deal.II/matrix_free/matrix_free.h>
@@ -114,7 +116,9 @@ Renumber<dim, Number, VectorizedArrayType>::renumber(
     mf_data;
   my_mf_data.initialize_mapping = false;
   dealii::MatrixFree<dim, Number, VectorizedArrayType> matrix_free;
-  matrix_free.reinit(dof_handler,
+  dealii::MappingQGeneric<dim> mapping(1);
+  matrix_free.reinit(mapping,
+                     dof_handler,
                      constraints,
                      dealii::QGauss<1>(dof_handler.get_fe().degree + 1),
                      my_mf_data);
@@ -260,7 +264,7 @@ Renumber<dim, Number, VectorizedArrayType>::cell_assembly(
 
   for (unsigned int cell_batch = 0; cell_batch < matrix_free.n_cell_batches(); ++cell_batch)
     {
-      for (unsigned int cell = 0; cell < matrix_free.n_components_filled(cell_batch); ++cell)
+      for (unsigned int cell = 0; cell < matrix_free.n_active_entries_per_cell_batch(cell_batch); ++cell)
         {
           // stores the indices for the dofs in cell_batch
           matrix_free.get_cell_iterator(cell_batch, cell)->get_dof_indices(dof_indices);
@@ -268,7 +272,7 @@ Renumber<dim, Number, VectorizedArrayType>::cell_assembly(
           // inclusion of dof_index indicates a previous value assignment within this element
           // only for last_touch_renumber!!
           std::unordered_set<dealii::types::global_dof_index> set_dofs;
-          set_dofs.reserve(matrix_free.n_components_filled(cell_batch));
+          set_dofs.reserve(matrix_free.n_active_entries_per_cell_batch(cell_batch));
 
           unsigned int cf = 0;
           for (; cf < dealii::GeometryInfo<dim>::vertices_per_cell; ++cf)
@@ -334,14 +338,14 @@ Renumber<dim, Number, VectorizedArrayType>::cellbatch_assembly(
       // inclusion of dof_index indicates a previous value assignment within this element
       // only for last_touch_renumber!!
       std::unordered_set<dealii::types::global_dof_index> set_dofs;
-      set_dofs.reserve(matrix_free.n_components_filled(cell_batch) *
+      set_dofs.reserve(matrix_free.n_active_entries_per_cell_batch(cell_batch) *
                        dof_handler.get_fe().dofs_per_cell);
 
       // matrix_free.get_dof_info().get_dof_indices_on_cell_batch(dof_indices, cell_batch, true);
       unsigned int cf = 0;
       for (; cf < dealii::GeometryInfo<dim>::vertices_per_cell; ++cf)
         {
-          for (unsigned int cell = 0; cell < matrix_free.n_components_filled(cell_batch); ++cell)
+          for (unsigned int cell = 0; cell < matrix_free.n_active_entries_per_cell_batch(cell_batch); ++cell)
             {
               matrix_free.get_cell_iterator(cell_batch, cell)->get_dof_indices(dof_indices);
               renumber_func(numbers_mf_order,
@@ -355,7 +359,7 @@ Renumber<dim, Number, VectorizedArrayType>::cellbatch_assembly(
         {
           for (unsigned int i = 0; i < fe_degree - 1; ++i, ++cf)
             {
-              for (unsigned int cell = 0; cell < matrix_free.n_components_filled(cell_batch);
+              for (unsigned int cell = 0; cell < matrix_free.n_active_entries_per_cell_batch(cell_batch);
                    ++cell)
                 {
                   matrix_free.get_cell_iterator(cell_batch, cell)->get_dof_indices(dof_indices);
@@ -371,7 +375,7 @@ Renumber<dim, Number, VectorizedArrayType>::cellbatch_assembly(
         {
           for (unsigned int i = 0; i < (fe_degree - 1) * (fe_degree - 1); ++i, ++cf)
             {
-              for (unsigned int cell = 0; cell < matrix_free.n_components_filled(cell_batch);
+              for (unsigned int cell = 0; cell < matrix_free.n_active_entries_per_cell_batch(cell_batch);
                    ++cell)
                 {
                   matrix_free.get_cell_iterator(cell_batch, cell)->get_dof_indices(dof_indices);
@@ -388,7 +392,7 @@ Renumber<dim, Number, VectorizedArrayType>::cellbatch_assembly(
           for (unsigned int i = 0; i < (fe_degree - 1) * (fe_degree - 1) * (fe_degree - 1);
                ++i, ++cf)
             {
-              for (unsigned int cell = 0; cell < matrix_free.n_components_filled(cell_batch);
+              for (unsigned int cell = 0; cell < matrix_free.n_active_entries_per_cell_batch(cell_batch);
                    ++cell)
                 {
                   matrix_free.get_cell_iterator(cell_batch, cell)->get_dof_indices(dof_indices);

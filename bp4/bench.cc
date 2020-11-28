@@ -66,6 +66,7 @@ test(const unsigned int s, const bool short_output)
   tria.refine_global(n_refine);
 
   FE_Q<dim>       fe_q(fe_degree);
+  MappingQGeneric<dim> mapping(1); // tri-linear mapping
   DoFHandler<dim> dof_handler(tria);
   dof_handler.distribute_dofs(fe_q);
 
@@ -94,7 +95,7 @@ test(const unsigned int s, const bool short_output)
   // fe_degree+1 points
   DiagonalMatrixBlocked<dim, double> diag_mat;
   {
-    matrix_free->reinit(dof_handler, constraints, QGaussLobatto<1>(fe_degree + 1), mf_data);
+    matrix_free->reinit(mapping, dof_handler, constraints, QGaussLobatto<1>(fe_degree + 1), mf_data);
 
     Poisson::LaplaceOperator<dim,
                              fe_degree,
@@ -115,7 +116,7 @@ test(const unsigned int s, const bool short_output)
     }
 
   // now go back to the actual operator with n_q_points points
-  matrix_free->reinit(dof_handler, constraints, QGauss<1>(n_q_points), mf_data);
+  matrix_free->reinit(mapping, dof_handler, constraints, QGauss<1>(n_q_points), mf_data);
 
   Poisson::LaplaceOperator<dim,
                            fe_degree,

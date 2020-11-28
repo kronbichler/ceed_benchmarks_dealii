@@ -75,6 +75,7 @@ test(const unsigned int s, const bool short_output)
   const auto tria = create_triangulation(s, manifold, VERSION);
 
   FE_Q<dim>       fe_q(fe_degree);
+  MappingQGeneric<dim> mapping(1); // tri-linear mapping
   DoFHandler<dim> dof_handler(*tria);
   dof_handler.distribute_dofs(fe_q);
 
@@ -99,7 +100,7 @@ test(const unsigned int s, const bool short_output)
 
   std::shared_ptr<MatrixFree<dim, double, VectorizedArrayType>> matrix_free(
     new MatrixFree<dim, double, VectorizedArrayType>());
-  matrix_free->reinit(dof_handler, constraints, QGaussLobatto<1>(n_q_points), mf_data);
+  matrix_free->reinit(mapping, dof_handler, constraints, QGaussLobatto<1>(n_q_points), mf_data);
 
   Poisson::LaplaceOperator<dim,
                            fe_degree,

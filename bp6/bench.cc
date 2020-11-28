@@ -51,6 +51,7 @@ test(const unsigned int s, const bool short_output)
     p2[d] = 1;
 
   MyManifold<dim>                           manifold;
+  MappingQGeneric<dim>                      mapping(1); // tri-linear mapping
   parallel::distributed::Triangulation<dim> tria(MPI_COMM_WORLD);
   std::vector<unsigned int>                 subdivisions(dim, 1);
   for (unsigned int d = 0; d < remainder; ++d)
@@ -86,7 +87,8 @@ test(const unsigned int s, const bool short_output)
   constraints.close();
 
   std::shared_ptr<MatrixFree<dim, double>> matrix_free(new MatrixFree<dim, double>());
-  matrix_free->reinit(dof_handler,
+  matrix_free->reinit(mapping,
+                      dof_handler,
                       constraints,
                       QGaussLobatto<1>(n_q_points),
                       typename MatrixFree<dim, double>::AdditionalData());

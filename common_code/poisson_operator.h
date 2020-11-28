@@ -160,17 +160,17 @@ namespace Poisson
     {
       this->data = data_;
       quad_1d    = QGauss<1>(n_q_points_1d);
-      cell_vertex_coefficients.resize(data->n_macro_cells());
+      cell_vertex_coefficients.resize(data->n_cell_batches());
       const std::size_t n_q_points = Utilities::fixed_power<dim>(quad_1d.size());
-      merged_coefficients.resize(n_q_points * data->n_macro_cells());
-      quadrature_points.resize(n_q_points * dim * data->n_macro_cells());
+      merged_coefficients.resize(n_q_points * data->n_cell_batches());
+      quadrature_points.resize(n_q_points * dim * data->n_cell_batches());
 
       if (fe_degree > 2)
         {
           compressed_dof_indices.resize(Utilities::pow(3, dim) * VectorizedArrayType::size() *
-                                          data->n_macro_cells(),
+                                          data->n_cell_batches(),
                                         numbers::invalid_unsigned_int);
-          all_indices_uniform.resize(Utilities::pow(3, dim) * data->n_macro_cells(), 1);
+          all_indices_uniform.resize(Utilities::pow(3, dim) * data->n_cell_batches(), 1);
         }
 
       FE_Nothing<dim>                      dummy_fe;
@@ -179,9 +179,9 @@ namespace Poisson
                               update_quadrature_points | update_jacobians | update_JxW_values);
       std::vector<types::global_dof_index> dof_indices(
         data->get_dof_handler().get_fe().dofs_per_cell);
-      for (unsigned int c = 0; c < data->n_macro_cells(); ++c)
+      for (unsigned int c = 0; c < data->n_cell_batches(); ++c)
         {
-          for (unsigned int l = 0; l < data->n_components_filled(c); ++l)
+          for (unsigned int l = 0; l < data->n_active_entries_per_cell_batch(c); ++l)
             {
               const typename DoFHandler<dim>::cell_iterator cell = data->get_cell_iterator(c, l);
               if (dim == 2)
@@ -304,7 +304,7 @@ namespace Poisson
             }
           // insert dummy entries to prevent geometry from degeneration and
           // subsequent division by zero, assuming a Cartesian geometry
-          for (unsigned int l = data->n_components_filled(c); l < VectorizedArrayType::size(); ++l)
+          for (unsigned int l = data->n_active_entries_per_cell_batch(c); l < VectorizedArrayType::size(); ++l)
             for (unsigned int d = 0; d < dim; ++d)
               cell_vertex_coefficients[c][d + 1][d][l] = 1.;
 
@@ -573,7 +573,7 @@ namespace Poisson
       FEEvaluation<dim, fe_degree, n_q_points_1d, 1, Number, VectorizedArrayType> phi(*data);
 
       AlignedVector<VectorizedArrayType> diagonal(phi.dofs_per_cell);
-      for (unsigned int cell = 0; cell < data->n_macro_cells(); ++cell)
+      for (unsigned int cell = 0; cell < data->n_cell_batches(); ++cell)
         {
           phi.reinit(cell);
           for (unsigned int i = 0; i < phi.dofs_per_cell; ++i)
