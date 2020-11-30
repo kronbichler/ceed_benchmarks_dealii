@@ -456,7 +456,7 @@ do_cg_update3b(const unsigned int                                     start,
       local_sum[2][0] += r[i] * h[i];
       local_sum[3][0] += r[i] * r[i];
       local_sum[6][0] += r[i] * prec[i / n_components] * r[i];
-      const Number zi = prec[i] * h[i];
+      const Number zi = prec[i / n_components] * h[i];
       local_sum[4][0] += r[i] * zi;
       local_sum[5][0] += h[i] * zi;
     }
