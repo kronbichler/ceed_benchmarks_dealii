@@ -71,8 +71,6 @@ cg_update1(
   const dealii::DiagonalMatrix<dealii::LinearAlgebra::distributed::Vector<Number>> &preconditioner,
   const Number                                                                      alpha)
 {
-  static_assert(n_components == 1, "Only single component support");
-
   const dealii::LinearAlgebra::distributed::Vector<Number> &prec = preconditioner.get_vector();
   dealii::VectorizedArray<Number> norm_r  = dealii::VectorizedArray<Number>(),
                                   prod_gh = dealii::VectorizedArray<Number>();
@@ -168,7 +166,6 @@ cg_update2(
   const Number                                                                      alpha,
   const Number                                                                      beta)
 {
-  static_assert(n_components == 1, "Only single component support");
   const dealii::LinearAlgebra::distributed::Vector<Number> &prec = preconditioner.get_vector();
 
   dealii::VectorizedArray<Number> *arr_p =

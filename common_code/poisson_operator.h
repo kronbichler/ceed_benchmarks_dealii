@@ -276,55 +276,69 @@ namespace Poisson
               if (fe_degree > 2)
                 {
                   cell->get_dof_indices(dof_indices);
-                  constexpr unsigned int n_lanes = VectorizedArrayType::size();
-                  const unsigned int     offset  = Utilities::pow(3, dim) * (n_lanes * c) + l;
+                  const unsigned int     n_components = cell->get_fe().n_components();
+                  constexpr unsigned int n_lanes      = VectorizedArrayType::size();
+                  const unsigned int     offset       = Utilities::pow(3, dim) * (n_lanes * c) + l;
                   const Utilities::MPI::Partitioner &part =
                     *data->get_dof_info().vector_partitioner;
                   unsigned int cc = 0, cf = 0;
-                  for (; cf < GeometryInfo<dim>::vertices_per_cell; ++cf, cc += n_lanes)
-                    if (!constraints.is_constrained(dof_indices[cf]))
-                      compressed_dof_indices[offset + cc] = part.global_to_local(dof_indices[cf]);
+                  for (unsigned int i = 0; i < GeometryInfo<dim>::vertices_per_cell;
+                       ++i, cc += n_lanes, cf += n_components)
+                    {
+                      if (!constraints.is_constrained(dof_indices[cf]))
+                        compressed_dof_indices[offset + cc] = part.global_to_local(dof_indices[cf]);
+                      for (unsigned int c = 0; c < n_components; ++c)
+                        AssertThrow(dof_indices[cf + c] == dof_indices[cf] + c,
+                                    ExcMessage("Expected contiguous numbering"));
+                    }
 
                   for (unsigned int line = 0; line < GeometryInfo<dim>::lines_per_cell; ++line)
                     {
+                      const unsigned int size = fe_degree - 1;
                       if (!constraints.is_constrained(dof_indices[cf]))
                         {
-                          for (unsigned int i = 0; i < fe_degree - 1; ++i)
-                            AssertThrow(dof_indices[cf + i] == dof_indices[cf] + i,
-                                        ExcMessage("Expected contiguous numbering"));
+                          for (unsigned int i = 0; i < size; ++i)
+                            for (unsigned int c = 0; c < n_components; ++c)
+                              AssertThrow(dof_indices[cf + c * size + i] ==
+                                            dof_indices[cf] + i * n_components + c,
+                                          ExcMessage("Expected contiguous numbering"));
                           compressed_dof_indices[offset + cc] =
                             part.global_to_local(dof_indices[cf]);
                         }
                       cc += n_lanes;
-                      cf += fe_degree - 1;
+                      cf += size * n_components;
                     }
                   for (unsigned int quad = 0; quad < GeometryInfo<dim>::quads_per_cell; ++quad)
                     {
+                      const unsigned int size = (fe_degree - 1) * (fe_degree - 1);
                       if (!constraints.is_constrained(dof_indices[cf]))
                         {
-                          for (unsigned int i = 0; i < (fe_degree - 1) * (fe_degree - 1); ++i)
-                            AssertThrow(dof_indices[cf + i] == dof_indices[cf] + i,
-                                        ExcMessage("Expected contiguous numbering"));
+                          for (unsigned int i = 0; i < size; ++i)
+                            for (unsigned int c = 0; c < n_components; ++c)
+                              AssertThrow(dof_indices[cf + c * size + i] ==
+                                            dof_indices[cf] + i * n_components + c,
+                                          ExcMessage("Expected contiguous numbering"));
                           compressed_dof_indices[offset + cc] =
                             part.global_to_local(dof_indices[cf]);
                         }
                       cc += n_lanes;
-                      cf += (fe_degree - 1) * (fe_degree - 1);
+                      cf += size * n_components;
                     }
                   for (unsigned int hex = 0; hex < GeometryInfo<dim>::hexes_per_cell; ++hex)
                     {
+                      const unsigned int size = (fe_degree - 1) * (fe_degree - 1) * (fe_degree - 1);
                       if (!constraints.is_constrained(dof_indices[cf]))
                         {
-                          for (unsigned int i = 0;
-                               i < (fe_degree - 1) * (fe_degree - 1) * (fe_degree - 1);
-                               ++i)
-                            AssertThrow(dof_indices[cf + i] == dof_indices[cf] + i,
-                                        ExcMessage("Expected contiguous numbering"));
+                          for (unsigned int i = 0; i < size; ++i)
+                            for (unsigned int c = 0; c < n_components; ++c)
+                              AssertThrow(dof_indices[cf + c * size + i] ==
+                                            dof_indices[cf] + i * n_components + c,
+                                          ExcMessage("Expected contiguous numbering"));
                           compressed_dof_indices[offset + cc] =
                             part.global_to_local(dof_indices[cf]);
                         }
                       cc += n_lanes;
-                      cf += (fe_degree - 1) * (fe_degree - 1) * (fe_degree - 1);
+                      cf += size * n_components;
                     }
                   AssertThrow(cc == n_lanes * Utilities::pow(3, dim),
                               ExcMessage("Expected 3^dim dofs, got " + std::to_string(cc)));
@@ -338,8 +352,15 @@ namespace Poisson
           for (unsigned int l = data->n_active_entries_per_cell_batch(c);
                l < VectorizedArrayType::size();
                ++l)
-            for (unsigned int d = 0; d < dim; ++d)
-              cell_vertex_coefficients[c][d + 1][d][l] = 1.;
+            {
+              for (unsigned int d = 0; d < dim; ++d)
+                cell_vertex_coefficients[c][d + 1][d][l] = 1.;
+              cell_quadratic_coefficients[c][1][0][l] = 1.;
+              if (dim > 1)
+                cell_quadratic_coefficients[c][3][1][l] = 1.;
+              if (dim > 2)
+                cell_quadratic_coefficients[c][9][2][l] = 1.;
+            }
 
           if (fe_degree > 2)
             {
@@ -672,6 +693,8 @@ namespace Poisson
                            const VectorType &                                      src,
                            const std::pair<unsigned int, unsigned int> &           cell_range) const
     {
+      constexpr unsigned int n_read_components =
+        IsBlockVector<VectorType>::value ? 1 : n_components;
       FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number, VectorizedArrayType> phi(
         data);
       constexpr unsigned int n_q_points = Utilities::pow(n_q_points_1d, dim);
@@ -680,7 +703,7 @@ namespace Poisson
           phi.reinit(cell);
           if (fe_degree > 2)
             for (unsigned int bl = 0; bl < ::internal::get_n_blocks(src); ++bl)
-              read_dof_values_compressed<dim, fe_degree, value_type>(
+              read_dof_values_compressed<dim, fe_degree, n_read_components, value_type>(
                 ::internal::get_block(src, bl),
                 compressed_dof_indices,
                 all_indices_uniform,
@@ -801,7 +824,7 @@ namespace Poisson
 
           if (fe_degree > 2)
             for (unsigned int bl = 0; bl < ::internal::get_n_blocks(src); ++bl)
-              distribute_local_to_global_compressed<dim, fe_degree, Number>(
+              distribute_local_to_global_compressed<dim, fe_degree, n_read_components, Number>(
                 ::internal::get_block(dst, bl),
                 compressed_dof_indices,
                 all_indices_uniform,
@@ -820,6 +843,8 @@ namespace Poisson
     {
       FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number, VectorizedArrayType> phi(
         data);
+      constexpr unsigned int n_read_components =
+        IsBlockVector<VectorType>::value ? 1 : n_components;
       constexpr unsigned int n_q_points = Utilities::pow(n_q_points_1d, dim);
 
       using TensorType = Tensor<1, dim, VectorizedArrayType>;
@@ -831,7 +856,7 @@ namespace Poisson
           phi.reinit(cell);
           if (fe_degree > 2)
             for (unsigned int bl = 0; bl < ::internal::get_n_blocks(src); ++bl)
-              read_dof_values_compressed<dim, fe_degree, value_type>(
+              read_dof_values_compressed<dim, fe_degree, n_read_components, value_type>(
                 ::internal::get_block(src, bl),
                 compressed_dof_indices,
                 all_indices_uniform,
@@ -942,7 +967,7 @@ namespace Poisson
 
           if (fe_degree > 2)
             for (unsigned int bl = 0; bl < ::internal::get_n_blocks(src); ++bl)
-              distribute_local_to_global_compressed<dim, fe_degree, Number>(
+              distribute_local_to_global_compressed<dim, fe_degree, n_read_components, Number>(
                 ::internal::get_block(dst, bl),
                 compressed_dof_indices,
                 all_indices_uniform,
@@ -1023,6 +1048,8 @@ namespace Poisson
     {
       FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number, VectorizedArrayType> phi(
         data);
+      constexpr unsigned int n_read_components =
+        IsBlockVector<VectorType>::value ? 1 : n_components;
       constexpr unsigned int n_q_points = Utilities::pow(n_q_points_1d, dim);
       VectorizedArrayType    jacobians_z[dim * n_q_points];
       for (unsigned int cell = cell_range.first; cell < cell_range.second; ++cell)
@@ -1030,7 +1057,7 @@ namespace Poisson
           phi.reinit(cell);
           if (fe_degree > 2)
             for (unsigned int bl = 0; bl < ::internal::get_n_blocks(src); ++bl)
-              read_dof_values_compressed<dim, fe_degree, value_type>(
+              read_dof_values_compressed<dim, fe_degree, n_read_components, value_type>(
                 ::internal::get_block(src, bl),
                 compressed_dof_indices,
                 all_indices_uniform,
@@ -1118,7 +1145,7 @@ namespace Poisson
           phi.integrate(false, true);
           if (fe_degree > 2)
             for (unsigned int bl = 0; bl < ::internal::get_n_blocks(src); ++bl)
-              distribute_local_to_global_compressed<dim, fe_degree, Number>(
+              distribute_local_to_global_compressed<dim, fe_degree, n_read_components, Number>(
                 ::internal::get_block(dst, bl),
                 compressed_dof_indices,
                 all_indices_uniform,

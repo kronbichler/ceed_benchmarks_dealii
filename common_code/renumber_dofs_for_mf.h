@@ -116,7 +116,7 @@ Renumber<dim, Number, VectorizedArrayType>::renumber(
     mf_data;
   my_mf_data.initialize_mapping = false;
   dealii::MatrixFree<dim, Number, VectorizedArrayType> matrix_free;
-  dealii::MappingQGeneric<dim> mapping(1);
+  dealii::MappingQGeneric<dim>                         mapping(1);
   matrix_free.reinit(mapping,
                      dof_handler,
                      constraints,
@@ -260,11 +260,14 @@ Renumber<dim, Number, VectorizedArrayType>::cell_assembly(
   unsigned int       counter_dof_numbers = 0;
   const unsigned int fe_degree           = dof_handler.get_fe().degree;
 
-  auto renumber_func = get_renumber_func();
+  auto               renumber_func = get_renumber_func();
+  const unsigned int n_components  = dof_handler.get_fe().n_components();
+  AssertThrow(dof_handler.get_fe().n_base_elements() == 1, dealii::ExcNotImplemented());
 
   for (unsigned int cell_batch = 0; cell_batch < matrix_free.n_cell_batches(); ++cell_batch)
     {
-      for (unsigned int cell = 0; cell < matrix_free.n_active_entries_per_cell_batch(cell_batch); ++cell)
+      for (unsigned int cell = 0; cell < matrix_free.n_active_entries_per_cell_batch(cell_batch);
+           ++cell)
         {
           // stores the indices for the dofs in cell_batch
           matrix_free.get_cell_iterator(cell_batch, cell)->get_dof_indices(dof_indices);
@@ -275,41 +278,52 @@ Renumber<dim, Number, VectorizedArrayType>::cell_assembly(
           set_dofs.reserve(matrix_free.n_active_entries_per_cell_batch(cell_batch));
 
           unsigned int cf = 0;
-          for (; cf < dealii::GeometryInfo<dim>::vertices_per_cell; ++cf)
-            renumber_func(numbers_mf_order,
-                          counter_dof_numbers,
-                          set_dofs,
-                          local_dofs.is_element(dof_indices[cf]),
-                          local_dofs.index_within_set(dof_indices[cf]));
+          for (unsigned int v = 0; v < dealii::GeometryInfo<dim>::vertices_per_cell; ++v)
+            for (unsigned int c = 0; c < n_components; ++c, ++cf)
+              renumber_func(numbers_mf_order,
+                            counter_dof_numbers,
+                            set_dofs,
+                            local_dofs.is_element(dof_indices[cf]),
+                            local_dofs.index_within_set(dof_indices[cf]));
 
           for (unsigned int line = 0; line < dealii::GeometryInfo<dim>::lines_per_cell; ++line)
             {
-              for (unsigned int i = 0; i < fe_degree - 1; ++i, ++cf)
-                renumber_func(numbers_mf_order,
-                              counter_dof_numbers,
-                              set_dofs,
-                              local_dofs.is_element(dof_indices[cf]),
-                              local_dofs.index_within_set(dof_indices[cf]));
+              const unsigned int size = fe_degree - 1;
+              for (unsigned int i = 0; i < size; ++i)
+                for (unsigned int c = 0; c < n_components; ++c)
+                  renumber_func(numbers_mf_order,
+                                counter_dof_numbers,
+                                set_dofs,
+                                local_dofs.is_element(dof_indices[cf + size * c + i]),
+                                local_dofs.index_within_set(dof_indices[cf + size * c + i]));
+              cf += n_components * size;
             }
           for (unsigned int quad = 0; quad < dealii::GeometryInfo<dim>::quads_per_cell; ++quad)
             {
-              for (unsigned int i = 0; i < (fe_degree - 1) * (fe_degree - 1); ++i, ++cf)
-                renumber_func(numbers_mf_order,
-                              counter_dof_numbers,
-                              set_dofs,
-                              local_dofs.is_element(dof_indices[cf]),
-                              local_dofs.index_within_set(dof_indices[cf]));
+              const unsigned int size = (fe_degree - 1) * (fe_degree - 1);
+              for (unsigned int i = 0; i < size; ++i)
+                for (unsigned int c = 0; c < n_components; ++c)
+                  renumber_func(numbers_mf_order,
+                                counter_dof_numbers,
+                                set_dofs,
+                                local_dofs.is_element(dof_indices[cf + size * c + i]),
+                                local_dofs.index_within_set(dof_indices[cf + size * c + i]));
+              cf += n_components * size;
             }
           for (unsigned int hex = 0; hex < dealii::GeometryInfo<dim>::hexes_per_cell; ++hex)
             {
-              for (unsigned int i = 0; i < (fe_degree - 1) * (fe_degree - 1) * (fe_degree - 1);
-                   ++i, ++cf)
-                renumber_func(numbers_mf_order,
-                              counter_dof_numbers,
-                              set_dofs,
-                              local_dofs.is_element(dof_indices[cf]),
-                              local_dofs.index_within_set(dof_indices[cf]));
+              const unsigned int size = (fe_degree - 1) * (fe_degree - 1) * (fe_degree - 1);
+              for (unsigned int i = 0; i < size; ++i)
+                for (unsigned int c = 0; c < n_components; ++c)
+                  renumber_func(numbers_mf_order,
+                                counter_dof_numbers,
+                                set_dofs,
+                                local_dofs.is_element(dof_indices[cf + size * c + i]),
+                                local_dofs.index_within_set(dof_indices[cf + size * c + i]));
+              cf += n_components * size;
             }
+          AssertThrow(cf == dof_indices.size(),
+                      dealii::ExcDimensionMismatch(cf, dof_indices.size()));
         }
     }
   return numbers_mf_order;
@@ -345,7 +359,9 @@ Renumber<dim, Number, VectorizedArrayType>::cellbatch_assembly(
       unsigned int cf = 0;
       for (; cf < dealii::GeometryInfo<dim>::vertices_per_cell; ++cf)
         {
-          for (unsigned int cell = 0; cell < matrix_free.n_active_entries_per_cell_batch(cell_batch); ++cell)
+          for (unsigned int cell = 0;
+               cell < matrix_free.n_active_entries_per_cell_batch(cell_batch);
+               ++cell)
             {
               matrix_free.get_cell_iterator(cell_batch, cell)->get_dof_indices(dof_indices);
               renumber_func(numbers_mf_order,
@@ -359,7 +375,8 @@ Renumber<dim, Number, VectorizedArrayType>::cellbatch_assembly(
         {
           for (unsigned int i = 0; i < fe_degree - 1; ++i, ++cf)
             {
-              for (unsigned int cell = 0; cell < matrix_free.n_active_entries_per_cell_batch(cell_batch);
+              for (unsigned int cell = 0;
+                   cell < matrix_free.n_active_entries_per_cell_batch(cell_batch);
                    ++cell)
                 {
                   matrix_free.get_cell_iterator(cell_batch, cell)->get_dof_indices(dof_indices);
@@ -375,7 +392,8 @@ Renumber<dim, Number, VectorizedArrayType>::cellbatch_assembly(
         {
           for (unsigned int i = 0; i < (fe_degree - 1) * (fe_degree - 1); ++i, ++cf)
             {
-              for (unsigned int cell = 0; cell < matrix_free.n_active_entries_per_cell_batch(cell_batch);
+              for (unsigned int cell = 0;
+                   cell < matrix_free.n_active_entries_per_cell_batch(cell_batch);
                    ++cell)
                 {
                   matrix_free.get_cell_iterator(cell_batch, cell)->get_dof_indices(dof_indices);
@@ -392,7 +410,8 @@ Renumber<dim, Number, VectorizedArrayType>::cellbatch_assembly(
           for (unsigned int i = 0; i < (fe_degree - 1) * (fe_degree - 1) * (fe_degree - 1);
                ++i, ++cf)
             {
-              for (unsigned int cell = 0; cell < matrix_free.n_active_entries_per_cell_batch(cell_batch);
+              for (unsigned int cell = 0;
+                   cell < matrix_free.n_active_entries_per_cell_batch(cell_batch);
                    ++cell)
                 {
                   matrix_free.get_cell_iterator(cell_batch, cell)->get_dof_indices(dof_indices);
@@ -461,7 +480,7 @@ Renumber<dim, Number, VectorizedArrayType>::grouping(
     base_grouping(new_numbers, single_domain_dofs, numbers_mf_order);
   else
     touch_count_grouping(new_numbers, matrix_free, single_domain_dofs, numbers_mf_order);
-  
+
   AssertDimension(new_numbers.size(), single_domain_dofs.size());
 
   const unsigned int fill_size = new_numbers.size();
@@ -530,10 +549,10 @@ Renumber<dim, Number, VectorizedArrayType>::touch_count_grouping(
   for (auto i : single_domain_dofs)
     if (touch_count[i] > 1)
       new_numbers.push_back(i);
-  
+
   // add all dofs that are never touched (e.g., in the case constraints)
-  for(auto i : single_domain_dofs)
-    if(touch_count[i] == 0)
+  for (auto i : single_domain_dofs)
+    if (touch_count[i] == 0)
       new_numbers.push_back(i);
 
   std::sort(new_numbers.begin() + fill_size, new_numbers.end(), comp);
