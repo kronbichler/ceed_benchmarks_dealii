@@ -487,6 +487,8 @@ namespace Poisson
                            const Number                              alpha_old,
                            const Number                              beta_old) const
     {
+      constexpr unsigned int n_read_components =
+        IsBlockVector<VectorType>::value ? 1 : n_components;
       Tensor<1, 7, VectorizedArray<Number>> sums;
       this->data->cell_loop(&LaplaceOperator::template local_apply_linear_geo<false>,
                             this,
@@ -494,7 +496,7 @@ namespace Poisson
                             d,
                             [&](const unsigned int start_range, const unsigned int end_range) {
                               for (unsigned int bl = 0; bl < ::internal::get_n_blocks(x); ++bl)
-                                do_cg_update4b<1, Number, true>(
+                                do_cg_update4b<n_read_components, Number, true>(
                                   start_range,
                                   end_range,
                                   ::internal::get_block(h, bl).begin(),
@@ -509,7 +511,7 @@ namespace Poisson
                             },
                             [&](const unsigned int start_range, const unsigned int end_range) {
                               for (unsigned int bl = 0; bl < ::internal::get_n_blocks(x); ++bl)
-                                do_cg_update3b<1, Number>(start_range,
+                                do_cg_update3b<n_read_components, Number>(start_range,
                                                           end_range,
                                                           ::internal::get_block(g, bl).begin(),
                                                           ::internal::get_block(d, bl).begin(),

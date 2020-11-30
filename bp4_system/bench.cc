@@ -102,7 +102,7 @@ test(const unsigned int s, const bool short_output)
 
   // create preconditioner based on the diagonal of the GLL quadrature with
   // fe_degree+1 points
-  DiagonalMatrix<LinearAlgebra::distributed::Vector<double>> diag_mat;
+  DiagonalMatrixBlocked<dim, double> diag_mat;
   {
     matrix_free->reinit(
       mapping, dof_handler, constraints, QGaussLobatto<1>(fe_degree + 1), mf_data);
@@ -116,11 +116,18 @@ test(const unsigned int s, const bool short_output)
       laplace_operator;
     laplace_operator.initialize(matrix_free, constraints);
 
-    diag_mat.get_vector() = laplace_operator.compute_inverse_diagonal();
+    const auto vector = laplace_operator.compute_inverse_diagonal();
+    IndexSet reduced(vector.size() / dim);
+    reduced.add_range(vector.get_partitioner()->local_range().first / dim,
+                      vector.get_partitioner()->local_range().second /dim);
+    reduced.compress();
+    diag_mat.diagonal.reinit(reduced, vector.get_mpi_communicator());
+    for (unsigned int i=0; i<reduced.n_elements(); ++i)
+      diag_mat.diagonal.local_element(i) = vector.local_element(i * dim);
   }
   if (short_output == false)
     {
-      const double diag_norm = diag_mat.get_vector().l2_norm();
+      const double diag_norm = diag_mat.diagonal.l2_norm();
       if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
         std::cout << "Norm of diagonal for preconditioner: " << diag_norm << std::endl;
     }
