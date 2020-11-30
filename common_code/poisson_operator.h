@@ -161,6 +161,7 @@ namespace Poisson
       this->data = data_;
       quad_1d    = QGauss<1>(n_q_points_1d);
       cell_vertex_coefficients.resize(data->n_cell_batches());
+      cell_quadratic_coefficients.resize(data->n_cell_batches());
       const std::size_t n_q_points = Utilities::fixed_power<dim>(quad_1d.size());
       merged_coefficients.resize(n_q_points * data->n_cell_batches());
       quadrature_points.resize(n_q_points * dim * data->n_cell_batches());
@@ -195,6 +196,17 @@ namespace Poisson
                       cell_vertex_coefficients[c][2][d][l] = v[2][d] - v[0][d];
                       cell_vertex_coefficients[c][3][d][l] =
                         v[3][d] - v[2][d] - (v[1][d] - v[0][d]);
+
+                      // for now use only constant and linear term for the
+                      // quadratic approximation
+                      cell_quadratic_coefficients[c][0][d][l] =
+                        cell_vertex_coefficients[c][0][d][l];
+                      cell_quadratic_coefficients[c][1][d][l] =
+                        cell_vertex_coefficients[c][1][d][l];
+                      cell_quadratic_coefficients[c][3][d][l] =
+                        cell_vertex_coefficients[c][2][d][l];
+                      cell_quadratic_coefficients[c][4][d][l] =
+                        cell_vertex_coefficients[c][3][d][l];
                     }
                 }
               else if (dim == 3)
@@ -222,6 +234,25 @@ namespace Poisson
                       cell_vertex_coefficients[c][7][d][l] =
                         (v[7][d] - v[6][d] - (v[5][d] - v[4][d]) -
                          (v[3][d] - v[2][d] - (v[1][d] - v[0][d])));
+
+                      // for now use only constant and linear term for the
+                      // quadratic approximation
+                      cell_quadratic_coefficients[c][0][d][l] =
+                        cell_vertex_coefficients[c][0][d][l];
+                      cell_quadratic_coefficients[c][1][d][l] =
+                        cell_vertex_coefficients[c][1][d][l];
+                      cell_quadratic_coefficients[c][3][d][l] =
+                        cell_vertex_coefficients[c][2][d][l];
+                      cell_quadratic_coefficients[c][4][d][l] =
+                        cell_vertex_coefficients[c][4][d][l];
+                      cell_quadratic_coefficients[c][9][d][l] =
+                        cell_vertex_coefficients[c][3][d][l];
+                      cell_quadratic_coefficients[c][10][d][l] =
+                        cell_vertex_coefficients[c][5][d][l];
+                      cell_quadratic_coefficients[c][12][d][l] =
+                        cell_vertex_coefficients[c][6][d][l];
+                      cell_quadratic_coefficients[c][13][d][l] =
+                        cell_vertex_coefficients[c][7][d][l];
                     }
                 }
               else
@@ -553,6 +584,16 @@ namespace Poisson
     }
 
     /**
+     * Matrix-vector multiplication.
+     */
+    void
+    vmult_quadratic(VectorType &dst, const VectorType &src) const
+    {
+      this->data->cell_loop(&LaplaceOperator::local_apply_quadratic_geo, this, dst, src, true);
+      internal::set_constrained_entries(data->get_constrained_dofs(0), src, dst);
+    }
+
+    /**
      * Transpose matrix-vector multiplication. Since the Laplace matrix is
      * symmetric, it does exactly the same as vmult().
      */
@@ -770,6 +811,144 @@ namespace Poisson
     }
 
     void
+    local_apply_quadratic_geo(const MatrixFree<dim, value_type, VectorizedArrayType> &data,
+                              VectorType &                                            dst,
+                              const VectorType &                                      src,
+                              const std::pair<unsigned int, unsigned int> &           cell_range) const
+    {
+      FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number, VectorizedArrayType> phi(
+        data);
+      constexpr unsigned int n_q_points = Utilities::pow(n_q_points_1d, dim);
+      for (unsigned int cell = cell_range.first; cell < cell_range.second; ++cell)
+        {
+          phi.reinit(cell);
+          if (fe_degree > 2)
+            for (unsigned int bl = 0; bl < ::internal::get_n_blocks(src); ++bl)
+              read_dof_values_compressed<dim, fe_degree, value_type>(
+                ::internal::get_block(src, bl),
+                compressed_dof_indices,
+                all_indices_uniform,
+                cell,
+                phi.begin_dof_values() + bl * Utilities::pow(fe_degree + 1, dim));
+          else
+            phi.read_dof_values(src);
+          phi.evaluate(false, true);
+          const auto &v = cell_quadratic_coefficients[cell];
+          using TensorType = Tensor<1, dim, VectorizedArrayType>;
+          VectorizedArrayType *phi_grads = phi.begin_gradients();
+          std::array<TensorType, Utilities::pow(3, dim-1)> xi;
+          std::array<TensorType, Utilities::pow(3, dim-1)> di;
+          if (dim == 2)
+            {
+              for (unsigned int q = 0, qy = 0; qy < n_q_points_1d; ++qy)
+                {
+                  const Number y = quad_1d.point(qy)[0];
+                  const TensorType x1 = v[1] + y * (v[4] + y * v[7]);
+                  const TensorType x2 = v[2] + y * (v[5] + y * v[8]);
+                  const TensorType d0 = v[3] + (y + y) * v[6];
+                  const TensorType d1 = v[4] + (y + y) * v[7];
+                  const TensorType d2 = v[5] + (y + y) * v[8];
+                  for (unsigned int qx = 0; qx < n_q_points_1d; ++qx, ++q)
+                    {
+                      const Number q_weight = quad_1d.weight(qy) * quad_1d.weight(qx);
+                      const Number x = quad_1d.point(qx)[0];
+                      Tensor<2, dim, VectorizedArrayType> jac;
+                      jac[0] = x1 + (x + x) * x2;
+                      jac[1] = d0 + x * d1 + (x * x) * d2;
+                      const VectorizedArrayType det = do_invert(jac);
+
+                      for (unsigned int c = 0; c < n_components; ++c)
+                        {
+                          const unsigned int  offset = c * dim * n_q_points;
+                          VectorizedArrayType tmp[dim];
+                          for (unsigned int d = 0; d < dim; ++d)
+                            {
+                              tmp[d] = jac[d][0] * phi_grads[q + offset];
+                              for (unsigned int e = 1; e < dim; ++e)
+                                tmp[d] += jac[d][e] * phi_grads[q + e * n_q_points + offset];
+                              tmp[d] *= det * q_weight;
+                            }
+                          for (unsigned int d = 0; d < dim; ++d)
+                            {
+                              phi_grads[q + d * n_q_points + offset] = jac[0][d] * tmp[0];
+                              for (unsigned int e = 1; e < dim; ++e)
+                                phi_grads[q + d * n_q_points + offset] += jac[e][d] * tmp[e];
+                            }
+                        }
+                    }
+                }
+            }
+          else if (dim == 3)
+            {
+              for (unsigned int q = 0, qz = 0; qz < n_q_points_1d; ++qz)
+                {
+                  const Number z = quad_1d.point(qz)[0];
+                  for (unsigned int i = 0; i < 9; ++i)
+                    {
+                      xi[i] = v[i] + z * (v[9 + i] + z * v[18 + i]);
+                      di[i] = v[9 + i] + (z + z) * v[18 + i];
+                    }
+                  for (unsigned int qy = 0; qy < n_q_points_1d; ++qy)
+                    {
+                      const auto y = quad_1d.point(qy)[0];
+                      const TensorType x1 = xi[1] + y * (xi[4] + y * xi[7]);
+                      const TensorType x2 = xi[2] + y * (xi[5] + y * xi[8]);
+                      const TensorType dy0 = xi[3] + (y + y) * xi[6];
+                      const TensorType dy1 = xi[4] + (y + y) * xi[7];
+                      const TensorType dy2 = xi[5] + (y + y) * xi[8];
+                      const TensorType dz0 = di[0] + y * (di[3] + y * di[6]);
+                      const TensorType dz1 = di[1] + y * (di[4] + y * di[7]);
+                      const TensorType dz2 = di[2] + y * (di[5] + y * di[8]);
+                      double q_weight_tmp = quad_1d.weight(qz) * quad_1d.weight(qy);
+                      for (unsigned int qx = 0; qx < n_q_points_1d; ++qx, ++q)
+                        {
+                          const Number                        x = quad_1d.point(qx)[0];
+                          Tensor<2, dim, VectorizedArrayType> jac;
+                          jac[0] = x1 + (x + x) * x2;
+                          jac[1] = dy0 + x * (dy1 + x * dy2);
+                          jac[2] = dz0 + x * (dz1 + x * dz2);
+                          VectorizedArrayType det = do_invert(jac);
+                          det                     = det * (q_weight_tmp * quad_1d.weight(qx));
+
+                          for (unsigned int c = 0; c < n_components; ++c)
+                            {
+                              const unsigned int  offset = c * dim * n_q_points;
+                              VectorizedArrayType tmp[dim];
+                              for (unsigned int d = 0; d < dim; ++d)
+                                {
+                                  tmp[d] = jac[d][0] * phi_grads[q + offset];
+                                  for (unsigned int e = 1; e < dim; ++e)
+                                    tmp[d] += jac[d][e] * phi_grads[q + e * n_q_points + offset];
+                                  tmp[d] *= det;
+                                }
+                              for (unsigned int d = 0; d < dim; ++d)
+                                {
+                                  phi_grads[q + d * n_q_points + offset] = jac[0][d] * tmp[0];
+                                  for (unsigned int e = 1; e < dim; ++e)
+                                    phi_grads[q + d * n_q_points + offset] += jac[e][d] * tmp[e];
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+          phi.integrate(false, true);
+
+          if (fe_degree > 2)
+            for (unsigned int bl = 0; bl < ::internal::get_n_blocks(src); ++bl)
+              distribute_local_to_global_compressed<dim, fe_degree, Number>(
+                ::internal::get_block(dst, bl),
+                compressed_dof_indices,
+                all_indices_uniform,
+                cell,
+                phi.begin_dof_values() + bl * Utilities::pow(fe_degree + 1, dim));
+          else
+            phi.distribute_local_to_global(dst);
+        }
+    }
+
+    void
     local_apply_merged(const MatrixFree<dim, value_type, VectorizedArrayType> &data,
                        VectorType &                                            dst,
                        const VectorType &                                      src,
@@ -956,6 +1135,11 @@ namespace Poisson
     AlignedVector<
       std::array<Tensor<1, dim, VectorizedArrayType>, GeometryInfo<dim>::vertices_per_cell>>
       cell_vertex_coefficients;
+
+    // For local_apply_quadratic_geo
+    AlignedVector<
+      std::array<Tensor<1, dim, VectorizedArrayType>, Utilities::pow(3, dim)>>
+      cell_quadratic_coefficients;
 
     // For local_apply_merged: dim*(dim+1)/2 coefficients
     AlignedVector<Tensor<1, (dim * (dim + 1) / 2), VectorizedArrayType>> merged_coefficients;

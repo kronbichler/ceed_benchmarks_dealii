@@ -321,6 +321,25 @@ test(const unsigned int s, const bool short_output)
     }
 
 #ifdef LIKWID_PERFMON
+  LIKWID_MARKER_START("matvec_quad");
+#endif
+  time.restart();
+  for (unsigned int i = 0; i < 100; ++i)
+    laplace_operator.vmult_quadratic(tmp, output);
+  const double t5 = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD).max / 100;
+#ifdef LIKWID_PERFMON
+  LIKWID_MARKER_STOP("matvec_quad");
+#endif
+
+  tmp -= input;
+  if (short_output == false)
+    {
+      const double norm = tmp.linfty_norm();
+      if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
+        std::cout << "Error quadratic evaluation of Jacobian:    " << norm << std::endl;
+    }
+
+#ifdef LIKWID_PERFMON
   LIKWID_MARKER_START("matvec_merge");
 #endif
   time.restart();
@@ -354,6 +373,7 @@ test(const unsigned int s, const bool short_output)
               << " | " << std::setw(11) << t2                                        //
               << " | " << std::setw(11) << t3                                        //
               << " | " << std::setw(11) << t4                                        //
+              << " | " << std::setw(11) << t5                                        //
               << std::endl;
 }
 
@@ -369,7 +389,7 @@ do_test(const int s_in, const bool compact_output)
                  static_cast<unsigned int>(std::log2(1024 / fe_degree / fe_degree / fe_degree)));
       if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
         std::cout
-          << " p |  q | n_element |     n_dofs |     time/it |   dofs/s/it | opt_time/it | opm_time/it | itCG | time/matvec | timeMVbasic | timeMVcompu | timeMVmerged"
+          << " p |  q | n_element |     n_dofs |     time/it |   dofs/s/it | opt_time/it | opm_time/it | itCG | time/matvec | timeMVbasic | timeMVcompu | timeMVmerge | timeMVquad"
           << std::endl;
       while ((8 + Utilities::fixed_power<dim>(fe_degree + 1)) * (1UL << s) <
              3000000ULL * Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD))
