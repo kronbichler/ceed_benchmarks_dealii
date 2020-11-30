@@ -418,7 +418,7 @@ namespace Mass
         {
           phi.reinit(cell);
           if (fe_degree > 2)
-            read_dof_values_compressed<dim, fe_degree, value_type>(
+            read_dof_values_compressed<dim, fe_degree, 1, value_type>(
               src, compressed_dof_indices, all_indices_uniform, cell, phi.begin_dof_values());
           else
             phi.read_dof_values(src);
@@ -427,7 +427,7 @@ namespace Mass
             phi.submit_value(phi.get_value(q), q);
           phi.integrate(true, false);
           if (fe_degree > 2)
-            distribute_local_to_global_compressed<dim, fe_degree, Number>(
+            distribute_local_to_global_compressed<dim, fe_degree, 1, Number>(
               dst, compressed_dof_indices, all_indices_uniform, cell, phi.begin_dof_values());
           else
             phi.distribute_local_to_global(dst);
