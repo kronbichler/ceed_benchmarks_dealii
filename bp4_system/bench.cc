@@ -32,11 +32,16 @@
 
 using namespace dealii;
 
+//#define USE_SHMEM
 
 template <int dim, int fe_degree, int n_q_points>
 void
-test(const unsigned int s, const bool short_output)
+test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
 {
+#ifndef USE_SHMEM
+  (void)comm_shmem;
+#endif
+
   warmup_code();
 
   if (short_output == true)
@@ -75,13 +80,15 @@ test(const unsigned int s, const bool short_output)
   IndexSet                  relevant_dofs;
   DoFTools::extract_locally_relevant_dofs(dof_handler, relevant_dofs);
   constraints.reinit(relevant_dofs);
-  VectorTools::interpolate_boundary_values(mapping,
-                                           dof_handler,
-                                           0,
-                                           Functions::ZeroFunction<dim>(dim),
-                                           constraints);
+  VectorTools::interpolate_boundary_values(
+    mapping, dof_handler, 0, Functions::ZeroFunction<dim>(dim), constraints);
   constraints.close();
   typename MatrixFree<dim, double>::AdditionalData mf_data;
+
+#ifdef USE_SHMEM
+  mf_data.communicator_sm                = comm_shmem;
+  mf_data.use_vector_data_exchanger_full = true;
+#endif
 
   // renumber Dofs to minimize the number of partitions in import indices of
   // partitioner
@@ -91,11 +98,8 @@ test(const unsigned int s, const bool short_output)
   DoFTools::extract_locally_relevant_dofs(dof_handler, relevant_dofs);
   constraints.clear();
   constraints.reinit(relevant_dofs);
-  VectorTools::interpolate_boundary_values(mapping,
-                                           dof_handler,
-                                           0,
-                                           Functions::ZeroFunction<dim>(dim),
-                                           constraints);
+  VectorTools::interpolate_boundary_values(
+    mapping, dof_handler, 0, Functions::ZeroFunction<dim>(dim), constraints);
   constraints.close();
 
   std::shared_ptr<MatrixFree<dim, double>> matrix_free(new MatrixFree<dim, double>());
@@ -117,12 +121,12 @@ test(const unsigned int s, const bool short_output)
     laplace_operator.initialize(matrix_free, constraints);
 
     const auto vector = laplace_operator.compute_inverse_diagonal();
-    IndexSet reduced(vector.size() / dim);
+    IndexSet   reduced(vector.size() / dim);
     reduced.add_range(vector.get_partitioner()->local_range().first / dim,
-                      vector.get_partitioner()->local_range().second /dim);
+                      vector.get_partitioner()->local_range().second / dim);
     reduced.compress();
     diag_mat.diagonal.reinit(reduced, vector.get_mpi_communicator());
-    for (unsigned int i=0; i<reduced.n_elements(); ++i)
+    for (unsigned int i = 0; i < reduced.n_elements(); ++i)
       diag_mat.diagonal.local_element(i) = vector.local_element(i * dim);
   }
   if (short_output == false)
@@ -158,7 +162,7 @@ test(const unsigned int s, const bool short_output)
               << " " << data.max << " (p" << data.max_index << ")"
               << "s" << std::endl;
 
-  ReductionControl                                          solver_control(100, 1e-15, 1e-8);
+  ReductionControl                                     solver_control(100, 1e-15, 1e-8);
   SolverCG<LinearAlgebra::distributed::Vector<double>> solver(solver_control);
 
   double solver_time = 1e10;
@@ -186,7 +190,7 @@ test(const unsigned int s, const bool short_output)
     }
 
   SolverCGOptimized<LinearAlgebra::distributed::Vector<double>> solver2(solver_control);
-  double                                                             solver_time2 = 1e10;
+  double                                                        solver_time2 = 1e10;
   for (unsigned int t = 0; t < 2; ++t)
     {
       output = 0;
@@ -211,7 +215,7 @@ test(const unsigned int s, const bool short_output)
     }
 
   SolverCGFullMerge<LinearAlgebra::distributed::Vector<double>> solver4(solver_control);
-  double                                                             solver_time4 = 1e10;
+  double                                                        solver_time4 = 1e10;
 #ifdef LIKWID_PERFMON
   LIKWID_MARKER_START("cg_solver_optm");
 #endif
@@ -295,11 +299,11 @@ test(const unsigned int s, const bool short_output)
               << " |" << std::setw(11) << dof_handler.n_dofs()                      //
               << " | " << std::setw(11) << solver_time / solver_control.last_step() //
               << " | " << std::setw(11)
-              << dof_handler.n_dofs() / solver_time2 * solver_control.last_step()       //
-              << " | " << std::setw(11) << solver_time2 / solver_control.last_step()    //
-              << " | " << std::setw(11) << solver_time4 / solver_control.last_step()    //
-              << " | " << std::setw(4) << solver_control.last_step()                    //
-              << " | " << std::setw(11) << matvec_time                                  //
+              << dof_handler.n_dofs() / solver_time2 * solver_control.last_step()    //
+              << " | " << std::setw(11) << solver_time2 / solver_control.last_step() //
+              << " | " << std::setw(11) << solver_time4 / solver_control.last_step() //
+              << " | " << std::setw(4) << solver_control.last_step()                 //
+              << " | " << std::setw(11) << matvec_time                               //
 #ifdef SHOW_VARIANTS
               << " | " << std::setw(11) << t2 //
               << " | " << std::setw(11) << t3 //
@@ -313,6 +317,16 @@ template <int dim, int fe_degree, int n_q_points>
 void
 do_test(const int s_in, const bool compact_output)
 {
+  MPI_Comm comm_shmem;
+
+#ifdef USE_SHMEM
+  MPI_Comm_split_type(MPI_COMM_WORLD,
+                      MPI_COMM_TYPE_SHARED,
+                      Utilities::MPI::this_mpi_process(MPI_COMM_WORLD),
+                      MPI_INFO_NULL,
+                      &comm_shmem);
+#endif
+
   if (s_in < 1)
     {
       unsigned int s = 1 + std::log2(Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD));
@@ -331,14 +345,18 @@ do_test(const int s_in, const bool compact_output)
       while (Utilities::fixed_power<dim>(fe_degree + 1) * (1UL << s) * dim <
              6000000ULL * Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD))
         {
-          test<dim, fe_degree, n_q_points>(s, compact_output);
+          test<dim, fe_degree, n_q_points>(s, compact_output, comm_shmem);
           ++s;
         }
       if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
         std::cout << std::endl << std::endl;
     }
   else
-    test<dim, fe_degree, n_q_points>(s_in, compact_output);
+    test<dim, fe_degree, n_q_points>(s_in, compact_output, comm_shmem);
+
+#ifdef USE_SHMEM
+  MPI_Comm_free(&comm_shmem);
+#endif
 }
 
 

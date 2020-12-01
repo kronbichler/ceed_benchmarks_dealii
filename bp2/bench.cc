@@ -25,11 +25,16 @@
 
 using namespace dealii;
 
+//#define USE_SHMEM
 
 template <int dim, int fe_degree, int n_q_points>
 void
-test(const unsigned int s, const bool short_output)
+test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
 {
+#ifndef USE_SHMEM
+  (void)comm_shmem;
+#endif
+
   warmup_code();
 
   if (short_output == true)
@@ -65,12 +70,15 @@ test(const unsigned int s, const bool short_output)
 
   AffineConstraints<double> constraints;
   constraints.close();
+  typename MatrixFree<dim, double>::AdditionalData mf_data;
+
+#ifdef USE_SHMEM
+  mf_data.communicator_sm                = comm_shmem;
+  mf_data.use_vector_data_exchanger_full = true;
+#endif
+
   std::shared_ptr<MatrixFree<dim, double>> matrix_free(new MatrixFree<dim, double>());
-  matrix_free->reinit(mapping,
-                      dof_handler,
-                      constraints,
-                      QGauss<1>(n_q_points),
-                      typename MatrixFree<dim, double>::AdditionalData());
+  matrix_free->reinit(mapping, dof_handler, constraints, QGauss<1>(n_q_points), mf_data);
 
   Mass::MassOperator<dim, fe_degree, n_q_points, dim> mass_operator;
   mass_operator.initialize(matrix_free);
@@ -183,6 +191,16 @@ template <int dim, int fe_degree, int n_q_points>
 void
 do_test(const int s_in, const bool compact_output)
 {
+  MPI_Comm comm_shmem;
+
+#ifdef USE_SHMEM
+  MPI_Comm_split_type(MPI_COMM_WORLD,
+                      MPI_COMM_TYPE_SHARED,
+                      Utilities::MPI::this_mpi_process(MPI_COMM_WORLD),
+                      MPI_INFO_NULL,
+                      &comm_shmem);
+#endif
+
   if (s_in < 1)
     {
       unsigned int s =
@@ -195,14 +213,18 @@ do_test(const int s_in, const bool compact_output)
       while (Utilities::fixed_power<dim>(fe_degree + 1) * (1UL << s) * dim <
              6000000ULL * Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD))
         {
-          test<dim, fe_degree, n_q_points>(s, compact_output);
+          test<dim, fe_degree, n_q_points>(s, compact_output, comm_shmem);
           ++s;
         }
       if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
         std::cout << std::endl << std::endl;
     }
   else
-    test<dim, fe_degree, n_q_points>(s_in, compact_output);
+    test<dim, fe_degree, n_q_points>(s_in, compact_output, comm_shmem);
+
+#ifdef USE_SHMEM
+  MPI_Comm_free(&comm_shmem);
+#endif
 }
 
 
