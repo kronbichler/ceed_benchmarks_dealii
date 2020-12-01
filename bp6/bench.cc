@@ -309,8 +309,18 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
 
 template <int dim, int fe_degree, int n_q_points>
 void
-do_test(const int s_in, const bool compact_output, const MPI_Comm &comm_shmem)
+do_test(const int s_in, const bool compact_output)
 {
+  MPI_Comm comm_shmem;
+
+#ifdef USE_SHMEM
+  MPI_Comm_split_type(MPI_COMM_WORLD,
+                      MPI_COMM_TYPE_SHARED,
+                      Utilities::MPI::this_mpi_process(MPI_COMM_WORLD),
+                      MPI_INFO_NULL,
+                      &comm_shmem);
+#endif
+
   if (s_in < 1)
     {
       unsigned int s = 1 + std::log2(Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD));
@@ -337,6 +347,10 @@ do_test(const int s_in, const bool compact_output, const MPI_Comm &comm_shmem)
     }
   else
     test<dim, fe_degree, n_q_points>(s_in, compact_output, comm_shmem);
+
+#ifdef USE_SHMEM
+  MPI_Comm_free(&comm_shmem);
+#endif
 }
 
 
@@ -360,44 +374,30 @@ main(int argc, char **argv)
   if (argc > 3)
     compact_output = std::atoi(argv[3]);
 
-  MPI_Comm comm_shmem;
-
-#ifdef USE_SHMEM
-  MPI_Comm_split_type(MPI_COMM_WORLD,
-                      MPI_COMM_TYPE_SHARED,
-                      Utilities::MPI::this_mpi_process(MPI_COMM_WORLD),
-                      MPI_INFO_NULL,
-                      &comm_shmem);
-#endif
-
   if (degree == 1)
-    do_test<3, 1, 2>(s, compact_output, comm_shmem);
+    do_test<3, 1, 2>(s, compact_output);
   else if (degree == 2)
-    do_test<3, 2, 3>(s, compact_output, comm_shmem);
+    do_test<3, 2, 3>(s, compact_output);
   else if (degree == 3)
-    do_test<3, 3, 4>(s, compact_output, comm_shmem);
+    do_test<3, 3, 4>(s, compact_output);
   else if (degree == 4)
-    do_test<3, 4, 5>(s, compact_output, comm_shmem);
+    do_test<3, 4, 5>(s, compact_output);
   else if (degree == 5)
-    do_test<3, 5, 6>(s, compact_output, comm_shmem);
+    do_test<3, 5, 6>(s, compact_output);
   else if (degree == 6)
-    do_test<3, 6, 7>(s, compact_output, comm_shmem);
+    do_test<3, 6, 7>(s, compact_output);
   else if (degree == 7)
-    do_test<3, 7, 8>(s, compact_output, comm_shmem);
+    do_test<3, 7, 8>(s, compact_output);
   else if (degree == 8)
-    do_test<3, 8, 9>(s, compact_output, comm_shmem);
+    do_test<3, 8, 9>(s, compact_output);
   else if (degree == 9)
-    do_test<3, 9, 10>(s, compact_output, comm_shmem);
+    do_test<3, 9, 10>(s, compact_output);
   else if (degree == 10)
-    do_test<3, 10, 11>(s, compact_output, comm_shmem);
+    do_test<3, 10, 11>(s, compact_output);
   else if (degree == 11)
-    do_test<3, 11, 12>(s, compact_output, comm_shmem);
+    do_test<3, 11, 12>(s, compact_output);
   else
     AssertThrow(false, ExcMessage("Only degrees up to 11 implemented"));
-
-#ifdef USE_SHMEM
-  MPI_Comm_free(&comm_shmem);
-#endif
 
 #ifdef LIKWID_PERFMON
   LIKWID_MARKER_CLOSE;
