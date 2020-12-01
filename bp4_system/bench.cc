@@ -32,11 +32,16 @@
 
 using namespace dealii;
 
+//#define USE_SHMEM
 
 template <int dim, int fe_degree, int n_q_points>
 void
-test(const unsigned int s, const bool short_output)
+test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
 {
+#ifndef USE_SHMEM
+    (void) comm_shmem;
+#endif
+    
   warmup_code();
 
   if (short_output == true)
@@ -82,6 +87,11 @@ test(const unsigned int s, const bool short_output)
                                            constraints);
   constraints.close();
   typename MatrixFree<dim, double>::AdditionalData mf_data;
+
+#ifdef USE_SHMEM
+  mf_data.communicator_sm                = comm_shmem;
+  mf_data.use_vector_data_exchanger_full = true;
+#endif
 
   // renumber Dofs to minimize the number of partitions in import indices of
   // partitioner
@@ -311,7 +321,7 @@ test(const unsigned int s, const bool short_output)
 
 template <int dim, int fe_degree, int n_q_points>
 void
-do_test(const int s_in, const bool compact_output)
+do_test(const int s_in, const bool compact_output, const MPI_Comm &comm_shmem)
 {
   if (s_in < 1)
     {
@@ -331,14 +341,14 @@ do_test(const int s_in, const bool compact_output)
       while (Utilities::fixed_power<dim>(fe_degree + 1) * (1UL << s) * dim <
              6000000ULL * Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD))
         {
-          test<dim, fe_degree, n_q_points>(s, compact_output);
+          test<dim, fe_degree, n_q_points>(s, compact_output, comm_shmem);
           ++s;
         }
       if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
         std::cout << std::endl << std::endl;
     }
   else
-    test<dim, fe_degree, n_q_points>(s_in, compact_output);
+    test<dim, fe_degree, n_q_points>(s_in, compact_output, comm_shmem);
 }
 
 
@@ -362,30 +372,44 @@ main(int argc, char **argv)
   if (argc > 3)
     compact_output = std::atoi(argv[3]);
 
+  MPI_Comm comm_shmem;
+  
+#ifdef USE_SHMEM
+  MPI_Comm_split_type(MPI_COMM_WORLD,
+                      MPI_COMM_TYPE_SHARED,
+                      Utilities::MPI::this_mpi_process(MPI_COMM_WORLD),
+                      MPI_INFO_NULL,
+                      &comm_shmem);
+#endif
+
   if (degree == 1)
-    do_test<3, 1, 3>(s, compact_output);
+    do_test<3, 1, 3>(s, compact_output, comm_shmem);
   else if (degree == 2)
-    do_test<3, 2, 4>(s, compact_output);
+    do_test<3, 2, 4>(s, compact_output, comm_shmem);
   else if (degree == 3)
-    do_test<3, 3, 5>(s, compact_output);
+    do_test<3, 3, 5>(s, compact_output, comm_shmem);
   else if (degree == 4)
-    do_test<3, 4, 6>(s, compact_output);
+    do_test<3, 4, 6>(s, compact_output, comm_shmem);
   else if (degree == 5)
-    do_test<3, 5, 7>(s, compact_output);
+    do_test<3, 5, 7>(s, compact_output, comm_shmem);
   else if (degree == 6)
-    do_test<3, 6, 8>(s, compact_output);
+    do_test<3, 6, 8>(s, compact_output, comm_shmem);
   else if (degree == 7)
-    do_test<3, 7, 9>(s, compact_output);
+    do_test<3, 7, 9>(s, compact_output, comm_shmem);
   else if (degree == 8)
-    do_test<3, 8, 10>(s, compact_output);
+    do_test<3, 8, 10>(s, compact_output, comm_shmem);
   else if (degree == 9)
-    do_test<3, 9, 11>(s, compact_output);
+    do_test<3, 9, 11>(s, compact_output, comm_shmem);
   else if (degree == 10)
-    do_test<3, 10, 12>(s, compact_output);
+    do_test<3, 10, 12>(s, compact_output, comm_shmem);
   else if (degree == 11)
-    do_test<3, 11, 13>(s, compact_output);
+    do_test<3, 11, 13>(s, compact_output, comm_shmem);
   else
     AssertThrow(false, ExcMessage("Only degrees up to 11 implemented"));
+
+#ifdef USE_SHMEM
+  MPI_Comm_free(&comm_shmem);
+#endif
 
 #ifdef LIKWID_PERFMON
   LIKWID_MARKER_CLOSE;
