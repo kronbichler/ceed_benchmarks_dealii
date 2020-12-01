@@ -289,7 +289,7 @@ namespace Mass
             }
           if (fe_degree > 2)
             {
-              for (unsigned int i = 0; i < Utilities::pow(3, dim); ++i)
+              for (unsigned int i = 0; i < Utilities::pow<unsigned int>(3, dim); ++i)
                 for (unsigned int v = 0; v < n_lanes; ++v)
                   if (compressed_dof_indices[Utilities::pow(3, dim) * (n_lanes * c) + i * n_lanes +
                                              v] == numbers::invalid_unsigned_int)
@@ -456,7 +456,7 @@ namespace Mass
             phi.submit_value(phi.get_value(q), q);
           phi.integrate(true, false);
           VectorizedArrayType local_sum = VectorizedArrayType();
-          for (unsigned int i = 0; i < Utilities::pow(fe_degree + 1, dim); ++i)
+          for (unsigned int i = 0; i < Utilities::pow<unsigned int>(fe_degree + 1, dim); ++i)
             local_sum += phi.begin_dof_values()[i] * phi_read.begin_dof_values()[i];
           phi.distribute_local_to_global(dst);
           for (unsigned int v = 0; v < data.n_active_entries_per_cell_batch(cell); ++v)

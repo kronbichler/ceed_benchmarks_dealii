@@ -364,9 +364,9 @@ namespace Poisson
 
           if (fe_degree > 2)
             {
-              for (unsigned int i = 0; i < Utilities::pow(3, dim); ++i)
+              for (unsigned int i = 0; i < Utilities::pow<unsigned int>(3, dim); ++i)
                 for (unsigned int v = 0; v < VectorizedArrayType::size(); ++v)
-                  if (compressed_dof_indices[Utilities::pow(3, dim) *
+                  if (compressed_dof_indices[Utilities::pow<unsigned int>(3, dim) *
                                                (VectorizedArrayType::size() * c) +
                                              i * VectorizedArrayType::size() + v] ==
                       numbers::invalid_unsigned_int)
@@ -490,35 +490,35 @@ namespace Poisson
       constexpr unsigned int n_read_components =
         IsBlockVector<VectorType>::value ? 1 : n_components;
       Tensor<1, 7, VectorizedArray<Number>> sums;
-      this->data->cell_loop(&LaplaceOperator::template local_apply_linear_geo<false>,
-                            this,
-                            h,
-                            d,
-                            [&](const unsigned int start_range, const unsigned int end_range) {
-                              for (unsigned int bl = 0; bl < ::internal::get_n_blocks(x); ++bl)
-                                do_cg_update4b<n_read_components, Number, true>(
-                                  start_range,
-                                  end_range,
-                                  ::internal::get_block(h, bl).begin(),
-                                  ::internal::get_block(x, bl).begin(),
-                                  ::internal::get_block(g, bl).begin(),
-                                  ::internal::get_block(d, bl).begin(),
-                                  prec.diagonal.begin(),
-                                  alpha,
-                                  beta,
-                                  alpha_old,
-                                  beta_old);
-                            },
-                            [&](const unsigned int start_range, const unsigned int end_range) {
-                              for (unsigned int bl = 0; bl < ::internal::get_n_blocks(x); ++bl)
-                                do_cg_update3b<n_read_components, Number>(start_range,
-                                                          end_range,
-                                                          ::internal::get_block(g, bl).begin(),
-                                                          ::internal::get_block(d, bl).begin(),
-                                                          ::internal::get_block(h, bl).begin(),
-                                                          prec.diagonal.begin(),
-                                                          sums);
-                            });
+      this->data->cell_loop(
+        &LaplaceOperator::template local_apply_linear_geo<false>,
+        this,
+        h,
+        d,
+        [&](const unsigned int start_range, const unsigned int end_range) {
+          for (unsigned int bl = 0; bl < ::internal::get_n_blocks(x); ++bl)
+            do_cg_update4b<n_read_components, Number, true>(start_range,
+                                                            end_range,
+                                                            ::internal::get_block(h, bl).begin(),
+                                                            ::internal::get_block(x, bl).begin(),
+                                                            ::internal::get_block(g, bl).begin(),
+                                                            ::internal::get_block(d, bl).begin(),
+                                                            prec.diagonal.begin(),
+                                                            alpha,
+                                                            beta,
+                                                            alpha_old,
+                                                            beta_old);
+        },
+        [&](const unsigned int start_range, const unsigned int end_range) {
+          for (unsigned int bl = 0; bl < ::internal::get_n_blocks(x); ++bl)
+            do_cg_update3b<n_read_components, Number>(start_range,
+                                                      end_range,
+                                                      ::internal::get_block(g, bl).begin(),
+                                                      ::internal::get_block(d, bl).begin(),
+                                                      ::internal::get_block(h, bl).begin(),
+                                                      prec.diagonal.begin(),
+                                                      sums);
+        });
 
       dealii::Tensor<1, 7> results;
       for (unsigned int i = 0; i < 7; ++i)
