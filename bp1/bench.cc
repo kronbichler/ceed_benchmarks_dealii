@@ -63,9 +63,9 @@ void
 test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
 {
 #ifndef USE_SHMEM
-    (void) comm_shmem;
+  (void)comm_shmem;
 #endif
-    
+
   warmup_code();
 
   if (short_output == true)
@@ -407,7 +407,7 @@ main(int argc, char **argv)
     compact_output = std::atoi(argv[3]);
 
   MPI_Comm comm_shmem;
-  
+
 #ifdef USE_SHMEM
   MPI_Comm_split_type(MPI_COMM_WORLD,
                       MPI_COMM_TYPE_SHARED,

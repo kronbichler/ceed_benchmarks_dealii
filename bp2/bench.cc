@@ -32,9 +32,9 @@ void
 test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
 {
 #ifndef USE_SHMEM
-    (void) comm_shmem;
+  (void)comm_shmem;
 #endif
-    
+
   warmup_code();
 
   if (short_output == true)
@@ -76,13 +76,9 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
   mf_data.communicator_sm                = comm_shmem;
   mf_data.use_vector_data_exchanger_full = true;
 #endif
-  
+
   std::shared_ptr<MatrixFree<dim, double>> matrix_free(new MatrixFree<dim, double>());
-  matrix_free->reinit(mapping,
-                      dof_handler,
-                      constraints,
-                      QGauss<1>(n_q_points),
-                      mf_data);
+  matrix_free->reinit(mapping, dof_handler, constraints, QGauss<1>(n_q_points), mf_data);
 
   Mass::MassOperator<dim, fe_degree, n_q_points, dim> mass_operator;
   mass_operator.initialize(matrix_free);
@@ -235,7 +231,7 @@ main(int argc, char **argv)
     compact_output = std::atoi(argv[3]);
 
   MPI_Comm comm_shmem;
-  
+
 #ifdef USE_SHMEM
   MPI_Comm_split_type(MPI_COMM_WORLD,
                       MPI_COMM_TYPE_SHARED,
@@ -278,7 +274,7 @@ main(int argc, char **argv)
     do_test<3, 16, 18>(s, compact_output, comm_shmem);
   else
     AssertThrow(false, ExcMessage("Only degrees up to 16 implemented"));
-  
+
 #ifdef USE_SHMEM
   MPI_Comm_free(&comm_shmem);
 #endif

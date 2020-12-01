@@ -39,9 +39,9 @@ void
 test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
 {
 #ifndef USE_SHMEM
-    (void) comm_shmem;
+  (void)comm_shmem;
 #endif
-    
+
   warmup_code();
 
   if (short_output == true)
@@ -80,11 +80,8 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
   IndexSet                  relevant_dofs;
   DoFTools::extract_locally_relevant_dofs(dof_handler, relevant_dofs);
   constraints.reinit(relevant_dofs);
-  VectorTools::interpolate_boundary_values(mapping,
-                                           dof_handler,
-                                           0,
-                                           Functions::ZeroFunction<dim>(dim),
-                                           constraints);
+  VectorTools::interpolate_boundary_values(
+    mapping, dof_handler, 0, Functions::ZeroFunction<dim>(dim), constraints);
   constraints.close();
   typename MatrixFree<dim, double>::AdditionalData mf_data;
 
@@ -101,11 +98,8 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
   DoFTools::extract_locally_relevant_dofs(dof_handler, relevant_dofs);
   constraints.clear();
   constraints.reinit(relevant_dofs);
-  VectorTools::interpolate_boundary_values(mapping,
-                                           dof_handler,
-                                           0,
-                                           Functions::ZeroFunction<dim>(dim),
-                                           constraints);
+  VectorTools::interpolate_boundary_values(
+    mapping, dof_handler, 0, Functions::ZeroFunction<dim>(dim), constraints);
   constraints.close();
 
   std::shared_ptr<MatrixFree<dim, double>> matrix_free(new MatrixFree<dim, double>());
@@ -127,12 +121,12 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
     laplace_operator.initialize(matrix_free, constraints);
 
     const auto vector = laplace_operator.compute_inverse_diagonal();
-    IndexSet reduced(vector.size() / dim);
+    IndexSet   reduced(vector.size() / dim);
     reduced.add_range(vector.get_partitioner()->local_range().first / dim,
-                      vector.get_partitioner()->local_range().second /dim);
+                      vector.get_partitioner()->local_range().second / dim);
     reduced.compress();
     diag_mat.diagonal.reinit(reduced, vector.get_mpi_communicator());
-    for (unsigned int i=0; i<reduced.n_elements(); ++i)
+    for (unsigned int i = 0; i < reduced.n_elements(); ++i)
       diag_mat.diagonal.local_element(i) = vector.local_element(i * dim);
   }
   if (short_output == false)
@@ -168,7 +162,7 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
               << " " << data.max << " (p" << data.max_index << ")"
               << "s" << std::endl;
 
-  ReductionControl                                          solver_control(100, 1e-15, 1e-8);
+  ReductionControl                                     solver_control(100, 1e-15, 1e-8);
   SolverCG<LinearAlgebra::distributed::Vector<double>> solver(solver_control);
 
   double solver_time = 1e10;
@@ -196,7 +190,7 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
     }
 
   SolverCGOptimized<LinearAlgebra::distributed::Vector<double>> solver2(solver_control);
-  double                                                             solver_time2 = 1e10;
+  double                                                        solver_time2 = 1e10;
   for (unsigned int t = 0; t < 2; ++t)
     {
       output = 0;
@@ -221,7 +215,7 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
     }
 
   SolverCGFullMerge<LinearAlgebra::distributed::Vector<double>> solver4(solver_control);
-  double                                                             solver_time4 = 1e10;
+  double                                                        solver_time4 = 1e10;
 #ifdef LIKWID_PERFMON
   LIKWID_MARKER_START("cg_solver_optm");
 #endif
@@ -305,11 +299,11 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
               << " |" << std::setw(11) << dof_handler.n_dofs()                      //
               << " | " << std::setw(11) << solver_time / solver_control.last_step() //
               << " | " << std::setw(11)
-              << dof_handler.n_dofs() / solver_time2 * solver_control.last_step()       //
-              << " | " << std::setw(11) << solver_time2 / solver_control.last_step()    //
-              << " | " << std::setw(11) << solver_time4 / solver_control.last_step()    //
-              << " | " << std::setw(4) << solver_control.last_step()                    //
-              << " | " << std::setw(11) << matvec_time                                  //
+              << dof_handler.n_dofs() / solver_time2 * solver_control.last_step()    //
+              << " | " << std::setw(11) << solver_time2 / solver_control.last_step() //
+              << " | " << std::setw(11) << solver_time4 / solver_control.last_step() //
+              << " | " << std::setw(4) << solver_control.last_step()                 //
+              << " | " << std::setw(11) << matvec_time                               //
 #ifdef SHOW_VARIANTS
               << " | " << std::setw(11) << t2 //
               << " | " << std::setw(11) << t3 //
@@ -373,7 +367,7 @@ main(int argc, char **argv)
     compact_output = std::atoi(argv[3]);
 
   MPI_Comm comm_shmem;
-  
+
 #ifdef USE_SHMEM
   MPI_Comm_split_type(MPI_COMM_WORLD,
                       MPI_COMM_TYPE_SHARED,
