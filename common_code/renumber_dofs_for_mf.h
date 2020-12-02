@@ -301,13 +301,28 @@ Renumber<dim, Number, VectorizedArrayType>::cell_assembly(
           for (unsigned int quad = 0; quad < dealii::GeometryInfo<dim>::quads_per_cell; ++quad)
             {
               const unsigned int size = (fe_degree - 1) * (fe_degree - 1);
-              for (unsigned int i = 0; i < size; ++i)
-                for (unsigned int c = 0; c < n_components; ++c)
-                  renumber_func(numbers_mf_order,
-                                counter_dof_numbers,
-                                set_dofs,
-                                local_dofs.is_element(dof_indices[cf + size * c + i]),
-                                local_dofs.index_within_set(dof_indices[cf + size * c + i]));
+              // switch order x-z for y faces in 3D to lexicographic layout
+              if (dim == 3 && (quad == 2 || quad == 3))
+                for (unsigned int i1 = 0; i1 < fe_degree - 1; ++i1)
+                  for (unsigned int i0 = 0; i0 < fe_degree - 1; ++i0)
+                    for (unsigned int c = 0; c < n_components; ++c)
+                      renumber_func(numbers_mf_order,
+                                    counter_dof_numbers,
+                                    set_dofs,
+                                    local_dofs.is_element(
+                                      dof_indices[cf + size * c + i1 + i0 * (fe_degree - 1)]),
+                                    local_dofs.index_within_set(
+                                      dof_indices[cf + size * c + i1 + i0 * (fe_degree - 1)]));
+              else
+                {
+                  for (unsigned int i = 0; i < size; ++i)
+                    for (unsigned int c = 0; c < n_components; ++c)
+                      renumber_func(numbers_mf_order,
+                                    counter_dof_numbers,
+                                    set_dofs,
+                                    local_dofs.is_element(dof_indices[cf + size * c + i]),
+                                    local_dofs.index_within_set(dof_indices[cf + size * c + i]));
+                }
               cf += n_components * size;
             }
           for (unsigned int hex = 0; hex < dealii::GeometryInfo<dim>::hexes_per_cell; ++hex)

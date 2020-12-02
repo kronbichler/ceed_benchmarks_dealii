@@ -59,180 +59,107 @@ read_dof_values_compressed(const dealii::LinearAlgebra::distributed::Vector<Numb
   AssertIndexRange(cell_no * dealii::Utilities::pow(3, dim) * VectorizedArrayType::size(),
                    compressed_indices.size());
   constexpr unsigned int n_lanes = VectorizedArrayType::size();
-  const unsigned int *   indices =
+  const unsigned int *   cell_indices =
     compressed_indices.data() + cell_no * n_lanes * dealii::Utilities::pow(3, dim);
-  const unsigned char *unconstrained =
+  const unsigned char *cell_unconstrained =
     all_indices_unconstrained.data() + cell_no * dealii::Utilities::pow(3, dim);
   constexpr unsigned int dofs_per_comp = dealii::Utilities::pow(fe_degree + 1, dim);
   dealii::internal::VectorReader<Number, VectorizedArrayType> reader;
-  // vertex dofs
-  for (unsigned int i2 = 0; i2 < (dim == 3 ? 2 : 1); ++i2)
-    for (unsigned int i1 = 0; i1 < 2; ++i1)
-      for (unsigned int i0 = 0; i0 < 2; ++i0, indices += n_lanes, ++unconstrained)
-        for (unsigned int c = 0; c < n_components; ++c)
-          if (*unconstrained)
-            reader.process_dof_gather(
-              indices,
-              vec,
-              c,
-              dof_values[i2 * fe_degree * (fe_degree + 1) * (fe_degree + 1) +
-                         i1 * fe_degree * (fe_degree + 1) + i0 * fe_degree + c * dofs_per_comp],
-              std::integral_constant<bool, true>());
-          else
-            for (unsigned int v = 0; v < n_lanes; ++v)
-              dof_values[i2 * fe_degree * (fe_degree + 1) * (fe_degree + 1) +
-                         i1 * fe_degree * (fe_degree + 1) + i0 * fe_degree + c * dofs_per_comp][v] =
-                (indices[v] == dealii::numbers::invalid_unsigned_int) ?
-                  0. :
-                  vec.local_element(indices[v] + c);
-
-  // line dofs
-  constexpr unsigned int offsets[2][4] = {
-    {fe_degree + 1, 2 * fe_degree + 1, 1, (fe_degree + 1) * fe_degree + 1},
-    {fe_degree * (fe_degree + 1) * (fe_degree + 1) + fe_degree + 1,
-     fe_degree * (fe_degree + 1) * (fe_degree + 1) + 2 * fe_degree + 1,
-     fe_degree * (fe_degree + 1) * (fe_degree + 1) + 1,
-     (fe_degree + 1) * (fe_degree + 1) * (fe_degree + 1) - fe_degree}};
-  for (unsigned int d = 0; d < dim - 1; ++d)
+  for (unsigned int i2 = 0, i = 0, compressed_i2 = 0, offset_i2 = 0;
+       i2 < (dim == 3 ? (fe_degree + 1) : 1);
+       ++i2)
     {
-      for (unsigned int l = 0; l < 2; ++l)
+      for (unsigned int i1 = 0, compressed_i1 = 0, offset_i1 = 0;
+           i1 < (dim > 1 ? (fe_degree + 1) : 1);
+           ++i1)
         {
-          if (*unconstrained)
-            for (unsigned int i = 0; i < fe_degree - 1; ++i)
-              for (unsigned int c = 0; c < n_components; ++c)
-                reader.process_dof_gather(
-                  indices,
-                  vec,
-                  i * n_components + c,
-                  dof_values[offsets[d][l] + i * (fe_degree + 1) + c * dofs_per_comp],
-                  std::integral_constant<bool, true>());
-          else
-            for (unsigned int i = 0; i < fe_degree - 1; ++i)
-              for (unsigned int v = 0; v < n_lanes; ++v)
-                for (unsigned int c = 0; c < n_components; ++c)
-                  if (indices[v] != dealii::numbers::invalid_unsigned_int)
-                    dof_values[offsets[d][l] + i * (fe_degree + 1) + c * dofs_per_comp][v] =
-                      vec.local_element(indices[v] + i * n_components + c);
-                  else
-                    dof_values[offsets[d][l] + i * (fe_degree + 1) + c * dofs_per_comp][v] = 0.;
-          indices += n_lanes;
-          ++unconstrained;
-        }
-      for (unsigned int l = 2; l < 4; ++l)
-        {
-          if (*unconstrained)
-            {
-              for (unsigned int i = 0; i < fe_degree - 1; ++i)
-                for (unsigned int c = 0; c < n_components; ++c)
-                  reader.process_dof_gather(indices,
-                                            vec,
-                                            i * n_components + c,
-                                            dof_values[offsets[d][l] + i + c * dofs_per_comp],
-                                            std::integral_constant<bool, true>());
-            }
-          else
-            for (unsigned int i = 0; i < fe_degree - 1; ++i)
-              for (unsigned int v = 0; v < n_lanes; ++v)
-                for (unsigned int c = 0; c < n_components; ++c)
-                  if (indices[v] != dealii::numbers::invalid_unsigned_int)
-                    dof_values[offsets[d][l] + i + c * dofs_per_comp][v] =
-                      vec.local_element(indices[v] + i * n_components + c);
-                  else
-                    dof_values[offsets[d][l] + i + c * dofs_per_comp][v] = 0;
-          indices += n_lanes;
-          ++unconstrained;
-        }
-    }
-  if (dim == 3)
-    {
-      constexpr unsigned int strides2    = (fe_degree + 1) * (fe_degree + 1);
-      constexpr unsigned int offsets2[4] = {strides2,
-                                            strides2 + fe_degree,
-                                            strides2 + (fe_degree + 1) * fe_degree,
-                                            strides2 + (fe_degree + 1) * (fe_degree + 1) - 1};
-      for (unsigned int l = 0; l < 4; ++l)
-        {
-          if (*unconstrained)
-            for (unsigned int i = 0; i < fe_degree - 1; ++i)
-              for (unsigned int c = 0; c < n_components; ++c)
-                reader.process_dof_gather(
-                  indices,
-                  vec,
-                  i * n_components + c,
-                  dof_values[offsets2[l] + i * strides2 + c * dofs_per_comp],
-                  std::integral_constant<bool, true>());
-          else
-            for (unsigned int i = 0; i < fe_degree - 1; ++i)
-              for (unsigned int v = 0; v < n_lanes; ++v)
-                for (unsigned int c = 0; c < n_components; ++c)
-                  if (indices[v] != dealii::numbers::invalid_unsigned_int)
-                    dof_values[offsets2[l] + i * strides2 + c * dofs_per_comp][v] =
-                      vec.local_element(indices[v] + i * n_components + c);
-                  else
-                    dof_values[offsets2[l] + i * strides2 + c * dofs_per_comp][v] = 0.;
-          indices += n_lanes;
-          ++unconstrained;
-        }
-
-      // face dofs
-      for (unsigned int face = 0; face < 6; ++face)
-        {
-          const unsigned int stride1 = dealii::Utilities::pow(fe_degree + 1, (face / 2 + 1) % dim);
-          const unsigned int stride2 = dealii::Utilities::pow(fe_degree + 1, (face / 2 + 2) % dim);
           const unsigned int offset =
-            ((face % 2 == 0) ? 0 : fe_degree) * dealii::Utilities::pow(fe_degree + 1, face / 2);
-          if (*unconstrained)
-            for (unsigned int i2 = 1, j = 0; i2 < fe_degree; ++i2)
-              for (unsigned int i1 = 1; i1 < fe_degree; ++i1, ++j)
-                for (unsigned int c = 0; c < n_components; ++c)
-                  reader.process_dof_gather(
-                    indices,
-                    vec,
-                    j * n_components + c,
-                    dof_values[offset + i2 * stride2 + i1 * stride1 + c * dofs_per_comp],
-                    std::integral_constant<bool, true>());
-          else
-            for (unsigned int i2 = 1, j = 0; i2 < fe_degree; ++i2)
-              for (unsigned int i1 = 1; i1 < fe_degree; ++i1, ++j)
-                for (unsigned int v = 0; v < n_lanes; ++v)
-                  for (unsigned int c = 0; c < n_components; ++c)
-                    if (indices[v] != dealii::numbers::invalid_unsigned_int)
-                      dof_values[offset + i2 * stride2 + i1 * stride1 + c * dofs_per_comp][v] =
-                        vec.local_element(indices[v] + j * n_components + c);
-                    else
-                      dof_values[offset + i2 * stride2 + i1 * stride1 + c * dofs_per_comp][v] = 0;
-          indices += n_lanes;
-          ++unconstrained;
-        }
-    }
+            (compressed_i1 == 1 ? fe_degree - 1 : 1) * offset_i2 + offset_i1;
+          const unsigned int *indices =
+            cell_indices + 3 * n_lanes * (compressed_i2 * 3 + compressed_i1);
+          const unsigned char *unconstrained =
+            cell_unconstrained + 3 * (compressed_i2 * 3 + compressed_i1);
 
-  // cell dofs
-  if (*unconstrained)
-    for (unsigned int i2 = 1, j = 0; i2 < (dim == 3 ? fe_degree : 2); ++i2)
-      for (unsigned int i1 = 1; i1 < fe_degree; ++i1)
-        {
-          for (unsigned int i0 = 1; i0 < fe_degree; ++i0, ++j)
+          // left end point
+          if (unconstrained[0])
             for (unsigned int c = 0; c < n_components; ++c)
               reader.process_dof_gather(indices,
                                         vec,
-                                        j * n_components + c,
-                                        dof_values[i2 * (fe_degree + 1) * (fe_degree + 1) +
-                                                   i1 * (fe_degree + 1) + i0 + c * dofs_per_comp],
+                                        offset * n_components + c,
+                                        dof_values[i + c * dofs_per_comp],
                                         std::integral_constant<bool, true>());
-        }
-  else
-    for (unsigned int i2 = 1, j = 0; i2 < (dim == 3 ? fe_degree : 2); ++i2)
-      for (unsigned int i1 = 1; i1 < fe_degree; ++i1)
-        for (unsigned int i0 = 1; i0 < fe_degree; ++i0, ++j)
-          for (unsigned int v = 0; v < n_lanes; ++v)
+          else
+            for (unsigned int v = 0; v < n_lanes; ++v)
+              for (unsigned int c = 0; c < n_components; ++c)
+                dof_values[i + c * dofs_per_comp][v] =
+                  (indices[v] == dealii::numbers::invalid_unsigned_int) ?
+                    0. :
+                    vec.local_element(indices[v] + offset * n_components + c);
+          ++i;
+          indices += n_lanes;
+
+          // interior points of line
+          if (unconstrained[1])
+            {
+              VectorizedArrayType    tmp[fe_degree > 1 ? (fe_degree - 1) * n_components : 1];
+              constexpr unsigned int n_regular = (fe_degree - 1) * n_components / 4 * 4;
+              dealii::vectorized_load_and_transpose(
+                n_regular, vec.begin() + offset * (fe_degree - 1) * n_components, indices, tmp);
+              for (unsigned int i0 = n_regular; i0 < (fe_degree - 1) * n_components; ++i0)
+                reader.process_dof_gather(indices,
+                                          vec,
+                                          offset * (fe_degree - 1) * n_components + i0,
+                                          tmp[i0],
+                                          std::integral_constant<bool, true>());
+              for (unsigned int i0 = 0; i0 < fe_degree - 1; ++i0, ++i)
+                for (unsigned int c = 0; c < n_components; ++c)
+                  dof_values[i + c * dofs_per_comp] = tmp[i0 * n_components + c];
+            }
+          else
+            for (unsigned int i0 = 0; i0 < fe_degree - 1; ++i0, ++i)
+              for (unsigned int v = 0; v < n_lanes; ++v)
+                if (indices[v] != dealii::numbers::invalid_unsigned_int)
+                  for (unsigned int c = 0; c < n_components; ++c)
+                    dof_values[i + c * dofs_per_comp][v] = vec.local_element(
+                      indices[v] + (offset * (fe_degree - 1) + i0) * n_components + c);
+                else
+                  for (unsigned int c = 0; c < n_components; ++c)
+                    dof_values[i + c * dofs_per_comp][v] = 0.;
+          indices += n_lanes;
+
+          // right end point
+          if (unconstrained[2])
             for (unsigned int c = 0; c < n_components; ++c)
-              if (indices[v] != dealii::numbers::invalid_unsigned_int)
-                dof_values[i2 * (fe_degree + 1) * (fe_degree + 1) + i1 * (fe_degree + 1) + i0 +
-                           c * dofs_per_comp][v] =
-                  vec.local_element(indices[v] + j * n_components + c);
-              else
-                dof_values[i2 * (fe_degree + 1) * (fe_degree + 1) + i1 * (fe_degree + 1) + i0 +
-                           c * dofs_per_comp][v] = 0;
+              reader.process_dof_gather(indices,
+                                        vec,
+                                        offset * n_components + c,
+                                        dof_values[i + c * dofs_per_comp],
+                                        std::integral_constant<bool, true>());
+          else
+            for (unsigned int v = 0; v < n_lanes; ++v)
+              for (unsigned int c = 0; c < n_components; ++c)
+                dof_values[i + c * dofs_per_comp][v] =
+                  (indices[v] == dealii::numbers::invalid_unsigned_int) ?
+                    0. :
+                    vec.local_element(indices[v] + offset * n_components + c);
+          ++i;
+
+          if (i1 == 0 || i1 == fe_degree - 1)
+            {
+              ++compressed_i1;
+              offset_i1 = 0;
+            }
+          else
+            ++offset_i1;
+        }
+      if (i2 == 0 || i2 == fe_degree - 1)
+        {
+          ++compressed_i2;
+          offset_i2 = 0;
+        }
+      else
+        ++offset_i2;
+    }
 }
 
 
@@ -248,171 +175,108 @@ distribute_local_to_global_compressed(dealii::LinearAlgebra::distributed::Vector
   AssertIndexRange(cell_no * dealii::Utilities::pow(3, dim) * VectorizedArrayType::size(),
                    compressed_indices.size());
   constexpr unsigned int n_lanes = VectorizedArrayType::size();
-  const unsigned int *   indices =
+  const unsigned int *   cell_indices =
     compressed_indices.data() + cell_no * n_lanes * dealii::Utilities::pow(3, dim);
-  const unsigned char *unconstrained =
+  const unsigned char *cell_unconstrained =
     all_indices_unconstrained.data() + cell_no * dealii::Utilities::pow(3, dim);
   constexpr unsigned int dofs_per_comp = dealii::Utilities::pow(fe_degree + 1, dim);
   dealii::internal::VectorDistributorLocalToGlobal<Number, VectorizedArrayType> distributor;
 
-  // vertex dofs
-  for (unsigned int i2 = 0; i2 < (dim == 3 ? 2 : 1); ++i2)
-    for (unsigned int i1 = 0; i1 < 2; ++i1)
-      for (unsigned int i0 = 0; i0 < 2; ++i0, indices += n_lanes, ++unconstrained)
-        for (unsigned int c = 0; c < n_components; ++c)
-          if (*unconstrained)
-            distributor.process_dof_gather(
-              indices,
-              vec,
-              c,
-              dof_values[i2 * fe_degree * (fe_degree + 1) * (fe_degree + 1) +
-                         i1 * fe_degree * (fe_degree + 1) + i0 * fe_degree + c * dofs_per_comp],
-              std::integral_constant<bool, true>());
+  for (unsigned int i2 = 0, i = 0, compressed_i2 = 0, offset_i2 = 0;
+       i2 < (dim == 3 ? (fe_degree + 1) : 1);
+       ++i2)
+    {
+      for (unsigned int i1 = 0, compressed_i1 = 0, offset_i1 = 0;
+           i1 < (dim > 1 ? (fe_degree + 1) : 1);
+           ++i1)
+        {
+          const unsigned int offset =
+            (compressed_i1 == 1 ? fe_degree - 1 : 1) * offset_i2 + offset_i1;
+          const unsigned int *indices =
+            cell_indices + 3 * n_lanes * (compressed_i2 * 3 + compressed_i1);
+          const unsigned char *unconstrained =
+            cell_unconstrained + 3 * (compressed_i2 * 3 + compressed_i1);
+
+          // left end point
+          if (unconstrained[0])
+            for (unsigned int c = 0; c < n_components; ++c)
+              distributor.process_dof_gather(indices,
+                                             vec,
+                                             offset * n_components + c,
+                                             dof_values[i + c * dofs_per_comp],
+                                             std::integral_constant<bool, true>());
           else
             for (unsigned int v = 0; v < n_lanes; ++v)
-              if (indices[v] != dealii::numbers::invalid_unsigned_int)
-                vec.local_element(indices[v] + c) +=
-                  dof_values[i2 * fe_degree * (fe_degree + 1) * (fe_degree + 1) +
-                             i1 * fe_degree * (fe_degree + 1) + i0 * fe_degree + c * dofs_per_comp]
-                            [v];
-
-  // line dofs
-  constexpr unsigned int offsets[2][4] = {
-    {fe_degree + 1, 2 * fe_degree + 1, 1, (fe_degree + 1) * fe_degree + 1},
-    {fe_degree * (fe_degree + 1) * (fe_degree + 1) + fe_degree + 1,
-     fe_degree * (fe_degree + 1) * (fe_degree + 1) + 2 * fe_degree + 1,
-     fe_degree * (fe_degree + 1) * (fe_degree + 1) + 1,
-     (fe_degree + 1) * (fe_degree + 1) * (fe_degree + 1) - fe_degree}};
-  for (unsigned int d = 0; d < dim - 1; ++d)
-    {
-      for (unsigned int l = 0; l < 2; ++l)
-        {
-          if (*unconstrained)
-            for (unsigned int i = 0; i < fe_degree - 1; ++i)
               for (unsigned int c = 0; c < n_components; ++c)
-                distributor.process_dof_gather(
-                  indices,
-                  vec,
-                  i * n_components + c,
-                  dof_values[offsets[d][l] + i * (fe_degree + 1) + c * dofs_per_comp],
-                  std::integral_constant<bool, true>());
-          else
-            for (unsigned int i = 0; i < fe_degree - 1; ++i)
-              for (unsigned int v = 0; v < n_lanes; ++v)
-                for (unsigned int c = 0; c < n_components; ++c)
-                  if (indices[v] != dealii::numbers::invalid_unsigned_int)
-                    vec.local_element(indices[v] + i * n_components + c) +=
-                      dof_values[offsets[d][l] + i * (fe_degree + 1) + c * dofs_per_comp][v];
+                if (indices[v] != dealii::numbers::invalid_unsigned_int)
+                  vec.local_element(indices[v] + offset * n_components + c) +=
+                    dof_values[i + c * dofs_per_comp][v];
+          ++i;
           indices += n_lanes;
-          ++unconstrained;
-        }
-      for (unsigned int l = 2; l < 4; ++l)
-        {
-          if (*unconstrained)
+
+          // interior points of line
+          if (unconstrained[1])
             {
-              for (unsigned int i = 0; i < fe_degree - 1; ++i)
+              VectorizedArrayType tmp[fe_degree > 1 ? (fe_degree - 1) * n_components : 1];
+              for (unsigned int i0 = 0; i0 < fe_degree - 1; ++i0, ++i)
                 for (unsigned int c = 0; c < n_components; ++c)
-                  distributor.process_dof_gather(indices,
-                                                 vec,
-                                                 i * n_components + c,
-                                                 dof_values[offsets[d][l] + i + c * dofs_per_comp],
-                                                 std::integral_constant<bool, true>());
+                  tmp[i0 * n_components + c] = dof_values[i + c * dofs_per_comp];
+
+              constexpr unsigned int n_regular = (fe_degree - 1) * n_components / 4 * 4;
+              dealii::vectorized_transpose_and_store(true,
+                                                     n_regular,
+                                                     tmp,
+                                                     indices,
+                                                     vec.begin() +
+                                                       offset * (fe_degree - 1) * n_components);
+              for (unsigned int i0 = n_regular; i0 < (fe_degree - 1) * n_components; ++i0)
+                distributor.process_dof_gather(indices,
+                                               vec,
+                                               offset * (fe_degree - 1) * n_components + i0,
+                                               tmp[i0],
+                                               std::integral_constant<bool, true>());
             }
           else
-            for (unsigned int i = 0; i < fe_degree - 1; ++i)
+            for (unsigned int i0 = 0; i0 < fe_degree - 1; ++i0, ++i)
               for (unsigned int v = 0; v < n_lanes; ++v)
-                for (unsigned int c = 0; c < n_components; ++c)
-                  if (indices[v] != dealii::numbers::invalid_unsigned_int)
-                    vec.local_element(indices[v] + i * n_components + c) +=
-                      dof_values[offsets[d][l] + i + c * dofs_per_comp][v];
-          indices += n_lanes;
-          ++unconstrained;
-        }
-    }
-  if (dim == 3)
-    {
-      constexpr unsigned int strides2    = (fe_degree + 1) * (fe_degree + 1);
-      constexpr unsigned int offsets2[4] = {strides2,
-                                            strides2 + fe_degree,
-                                            strides2 + (fe_degree + 1) * fe_degree,
-                                            strides2 + (fe_degree + 1) * (fe_degree + 1) - 1};
-      for (unsigned int l = 0; l < 4; ++l)
-        {
-          if (*unconstrained)
-            for (unsigned int i = 0; i < fe_degree - 1; ++i)
-              for (unsigned int c = 0; c < n_components; ++c)
-                distributor.process_dof_gather(
-                  indices,
-                  vec,
-                  i * n_components + c,
-                  dof_values[offsets2[l] + i * strides2 + c * dofs_per_comp],
-                  std::integral_constant<bool, true>());
-          else
-            for (unsigned int i = 0; i < fe_degree - 1; ++i)
-              for (unsigned int v = 0; v < n_lanes; ++v)
-                for (unsigned int c = 0; c < n_components; ++c)
-                  if (indices[v] != dealii::numbers::invalid_unsigned_int)
-                    vec.local_element(indices[v] + i * n_components + c) +=
-                      dof_values[offsets2[l] + i * strides2 + c * dofs_per_comp][v];
-          indices += n_lanes;
-          ++unconstrained;
-        }
-
-      // face dofs
-      for (unsigned int face = 0; face < 6; ++face)
-        {
-          const unsigned int stride1 = dealii::Utilities::pow(fe_degree + 1, (face / 2 + 1) % dim);
-          const unsigned int stride2 = dealii::Utilities::pow(fe_degree + 1, (face / 2 + 2) % dim);
-          const unsigned int offset =
-            ((face % 2 == 0) ? 0 : fe_degree) * dealii::Utilities::pow(fe_degree + 1, face / 2);
-          if (*unconstrained)
-            for (unsigned int i2 = 1, j = 0; i2 < fe_degree; ++i2)
-              for (unsigned int i1 = 1; i1 < fe_degree; ++i1, ++j)
-                for (unsigned int c = 0; c < n_components; ++c)
-                  distributor.process_dof_gather(
-                    indices,
-                    vec,
-                    j * n_components + c,
-                    dof_values[offset + i2 * stride2 + i1 * stride1 + c * dofs_per_comp],
-                    std::integral_constant<bool, true>());
-          else
-            for (unsigned int i2 = 1, j = 0; i2 < fe_degree; ++i2)
-              for (unsigned int i1 = 1; i1 < fe_degree; ++i1, ++j)
-                for (unsigned int v = 0; v < n_lanes; ++v)
+                if (indices[v] != dealii::numbers::invalid_unsigned_int)
                   for (unsigned int c = 0; c < n_components; ++c)
-                    if (indices[v] != dealii::numbers::invalid_unsigned_int)
-                      vec.local_element(indices[v] + j * n_components + c) +=
-                        dof_values[offset + i2 * stride2 + i1 * stride1 + c * dofs_per_comp][v];
+                    vec.local_element(indices[v] + (offset * (fe_degree - 1) + i0) * n_components +
+                                      c) += dof_values[i + c * dofs_per_comp][v];
           indices += n_lanes;
-          ++unconstrained;
-        }
-    }
 
-  // cell dofs
-  if (*unconstrained)
-    for (unsigned int i2 = 1, j = 0; i2 < (dim == 3 ? fe_degree : 2); ++i2)
-      for (unsigned int i1 = 1; i1 < fe_degree; ++i1)
-        {
-          for (unsigned int i0 = 1; i0 < fe_degree; ++i0, ++j)
+          // right end point
+          if (unconstrained[2])
             for (unsigned int c = 0; c < n_components; ++c)
-              distributor.process_dof_gather(
-                indices,
-                vec,
-                j * n_components + c,
-                dof_values[i2 * (fe_degree + 1) * (fe_degree + 1) + i1 * (fe_degree + 1) + i0 +
-                           c * dofs_per_comp],
-                std::integral_constant<bool, true>());
+              distributor.process_dof_gather(indices,
+                                             vec,
+                                             offset * n_components + c,
+                                             dof_values[i + c * dofs_per_comp],
+                                             std::integral_constant<bool, true>());
+          else
+            for (unsigned int v = 0; v < n_lanes; ++v)
+              for (unsigned int c = 0; c < n_components; ++c)
+                if (indices[v] != dealii::numbers::invalid_unsigned_int)
+                  vec.local_element(indices[v] + offset * n_components + c) +=
+                    dof_values[i + c * dofs_per_comp][v];
+          ++i;
+
+          if (i1 == 0 || i1 == fe_degree - 1)
+            {
+              ++compressed_i1;
+              offset_i1 = 0;
+            }
+          else
+            ++offset_i1;
         }
-  else
-    for (unsigned int i2 = 1, j = 0; i2 < (dim == 3 ? fe_degree : 2); ++i2)
-      for (unsigned int i1 = 1; i1 < fe_degree; ++i1)
-        for (unsigned int i0 = 1; i0 < fe_degree; ++i0, ++j)
-          for (unsigned int v = 0; v < n_lanes; ++v)
-            for (unsigned int c = 0; c < n_components; ++c)
-              if (indices[v] != dealii::numbers::invalid_unsigned_int)
-                vec.local_element(indices[v] + j * n_components + c) +=
-                  dof_values[i2 * (fe_degree + 1) * (fe_degree + 1) + i1 * (fe_degree + 1) + i0 +
-                             c * dofs_per_comp][v];
+      if (i2 == 0 || i2 == fe_degree - 1)
+        {
+          ++compressed_i2;
+          offset_i2 = 0;
+        }
+      else
+        ++offset_i2;
+    }
 }
 
 
