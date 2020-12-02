@@ -2,9 +2,9 @@
 #ifndef curved_manifold_h_
 #define curved_manifold_h_
 
-#include <memory>
-
 #include <deal.II/grid/manifold.h>
+
+#include <memory>
 
 
 // small deformation in mesh to avoid triggering the constant Jacobian case

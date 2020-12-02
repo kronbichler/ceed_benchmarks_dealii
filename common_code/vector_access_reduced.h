@@ -213,12 +213,12 @@ read_dof_values_compressed(const dealii::LinearAlgebra::distributed::Vector<Numb
         {
           for (unsigned int i0 = 1; i0 < fe_degree; ++i0, ++j)
             for (unsigned int c = 0; c < n_components; ++c)
-              reader.process_dof_gather(
-                indices,
-                vec,
-                j * n_components + c,
-                dof_values[i2 * (fe_degree + 1) * (fe_degree + 1) + i1 * (fe_degree + 1) + i0 + c * dofs_per_comp],
-                std::integral_constant<bool, true>());
+              reader.process_dof_gather(indices,
+                                        vec,
+                                        j * n_components + c,
+                                        dof_values[i2 * (fe_degree + 1) * (fe_degree + 1) +
+                                                   i1 * (fe_degree + 1) + i0 + c * dofs_per_comp],
+                                        std::integral_constant<bool, true>());
         }
   else
     for (unsigned int i2 = 1, j = 0; i2 < (dim == 3 ? fe_degree : 2); ++i2)
