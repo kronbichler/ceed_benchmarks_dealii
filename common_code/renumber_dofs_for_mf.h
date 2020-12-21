@@ -264,6 +264,59 @@ Renumber<dim, Number, VectorizedArrayType>::cell_assembly(
   const unsigned int n_components  = dof_handler.get_fe().n_components();
   AssertThrow(dof_handler.get_fe().n_base_elements() == 1, dealii::ExcNotImplemented());
 
+  std::array<std::pair<unsigned int, unsigned int>, dealii::Utilities::pow(3, dim)> dofs_on_objects;
+  const unsigned int nn = fe_degree - 1;
+  if (dim == 1)
+    {
+      dofs_on_objects[0] = std::make_pair(0U, 1U);
+      dofs_on_objects[1] = std::make_pair(2 * n_components, nn);
+      dofs_on_objects[2] = std::make_pair(n_components, 1U);
+    }
+  else if (dim == 2)
+    {
+      dofs_on_objects[0] = std::make_pair(0U, 1U);
+      dofs_on_objects[1] = std::make_pair(n_components * (4 + 2 * nn), nn);
+      dofs_on_objects[2] = std::make_pair(n_components, 1U);
+      dofs_on_objects[3] = std::make_pair(n_components * 4, nn);
+      dofs_on_objects[4] = std::make_pair(n_components * (4 + 4 * nn), nn * nn);
+      dofs_on_objects[5] = std::make_pair(n_components * (4 + 1 * nn), nn);
+      dofs_on_objects[6] = std::make_pair(2 * n_components, 1U);
+      dofs_on_objects[7] = std::make_pair(n_components * (4 + 3 * nn), nn);
+      dofs_on_objects[8] = std::make_pair(3 * n_components, 1U);
+    }
+  else if (dim == 3)
+    {
+      dofs_on_objects[0]  = std::make_pair(0U, 1U);
+      dofs_on_objects[1]  = std::make_pair(n_components * (8 + 2 * nn), nn);
+      dofs_on_objects[2]  = std::make_pair(n_components, 1U);
+      dofs_on_objects[3]  = std::make_pair(n_components * 8, nn);
+      dofs_on_objects[4]  = std::make_pair(n_components * (8 + 12 * nn + 4 * nn * nn), nn * nn);
+      dofs_on_objects[5]  = std::make_pair(n_components * (8 + 1 * nn), nn);
+      dofs_on_objects[6]  = std::make_pair(n_components * 2, 1U);
+      dofs_on_objects[7]  = std::make_pair(n_components * (8 + 3 * nn), nn);
+      dofs_on_objects[8]  = std::make_pair(n_components * 3, 1U);
+      dofs_on_objects[9]  = std::make_pair(n_components * (8 + 8 * nn), nn);
+      dofs_on_objects[10] = std::make_pair(n_components * (8 + 12 * nn + 2 * nn * nn), nn * nn);
+      dofs_on_objects[11] = std::make_pair(n_components * (8 + 9 * nn), nn);
+      dofs_on_objects[12] = std::make_pair(n_components * (8 + 12 * nn), nn * nn);
+      dofs_on_objects[13] =
+        std::make_pair(n_components * (8 + 12 * nn + 6 * nn * nn), nn * nn * nn);
+      dofs_on_objects[14] = std::make_pair(n_components * (8 + 12 * nn + 1 * nn * nn), nn * nn);
+      dofs_on_objects[15] = std::make_pair(n_components * (8 + 10 * nn), nn);
+      dofs_on_objects[16] = std::make_pair(n_components * (8 + 12 * nn + 3 * nn * nn), nn * nn);
+      dofs_on_objects[17] = std::make_pair(n_components * (8 + 11 * nn), nn);
+      dofs_on_objects[18] = std::make_pair(n_components * 4, 1U);
+      dofs_on_objects[19] = std::make_pair(n_components * (8 + 6 * nn), nn);
+      dofs_on_objects[20] = std::make_pair(n_components * 5, 1U);
+      dofs_on_objects[21] = std::make_pair(n_components * (8 + 4 * nn), nn);
+      dofs_on_objects[22] = std::make_pair(n_components * (8 + 12 * nn + 5 * nn * nn), nn * nn);
+      dofs_on_objects[23] = std::make_pair(n_components * (8 + 5 * nn), nn);
+      dofs_on_objects[24] = std::make_pair(n_components * 6, 1U);
+      dofs_on_objects[25] = std::make_pair(n_components * (8 + 7 * nn), nn);
+      dofs_on_objects[26] = std::make_pair(n_components * 7, 1U);
+    }
+
+
   for (unsigned int cell_batch = 0; cell_batch < matrix_free.n_cell_batches(); ++cell_batch)
     {
       for (unsigned int cell = 0; cell < matrix_free.n_active_entries_per_cell_batch(cell_batch);
@@ -277,68 +330,31 @@ Renumber<dim, Number, VectorizedArrayType>::cell_assembly(
           std::unordered_set<dealii::types::global_dof_index> set_dofs;
           set_dofs.reserve(matrix_free.n_active_entries_per_cell_batch(cell_batch));
 
-          unsigned int cf = 0;
-          for (unsigned int v = 0; v < dealii::GeometryInfo<dim>::vertices_per_cell; ++v)
-            for (unsigned int c = 0; c < n_components; ++c, ++cf)
-              renumber_func(numbers_mf_order,
-                            counter_dof_numbers,
-                            set_dofs,
-                            local_dofs.is_element(dof_indices[cf]),
-                            local_dofs.index_within_set(dof_indices[cf]));
-
-          for (unsigned int line = 0; line < dealii::GeometryInfo<dim>::lines_per_cell; ++line)
+          for (unsigned int a = 0; a < dofs_on_objects.size(); ++a)
             {
-              const unsigned int size = fe_degree - 1;
-              for (unsigned int i = 0; i < size; ++i)
-                for (unsigned int c = 0; c < n_components; ++c)
-                  renumber_func(numbers_mf_order,
-                                counter_dof_numbers,
-                                set_dofs,
-                                local_dofs.is_element(dof_indices[cf + size * c + i]),
-                                local_dofs.index_within_set(dof_indices[cf + size * c + i]));
-              cf += n_components * size;
-            }
-          for (unsigned int quad = 0; quad < dealii::GeometryInfo<dim>::quads_per_cell; ++quad)
-            {
-              const unsigned int size = (fe_degree - 1) * (fe_degree - 1);
-              // switch order x-z for y faces in 3D to lexicographic layout
-              if (dim == 3 && (quad == 2 || quad == 3))
-                for (unsigned int i1 = 0; i1 < fe_degree - 1; ++i1)
-                  for (unsigned int i0 = 0; i0 < fe_degree - 1; ++i0)
+              const auto &r = dofs_on_objects[a];
+              if (a == 10 || a == 16)
+                // switch order x-z for y faces in 3D to lexicographic layout
+                for (unsigned int i1 = 0; i1 < nn; ++i1)
+                  for (unsigned int i0 = 0; i0 < nn; ++i0)
                     for (unsigned int c = 0; c < n_components; ++c)
                       renumber_func(numbers_mf_order,
                                     counter_dof_numbers,
                                     set_dofs,
                                     local_dofs.is_element(
-                                      dof_indices[cf + size * c + i1 + i0 * (fe_degree - 1)]),
+                                      dof_indices[r.first + r.second * c + i1 + i0 * nn]),
                                     local_dofs.index_within_set(
-                                      dof_indices[cf + size * c + i1 + i0 * (fe_degree - 1)]));
+                                      dof_indices[r.first + r.second * c + i1 + i0 * nn]));
               else
-                {
-                  for (unsigned int i = 0; i < size; ++i)
-                    for (unsigned int c = 0; c < n_components; ++c)
-                      renumber_func(numbers_mf_order,
-                                    counter_dof_numbers,
-                                    set_dofs,
-                                    local_dofs.is_element(dof_indices[cf + size * c + i]),
-                                    local_dofs.index_within_set(dof_indices[cf + size * c + i]));
-                }
-              cf += n_components * size;
+                for (unsigned int i = 0; i < r.second; ++i)
+                  for (unsigned int c = 0; c < n_components; ++c)
+                    renumber_func(numbers_mf_order,
+                                  counter_dof_numbers,
+                                  set_dofs,
+                                  local_dofs.is_element(dof_indices[r.first + r.second * c + i]),
+                                  local_dofs.index_within_set(
+                                    dof_indices[r.first + r.second * c + i]));
             }
-          for (unsigned int hex = 0; hex < dealii::GeometryInfo<dim>::hexes_per_cell; ++hex)
-            {
-              const unsigned int size = (fe_degree - 1) * (fe_degree - 1) * (fe_degree - 1);
-              for (unsigned int i = 0; i < size; ++i)
-                for (unsigned int c = 0; c < n_components; ++c)
-                  renumber_func(numbers_mf_order,
-                                counter_dof_numbers,
-                                set_dofs,
-                                local_dofs.is_element(dof_indices[cf + size * c + i]),
-                                local_dofs.index_within_set(dof_indices[cf + size * c + i]));
-              cf += n_components * size;
-            }
-          AssertThrow(cf == dof_indices.size(),
-                      dealii::ExcDimensionMismatch(cf, dof_indices.size()));
         }
     }
   return numbers_mf_order;
