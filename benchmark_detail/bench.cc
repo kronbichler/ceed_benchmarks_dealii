@@ -493,7 +493,7 @@ do_test(const int s_in, const bool compact_output)
         std::cout
           << " p       dofs   timeSol   timeMVs  timeVecU   timeDot  timePrec  timeMVqu  timeMVba  timeMVco  timeMVme  timeMVli  timeMVca"
           << std::endl;
-      while (Utilities::fixed_power<dim>(fe_degree + 1) * (1UL << (s / 2)) <
+      while (Utilities::fixed_power<dim>(fe_degree + 1) * (1UL << (s / 2)) * dim <
              6000000ULL * Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD))
         {
           test<dim, fe_degree, n_q_points>(s, compact_output, comm_shmem);
