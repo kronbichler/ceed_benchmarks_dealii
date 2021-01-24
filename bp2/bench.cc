@@ -21,6 +21,7 @@
 #include "../common_code/curved_manifold.h"
 #include "../common_code/diagonal_matrix_blocked.h"
 #include "../common_code/mass_operator.h"
+#include "../common_code/renumber_dofs_for_mf.h"
 #include "../common_code/solver_cg_optimized.h"
 
 using namespace dealii;
@@ -76,6 +77,11 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
   mf_data.communicator_sm                = comm_shmem;
   mf_data.use_vector_data_exchanger_full = true;
 #endif
+
+  // renumber Dofs to minimize the number of partitions in import indices of
+  // partitioner
+  Renumber<dim, double, VectorizedArray<double>> renum(0, 1, 2);
+  renum.renumber(dof_handler, constraints, mf_data);
 
   std::shared_ptr<MatrixFree<dim, double>> matrix_free(new MatrixFree<dim, double>());
   matrix_free->reinit(mapping, dof_handler, constraints, QGauss<1>(n_q_points), mf_data);

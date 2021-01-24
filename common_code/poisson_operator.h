@@ -359,7 +359,7 @@ namespace Poisson
                       ++cc;
                       cf += size * n_components;
                     }
-                  AssertThrow(cc == Utilities::pow(3, dim),
+                  AssertThrow(cc == Utilities::pow<unsigned int>(3, dim),
                               ExcMessage("Expected 3^dim dofs, got " + std::to_string(cc)));
                   AssertThrow(cf == dof_indices.size(),
                               ExcMessage("Expected (fe_degree+1)^dim dofs, got " +
