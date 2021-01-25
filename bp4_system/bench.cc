@@ -336,12 +336,11 @@ do_test(const int s_in, const bool compact_output)
 #ifdef SHOW_VARIANTS
         std::cout
           << " p |  q | n_element |     n_dofs |     time/it |   dofs/s/it | opt_time/it | opm_time/it | itCG | time/matvec | timeMVmerge | timeMVcompu | timeMVmerged"
-          << std::endl;
 #else
         std::cout
           << " p |  q | n_element |     n_dofs |     time/it |   dofs/s/it | opt_time/it | opm_time/it | itCG | time/matvec"
 #endif
-      << std::endl;
+          << std::endl;
       while (Utilities::fixed_power<dim>(fe_degree + 1) * (1UL << s) * dim <
              6000000ULL * Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD))
         {
