@@ -102,6 +102,62 @@ namespace Mass
       return accumulated_sum;
     }
 
+    Tensor<1, 7>
+    vmult_with_merged_sums(LinearAlgebra::distributed::BlockVector<Number> &x,
+                           LinearAlgebra::distributed::BlockVector<Number> &g,
+                           LinearAlgebra::distributed::BlockVector<Number> &d,
+                           LinearAlgebra::distributed::BlockVector<Number> &h,
+                           const DiagonalMatrixBlocked<dim, Number> &       prec,
+                           const Number                                     alpha,
+                           const Number                                     beta,
+                           const Number                                     alpha_old,
+                           const Number                                     beta_old) const
+    {
+      Tensor<1, 7, VectorizedArray<Number>> sums;
+      this->data->cell_loop(&MassOperator::local_apply_cell,
+                            this,
+                            h,
+                            d,
+                            [&](const unsigned int start_range, const unsigned int end_range) {
+                              for (unsigned int bl = 0; bl < ::internal::get_n_blocks(x); ++bl)
+                                do_cg_update4b<1, Number, true>(
+                                  start_range,
+                                  end_range,
+                                  ::internal::get_block(h, bl).begin(),
+                                  ::internal::get_block(x, bl).begin(),
+                                  ::internal::get_block(g, bl).begin(),
+                                  ::internal::get_block(d, bl).begin(),
+                                  prec.get_vector().begin(),
+                                  alpha,
+                                  beta,
+                                  alpha_old,
+                                  beta_old);
+                            },
+                            [&](const unsigned int start_range, const unsigned int end_range) {
+                              for (unsigned int bl = 0; bl < ::internal::get_n_blocks(x); ++bl)
+                                do_cg_update3b<1, Number>(start_range,
+                                                          end_range,
+                                                          ::internal::get_block(g, bl).begin(),
+                                                          ::internal::get_block(d, bl).begin(),
+                                                          ::internal::get_block(h, bl).begin(),
+                                                          prec.get_vector().begin(),
+                                                          sums);
+                            });
+
+      dealii::Tensor<1, 7> results;
+      for (unsigned int i = 0; i < 7; ++i)
+        {
+          results[i] = sums[i][0];
+          for (unsigned int v = 1; v < VectorizedArrayType::size(); ++v)
+            results[i] += sums[i][v];
+        }
+      dealii::Utilities::MPI::sum(
+        dealii::ArrayView<const double>(results.begin_raw(), 7),
+        ::internal::get_block(d, 0).get_partitioner()->get_mpi_communicator(),
+        dealii::ArrayView<double>(results.begin_raw(), 7));
+      return results;
+    }
+
     /**
      * Transpose matrix-vector multiplication. Since the mass matrix is
      * symmetric, it does exactly the same as vmult().
