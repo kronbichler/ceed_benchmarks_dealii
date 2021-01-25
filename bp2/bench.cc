@@ -21,6 +21,7 @@
 #include "../common_code/curved_manifold.h"
 #include "../common_code/diagonal_matrix_blocked.h"
 #include "../common_code/mass_operator.h"
+#include "../common_code/renumber_dofs_for_mf.h"
 #include "../common_code/solver_cg_optimized.h"
 
 using namespace dealii;
@@ -76,6 +77,11 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
   mf_data.communicator_sm                = comm_shmem;
   mf_data.use_vector_data_exchanger_full = true;
 #endif
+
+  // renumber Dofs to minimize the number of partitions in import indices of
+  // partitioner
+  Renumber<dim, double, VectorizedArray<double>> renum(0, 1, 2);
+  renum.renumber(dof_handler, constraints, mf_data);
 
   std::shared_ptr<MatrixFree<dim, double>> matrix_free(new MatrixFree<dim, double>());
   matrix_free->reinit(mapping, dof_handler, constraints, QGauss<1>(n_q_points), mf_data);
@@ -162,6 +168,25 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
       solver_time2 = std::min(data.max, solver_time2);
     }
 
+  SolverCGFullMerge<LinearAlgebra::distributed::BlockVector<double>> solver4(solver_control);
+  double                                                             solver_time4 = 1e10;
+  for (unsigned int t = 0; t < 4; ++t)
+    {
+      output = 0;
+      time.restart();
+      try
+        {
+          solver4.solve(mass_operator, output, input, diag_mat);
+        }
+      catch (SolverControl::NoConvergence &e)
+        {
+          // prevent the solver to throw an exception in case we should need more
+          // than 100 iterations
+        }
+      data         = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD);
+      solver_time4 = std::min(data.max, solver_time4);
+    }
+
   double matvec_time = 1e10;
   for (unsigned int t = 0; t < 2; ++t)
     {
@@ -180,6 +205,7 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
               << " | " << std::setw(11)
               << dim * dof_handler.n_dofs() / solver_time2 * solver_control.last_step() //
               << " | " << std::setw(11) << solver_time2 / solver_control.last_step()    //
+              << " | " << std::setw(11) << solver_time4 / solver_control.last_step()    //
               << " | " << std::setw(6) << solver_control.last_step()                    //
               << " | " << std::setw(11) << matvec_time                                  //
               << std::endl;
@@ -208,7 +234,7 @@ do_test(const int s_in, const bool compact_output)
                  static_cast<unsigned int>(std::log2(1024 / fe_degree / fe_degree / fe_degree)));
       if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
         std::cout
-          << " p |  q | n_elements |      n_dofs |     time/it |op dofs/s/it | opt time/it | CG_its | time/matvec"
+          << " p |  q | n_elements |      n_dofs |     time/it |op dofs/s/it | opt time/it | opm_time/it | CG_its | time/matvec"
           << std::endl;
       while (Utilities::fixed_power<dim>(fe_degree + 1) * (1UL << s) * dim <
              6000000ULL * Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD))

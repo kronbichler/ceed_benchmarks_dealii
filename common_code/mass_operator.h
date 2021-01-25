@@ -1,11 +1,13 @@
 
-#ifndef poisson_operator_h
-#define poisson_operator_h
+#ifndef mass_operator_h
+#define mass_operator_h
 
 
 #include <deal.II/base/timer.h>
 
 #include <deal.II/distributed/tria.h>
+
+#include <deal.II/fe/fe_tools.h>
 
 #include <deal.II/grid/grid_generator.h>
 #include <deal.II/grid/grid_tools.h>
@@ -100,6 +102,62 @@ namespace Mass
       return accumulated_sum;
     }
 
+    Tensor<1, 7>
+    vmult_with_merged_sums(LinearAlgebra::distributed::BlockVector<Number> &x,
+                           LinearAlgebra::distributed::BlockVector<Number> &g,
+                           LinearAlgebra::distributed::BlockVector<Number> &d,
+                           LinearAlgebra::distributed::BlockVector<Number> &h,
+                           const DiagonalMatrixBlocked<dim, Number> &       prec,
+                           const Number                                     alpha,
+                           const Number                                     beta,
+                           const Number                                     alpha_old,
+                           const Number                                     beta_old) const
+    {
+      Tensor<1, 7, VectorizedArray<Number>> sums;
+      this->data->cell_loop(&MassOperator::local_apply_cell,
+                            this,
+                            h,
+                            d,
+                            [&](const unsigned int start_range, const unsigned int end_range) {
+                              for (unsigned int bl = 0; bl < ::internal::get_n_blocks(x); ++bl)
+                                do_cg_update4b<1, Number, true>(
+                                  start_range,
+                                  end_range,
+                                  ::internal::get_block(h, bl).begin(),
+                                  ::internal::get_block(x, bl).begin(),
+                                  ::internal::get_block(g, bl).begin(),
+                                  ::internal::get_block(d, bl).begin(),
+                                  prec.get_vector().begin(),
+                                  alpha,
+                                  beta,
+                                  alpha_old,
+                                  beta_old);
+                            },
+                            [&](const unsigned int start_range, const unsigned int end_range) {
+                              for (unsigned int bl = 0; bl < ::internal::get_n_blocks(x); ++bl)
+                                do_cg_update3b<1, Number>(start_range,
+                                                          end_range,
+                                                          ::internal::get_block(g, bl).begin(),
+                                                          ::internal::get_block(d, bl).begin(),
+                                                          ::internal::get_block(h, bl).begin(),
+                                                          prec.get_vector().begin(),
+                                                          sums);
+                            });
+
+      dealii::Tensor<1, 7> results;
+      for (unsigned int i = 0; i < 7; ++i)
+        {
+          results[i] = sums[i][0];
+          for (unsigned int v = 1; v < VectorizedArrayType::size(); ++v)
+            results[i] += sums[i][v];
+        }
+      dealii::Utilities::MPI::sum(
+        dealii::ArrayView<const double>(results.begin_raw(), 7),
+        ::internal::get_block(d, 0).get_partitioner()->get_mpi_communicator(),
+        dealii::ArrayView<double>(results.begin_raw(), 7));
+      return results;
+    }
+
     /**
      * Transpose matrix-vector multiplication. Since the mass matrix is
      * symmetric, it does exactly the same as vmult().
@@ -154,7 +212,7 @@ namespace Mass
           phi.reinit(cell);
           phi_read.reinit(cell);
           phi_read.read_dof_values(src);
-          phi.evaluate(true, false);
+          phi.evaluate(phi_read.begin_dof_values(), true, false);
           for (unsigned int q = 0; q < phi.n_q_points; ++q)
             phi.submit_value(phi.get_value(q), q);
           phi.integrate(true, false);
@@ -222,78 +280,104 @@ namespace Mass
         }
       std::vector<types::global_dof_index> dof_indices(
         data->get_dof_handler().get_fe().dofs_per_cell);
+
+      constexpr unsigned int    n_lanes = VectorizedArrayType::size();
+      std::vector<unsigned int> renumber_lex =
+        FETools::hierarchic_to_lexicographic_numbering<dim>(2);
+      for (auto &i : renumber_lex)
+        i *= n_lanes;
+
       for (unsigned int c = 0; c < data->n_cell_batches(); ++c)
         {
-          constexpr unsigned int n_lanes = VectorizedArrayType::size();
           for (unsigned int l = 0; l < data->n_active_entries_per_cell_batch(c); ++l)
             {
               const typename DoFHandler<dim>::cell_iterator cell = data->get_cell_iterator(c, l);
+
               if (fe_degree > 2)
                 {
                   cell->get_dof_indices(dof_indices);
-                  const unsigned int offset = Utilities::pow(3, dim) * (n_lanes * c) + l;
+                  const unsigned int n_components = cell->get_fe().n_components();
+                  const unsigned int offset       = Utilities::pow(3, dim) * (n_lanes * c) + l;
                   const Utilities::MPI::Partitioner &part =
                     *data->get_dof_info().vector_partitioner;
                   unsigned int cc = 0, cf = 0;
-                  for (; cf < GeometryInfo<dim>::vertices_per_cell; ++cf, cc += n_lanes)
-                    if (!constraints.is_constrained(dof_indices[cf]))
-                      compressed_dof_indices[offset + cc] = part.global_to_local(dof_indices[cf]);
+                  for (unsigned int i = 0; i < GeometryInfo<dim>::vertices_per_cell;
+                       ++i, ++cc, cf += n_components)
+                    {
+                      if (!constraints.is_constrained(dof_indices[cf]))
+                        compressed_dof_indices[offset + renumber_lex[cc]] =
+                          part.global_to_local(dof_indices[cf]);
+                      for (unsigned int c = 0; c < n_components; ++c)
+                        AssertThrow(dof_indices[cf + c] == dof_indices[cf] + c,
+                                    ExcMessage("Expected contiguous numbering"));
+                    }
 
                   for (unsigned int line = 0; line < GeometryInfo<dim>::lines_per_cell; ++line)
                     {
+                      const unsigned int size = fe_degree - 1;
                       if (!constraints.is_constrained(dof_indices[cf]))
                         {
-                          for (unsigned int i = 0; i < fe_degree - 1; ++i)
-                            AssertThrow(dof_indices[cf + i] == dof_indices[cf] + i,
-                                        ExcMessage("Expected contiguous numbering"));
-                          compressed_dof_indices[offset + cc] =
+                          for (unsigned int i = 0; i < size; ++i)
+                            for (unsigned int c = 0; c < n_components; ++c)
+                              AssertThrow(dof_indices[cf + c * size + i] ==
+                                            dof_indices[cf] + i * n_components + c,
+                                          ExcMessage("Expected contiguous numbering"));
+                          compressed_dof_indices[offset + renumber_lex[cc]] =
                             part.global_to_local(dof_indices[cf]);
                         }
-                      cc += n_lanes;
-                      cf += fe_degree - 1;
+                      ++cc;
+                      cf += size * n_components;
                     }
                   for (unsigned int quad = 0; quad < GeometryInfo<dim>::quads_per_cell; ++quad)
                     {
+                      const unsigned int size = (fe_degree - 1) * (fe_degree - 1);
                       if (!constraints.is_constrained(dof_indices[cf]))
                         {
-                          for (unsigned int i = 0; i < (fe_degree - 1) * (fe_degree - 1); ++i)
-                            AssertThrow(dof_indices[cf + i] == dof_indices[cf] + i,
-                                        ExcMessage("Expected contiguous numbering"));
-                          compressed_dof_indices[offset + cc] =
+                          // switch order x-z for y faces in 3D to lexicographic layout
+                          if (dim == 3 && (quad == 2 || quad == 3))
+                            for (unsigned int i1 = 0, i = 0; i1 < fe_degree - 1; ++i1)
+                              for (unsigned int i0 = 0; i0 < fe_degree - 1; ++i0, ++i)
+                                for (unsigned int c = 0; c < n_components; ++c)
+                                  {
+                                    AssertThrow(
+                                      dof_indices[cf + c * size + i0 * (fe_degree - 1) + i1] ==
+                                        dof_indices[cf] + i * n_components + c,
+                                      ExcMessage("Expected contiguous numbering"));
+                                  }
+                          else
+                            for (unsigned int i = 0; i < size; ++i)
+                              for (unsigned int c = 0; c < n_components; ++c)
+                                AssertThrow(dof_indices[cf + c * size + i] ==
+                                              dof_indices[cf] + i * n_components + c,
+                                            ExcMessage("Expected contiguous numbering"));
+                          compressed_dof_indices[offset + renumber_lex[cc]] =
                             part.global_to_local(dof_indices[cf]);
                         }
-                      cc += n_lanes;
-                      cf += (fe_degree - 1) * (fe_degree - 1);
+                      ++cc;
+                      cf += size * n_components;
                     }
                   for (unsigned int hex = 0; hex < GeometryInfo<dim>::hexes_per_cell; ++hex)
                     {
+                      const unsigned int size = (fe_degree - 1) * (fe_degree - 1) * (fe_degree - 1);
                       if (!constraints.is_constrained(dof_indices[cf]))
                         {
-                          for (unsigned int i = 0;
-                               i < (fe_degree - 1) * (fe_degree - 1) * (fe_degree - 1);
-                               ++i)
-                            AssertThrow(dof_indices[cf + i] == dof_indices[cf] + i,
-                                        ExcMessage("Expected contiguous numbering"));
-                          compressed_dof_indices[offset + cc] =
+                          for (unsigned int i = 0; i < size; ++i)
+                            for (unsigned int c = 0; c < n_components; ++c)
+                              AssertThrow(dof_indices[cf + c * size + i] ==
+                                            dof_indices[cf] + i * n_components + c,
+                                          ExcMessage("Expected contiguous numbering"));
+                          compressed_dof_indices[offset + renumber_lex[cc]] =
                             part.global_to_local(dof_indices[cf]);
                         }
-                      cc += n_lanes;
-                      cf += (fe_degree - 1) * (fe_degree - 1) * (fe_degree - 1);
+                      ++cc;
+                      cf += size * n_components;
                     }
-                  AssertThrow(cc == n_lanes * Utilities::pow(3, dim),
+                  AssertThrow(cc == Utilities::pow<unsigned int>(3, dim),
                               ExcMessage("Expected 3^dim dofs, got " + std::to_string(cc)));
                   AssertThrow(cf == dof_indices.size(),
                               ExcMessage("Expected (fe_degree+1)^dim dofs, got " +
                                          std::to_string(cf)));
                 }
-            }
-          if (fe_degree > 2)
-            {
-              for (unsigned int i = 0; i < Utilities::pow<unsigned int>(3, dim); ++i)
-                for (unsigned int v = 0; v < n_lanes; ++v)
-                  if (compressed_dof_indices[Utilities::pow(3, dim) * (n_lanes * c) + i * n_lanes +
-                                             v] == numbers::invalid_unsigned_int)
-                    all_indices_uniform[Utilities::pow(3, dim) * c + i] = 0;
             }
         }
     }
