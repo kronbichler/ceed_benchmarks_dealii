@@ -168,30 +168,73 @@ namespace Poisson
 
       if (false && Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
         {
-          for (unsigned int part = 0; part < data->get_task_info().partition_row_index.size() - 2;
-               ++part)
+          const auto &              di = data->get_dof_info(0);
+          const auto &              ti = data->get_task_info();
+          std::vector<unsigned int> distances(di.vector_partitioner->local_size() / 64 + 1,
+                                              numbers::invalid_unsigned_int);
+          for (unsigned int id =
+                 di.cell_loop_pre_list_index[ti.partition_row_index[ti.partition_row_index.size() -
+                                                                    2]];
+               id < di.cell_loop_pre_list_index
+                      [ti.partition_row_index[ti.partition_row_index.size() - 2] + 1];
+               ++id)
+            for (unsigned int a = di.cell_loop_pre_list[id].first;
+                 a < di.cell_loop_pre_list[id].second;
+                 a += 64)
+              distances[a / 64] = 0;
+
+          for (unsigned int part = 0; part < ti.partition_row_index.size() - 2; ++part)
             {
-              for (unsigned int i = data->get_task_info().partition_row_index[part];
-                   i < data->get_task_info().partition_row_index[part + 1];
+              for (unsigned int i = ti.partition_row_index[part];
+                   i < ti.partition_row_index[part + 1];
                    ++i)
                 {
-                  std::cout << "pre ";
-                  for (unsigned int id = data->get_dof_info().cell_loop_pre_list_index[i];
-                       id != data->get_dof_info().cell_loop_pre_list_index[i + 1];
+                  // std::cout << "pre ";
+                  for (unsigned int id = di.cell_loop_pre_list_index[i];
+                       id != di.cell_loop_pre_list_index[i + 1];
                        ++id)
-                    std::cout << "[" << data->get_dof_info().cell_loop_pre_list[id].first << ","
-                              << data->get_dof_info().cell_loop_pre_list[id].second << ") ";
-                  std::cout << std::endl;
-                  std::cout << "post ";
-                  for (unsigned int id = data->get_dof_info().cell_loop_post_list_index[i];
-                       id != data->get_dof_info().cell_loop_post_list_index[i + 1];
+                    {
+                      for (unsigned int a = di.cell_loop_pre_list[id].first;
+                           a < di.cell_loop_pre_list[id].second;
+                           a += 64)
+                        distances[a / 64] = i;
+                      // std::cout << id << "[" << di.cell_loop_pre_list[id].first << ","
+                      //          << di.cell_loop_pre_list[id].second << ") ";
+                    }
+                  // std::cout << std::endl;
+                  // std::cout << "post ";
+                  for (unsigned int id = di.cell_loop_post_list_index[i];
+                       id != di.cell_loop_post_list_index[i + 1];
                        ++id)
-                    std::cout << "[" << data->get_dof_info().cell_loop_post_list[id].first << ","
-                              << data->get_dof_info().cell_loop_post_list[id].second << ") ";
-                  std::cout << std::endl;
+                    {
+                      for (unsigned int a = di.cell_loop_post_list[id].first;
+                           a < di.cell_loop_post_list[id].second;
+                           a += 64)
+                        distances[a / 64] = i - distances[a / 64];
+                      // std::cout << id << "[" << di.cell_loop_post_list[id].first << ","
+                      //          << di.cell_loop_post_list[id].second << ") ";
+                    }
+                  // std::cout << std::endl;
                 }
-              std::cout << std::endl;
+              // std::cout << std::endl;
             }
+          for (unsigned int id =
+                 di.cell_loop_post_list_index[ti.partition_row_index[ti.partition_row_index.size() -
+                                                                     2]];
+               id < di.cell_loop_post_list_index
+                      [ti.partition_row_index[ti.partition_row_index.size() - 2] + 1];
+               ++id)
+            for (unsigned int a = di.cell_loop_post_list[id].first;
+                 a < di.cell_loop_post_list[id].second;
+                 a += 64)
+              distances[a / 64] =
+                ti.partition_row_index[ti.partition_row_index.size() - 2] - distances[a / 64];
+          std::map<unsigned int, unsigned int> count;
+          for (const auto a : distances)
+            count[a]++;
+          for (const auto a : count)
+            std::cout << a.first << " " << a.second << "   ";
+          std::cout << std::endl;
         }
 
       if (fe_degree > 2)
@@ -1487,59 +1530,164 @@ namespace Poisson
                        const VectorType &                                      src,
                        const std::pair<unsigned int, unsigned int> &           cell_range) const
     {
+      constexpr unsigned int n_read_components =
+        IsBlockVector<VectorType>::value ? 1 : n_components;
+      constexpr unsigned int n_q_points = Utilities::pow(n_q_points_1d, dim);
+
+      using TensorType = Tensor<1, dim, VectorizedArrayType>;
+      using Eval = dealii::internal::EvaluatorTensorProduct<dealii::internal::evaluate_evenodd,
+                                                            dim,
+                                                            n_q_points_1d,
+                                                            n_q_points_1d,
+                                                            VectorizedArrayType,
+                                                            VectorizedArrayType>;
+
       FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number, VectorizedArrayType> phi(
         data);
-      constexpr unsigned int n_q_points = Utilities::pow(n_q_points_1d, dim);
+
       for (unsigned int cell = cell_range.first; cell < cell_range.second; ++cell)
         {
           phi.reinit(cell);
-          phi.read_dof_values(src);
-          phi.evaluate(false, true);
-          VectorizedArrayType *phi_grads = phi.begin_gradients();
-          for (unsigned int q = 0; q < n_q_points; ++q)
+          if (fe_degree > 2)
+            for (unsigned int bl = 0; bl < ::internal::get_n_blocks(src); ++bl)
+              read_dof_values_compressed<dim,
+                                         fe_degree,
+                                         n_q_points_1d,
+                                         n_read_components,
+                                         value_type>(
+                ::internal::get_block(src, bl),
+                compressed_dof_indices,
+                all_indices_uniform,
+                cell,
+                phi.get_shape_info().data[0].shape_values_eo,
+                phi.get_shape_info().data[0].element_type ==
+                  dealii::internal::MatrixFreeFunctions::tensor_symmetric_collocation,
+                phi.begin_values() + bl * n_q_points);
+          else
             {
-              if (dim == 2)
+              phi.read_dof_values(src);
+              phi.evaluate(true, false);
+            }
+          VectorizedArrayType *phi_grads = phi.begin_gradients();
+          if (dim == 2)
+            {
+              AssertThrow(false, ExcNotImplemented());
+            }
+          else if (dim == 3)
+            {
+              constexpr unsigned int n_q_points_2d = n_q_points_1d * n_q_points_1d;
+              for (unsigned int c = 0; c < n_components; ++c)
                 {
+                  if (fe_degree > 2 &&
+                      phi.get_shape_info().data[0].element_type !=
+                        dealii::internal::MatrixFreeFunctions::tensor_symmetric_collocation)
+                    dealii::internal::EvaluatorTensorProduct<dealii::internal::evaluate_evenodd,
+                                                             dim,
+                                                             fe_degree + 1,
+                                                             n_q_points_1d,
+                                                             VectorizedArrayType,
+                                                             VectorizedArrayType>::
+                      template apply<2, true, false, 0>(
+                        phi.get_shape_info().data[0].shape_values_eo.begin(),
+                        phi.begin_values() + c * n_q_points,
+                        phi.begin_values() + c * n_q_points);
+                  Eval::template apply<2, true, false, 1>(
+                    phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
+                    phi.begin_values() + c * n_q_points,
+                    phi_grads + (2 * n_components * n_q_points_2d) + c * n_q_points);
+                }
+              for (unsigned int q = 0, qz = 0; qz < n_q_points_1d; ++qz)
+                {
+                  using Eval2 =
+                    dealii::internal::EvaluatorTensorProduct<dealii::internal::evaluate_evenodd,
+                                                             2,
+                                                             n_q_points_1d,
+                                                             n_q_points_1d,
+                                                             VectorizedArrayType,
+                                                             VectorizedArrayType>;
                   for (unsigned int c = 0; c < n_components; ++c)
                     {
-                      const unsigned int  offset = c * dim * n_q_points;
-                      VectorizedArrayType tmp    = phi_grads[q + offset];
-                      phi_grads[q + offset] = merged_coefficients[cell * n_q_points + q][0] * tmp +
-                                              merged_coefficients[cell * n_q_points + q][1] *
-                                                phi_grads[q + n_q_points + offset];
-                      phi_grads[q + n_q_points + offset] =
-                        merged_coefficients[cell * n_q_points + q][1] * tmp +
-                        merged_coefficients[cell * n_q_points + q][2] *
-                          phi_grads[q + n_q_points + offset];
+                      Eval2::template apply<1, true, false, 1>(
+                        phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
+                        phi.begin_values() + c * n_q_points + qz * n_q_points_2d,
+                        phi_grads + (2 * c + 1) * n_q_points_2d);
+                      Eval2::template apply<0, true, false, 1>(
+                        phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
+                        phi.begin_values() + c * n_q_points + qz * n_q_points_2d,
+                        phi_grads + 2 * c * n_q_points_2d);
+                    }
+                  for (unsigned int qxy = 0; qxy < n_q_points_2d; ++qxy, ++q)
+                    for (unsigned int c = 0; c < n_components; ++c)
+                      {
+                        VectorizedArrayType tmp0 = phi_grads[qxy + c * 2 * n_q_points_2d];
+                        VectorizedArrayType tmp1 = phi_grads[qxy + (c * 2 + 1) * n_q_points_2d];
+                        phi_grads[qxy + c * 2 * n_q_points_2d] =
+                          (merged_coefficients[cell * n_q_points + q][0] * tmp0 +
+                           merged_coefficients[cell * n_q_points + q][1] * tmp1 +
+                           merged_coefficients[cell * n_q_points + q][2] *
+                             phi_grads[q + 2 * n_components * n_q_points_2d + c * n_q_points]);
+                        phi_grads[qxy + (c * 2 + 1) * n_q_points_2d] =
+                          (merged_coefficients[cell * n_q_points + q][1] * tmp0 +
+                           merged_coefficients[cell * n_q_points + q][3] * tmp1 +
+                           merged_coefficients[cell * n_q_points + q][4] *
+                             phi_grads[q + 2 * n_components * n_q_points_2d + c * n_q_points]);
+                        phi_grads[q + 2 * n_components * n_q_points_2d + c * n_q_points] =
+                          (merged_coefficients[cell * n_q_points + q][2] * tmp0 +
+                           merged_coefficients[cell * n_q_points + q][4] * tmp1 +
+                           merged_coefficients[cell * n_q_points + q][5] *
+                             phi_grads[q + 2 * n_components * n_q_points_2d + c * n_q_points]);
+                      }
+                  for (unsigned int c = 0; c < n_components; ++c)
+                    {
+                      Eval2::template apply<0, false, false, 1>(
+                        phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
+                        phi_grads + 2 * c * n_q_points_2d,
+                        phi.begin_values() + c * n_q_points + qz * n_q_points_2d);
+                      Eval2::template apply<1, false, true, 1>(
+                        phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
+                        phi_grads + (2 * c + 1) * n_q_points_2d,
+                        phi.begin_values() + c * n_q_points + qz * n_q_points_2d);
                     }
                 }
-              else if (dim == 3)
+              for (unsigned int c = 0; c < n_components; ++c)
                 {
-                  for (unsigned int c = 0; c < n_components; ++c)
-                    {
-                      const unsigned int  offset = c * dim * n_q_points;
-                      VectorizedArrayType tmp0   = phi_grads[q + offset];
-                      VectorizedArrayType tmp1   = phi_grads[q + n_q_points + offset];
-                      phi_grads[q + offset] =
-                        (merged_coefficients[cell * n_q_points + q][0] * tmp0 +
-                         merged_coefficients[cell * n_q_points + q][1] * tmp1 +
-                         merged_coefficients[cell * n_q_points + q][2] *
-                           phi_grads[q + 2 * n_q_points + offset]);
-                      phi_grads[q + n_q_points + offset] =
-                        (merged_coefficients[cell * n_q_points + q][1] * tmp0 +
-                         merged_coefficients[cell * n_q_points + q][3] * tmp1 +
-                         merged_coefficients[cell * n_q_points + q][4] *
-                           phi_grads[q + 2 * n_q_points + offset]);
-                      phi_grads[q + 2 * n_q_points + offset] =
-                        (merged_coefficients[cell * n_q_points + q][2] * tmp0 +
-                         merged_coefficients[cell * n_q_points + q][4] * tmp1 +
-                         merged_coefficients[cell * n_q_points + q][5] *
-                           phi_grads[q + 2 * n_q_points + offset]);
-                    }
+                  Eval::template apply<2, false, true, 1>(
+                    phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
+                    phi_grads + (2 * n_components * n_q_points_2d) + c * n_q_points,
+                    phi.begin_values() + c * n_q_points);
+                  if (fe_degree > 2 &&
+                      phi.get_shape_info().data[0].element_type !=
+                        dealii::internal::MatrixFreeFunctions::tensor_symmetric_collocation)
+                    dealii::internal::EvaluatorTensorProduct<dealii::internal::evaluate_evenodd,
+                                                             dim,
+                                                             fe_degree + 1,
+                                                             n_q_points_1d,
+                                                             VectorizedArrayType,
+                                                             VectorizedArrayType>::
+                      template apply<2, false, false, 0>(
+                        phi.get_shape_info().data[0].shape_values_eo.begin(),
+                        phi.begin_values() + c * n_q_points,
+                        phi.begin_values() + c * n_q_points);
                 }
             }
-          phi.integrate(false, true);
-          phi.distribute_local_to_global(dst);
+
+          if (fe_degree > 2)
+            for (unsigned int bl = 0; bl < ::internal::get_n_blocks(src); ++bl)
+              distribute_local_to_global_compressed<dim,
+                                                    fe_degree,
+                                                    n_q_points_1d,
+                                                    n_read_components,
+                                                    Number>(
+                ::internal::get_block(dst, bl),
+                compressed_dof_indices,
+                all_indices_uniform,
+                cell,
+                phi.get_shape_info().data[0].shape_values_eo,
+                phi.get_shape_info().data[0].element_type ==
+                  dealii::internal::MatrixFreeFunctions::tensor_symmetric_collocation,
+                phi.begin_values() + bl * n_q_points);
+          else
+            phi.integrate_scatter(true, false, dst);
         }
     }
 

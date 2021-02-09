@@ -262,8 +262,7 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
   typename MatrixFree<dim, double>::AdditionalData mf_data;
 
 #ifdef USE_SHMEM
-  mf_data.communicator_sm                = comm_shmem;
-  mf_data.use_vector_data_exchanger_full = true;
+  mf_data.communicator_sm = comm_shmem;
 #endif
 
   // renumber Dofs to minimize the number of partitions in import indices of
@@ -486,7 +485,8 @@ do_test(const int s_in, const bool compact_output)
 
   if (s_in < 1)
     {
-      unsigned int s = 1 + std::log2(Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD));
+      unsigned int s =
+        1 + static_cast<unsigned int>(std::log2(Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD)));
       // std::max(3U, static_cast<unsigned int>
       //         (std::log2(1024/fe_degree/fe_degree/fe_degree)));
       if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
