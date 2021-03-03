@@ -1605,15 +1605,15 @@ namespace Poisson
                             sp5, sm5, sp6, sm6, sp7, sm7, sp8, sm8;
                           svfloat64_t t0, xp0, xm0, xp1, xm1, xp2, xm2, c0, c1;
 
-                          t0  = svld1_f64(svptrue_b64(), in_ptr[0].data);
+                          t0  = svld1_f64(svptrue_b64(), in_ptr[36*0].data);
                           xm0 = svld1_f64(svptrue_b64(), in_ptr[36*5].data);
                           xp0 = svsub_f64_z(svptrue_b64(), t0, xm0);
                           xm0 = svadd_f64_z(svptrue_b64(), t0, xm0);
-                          t0  = svld1_f64(svptrue_b64(), in_ptr[1].data);
+                          t0  = svld1_f64(svptrue_b64(), in_ptr[36*0+1].data);
                           xm1 = svld1_f64(svptrue_b64(), in_ptr[36*5+1].data);
                           xp1 = svsub_f64_z(svptrue_b64(), t0, xm1);
                           xm1 = svadd_f64_z(svptrue_b64(), t0, xm1);
-                          t0  = svld1_f64(svptrue_b64(), in_ptr[2].data);
+                          t0  = svld1_f64(svptrue_b64(), in_ptr[36*0+2].data);
                           xm2 = svld1_f64(svptrue_b64(), in_ptr[36*5+2].data);
                           xp2 = svsub_f64_z(svptrue_b64(), t0, xm2);
                           xm2 = svadd_f64_z(svptrue_b64(), t0, xm2);
@@ -1677,7 +1677,7 @@ namespace Poisson
                           sp5 = svmla_f64_z(svptrue_b64(), sp5, xp2, c0);
                           sm5 = svmla_f64_z(svptrue_b64(), sm5, xm2, c1);
 
-                          c0 = svdup_n_f64(coefficients_eo[4][0]);
+                          c0 = svdup_n_f64(coefficients_eo[5][0]);
                           c1 = svdup_n_f64(coefficients_eo[14][0]);
                           sp6 = svmla_f64_z(svptrue_b64(), sp6, xp0, c0);
                           sm6 = svmla_f64_z(svptrue_b64(), sm6, xm0, c1);
