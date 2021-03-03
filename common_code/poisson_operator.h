@@ -1783,6 +1783,350 @@ namespace Poisson
                                                              VectorizedArrayType>;
                   for (unsigned int c = 0; c < n_components; ++c)
                     {
+#ifdef __ARM_FEATURE_SVE
+                  if (n_q_points_1d == 6 && fe_degree == 5)
+                    {
+                      const VectorizedArrayType* coefficients_eo =
+                        phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin();
+                      for (unsigned int i=0; i<6; i+=3)
+                        {
+                          const auto in_ptr = phi.begin_values()
+                            + c * n_q_points + i + qz * n_q_points_2d;
+                          const auto out_ptr = phi_grads + (2 * c + 1) * n_q_points_2d + i;
+                          svfloat64_t sp0, sm0, sp1, sm1, sp2, sm2, sp3, sm3, sp4, sm4,
+                            sp5, sm5, sp6, sm6, sp7, sm7, sp8, sm8;
+                          svfloat64_t t0, xp0, xm0, xp1, xm1, xp2, xm2, c0, c1;
+
+                          t0  = svld1_f64(svptrue_b64(), in_ptr[6*0].data);
+                          xm0 = svld1_f64(svptrue_b64(), in_ptr[6*5].data);
+                          xp0 = svsub_f64_z(svptrue_b64(), t0, xm0);
+                          xm0 = svadd_f64_z(svptrue_b64(), t0, xm0);
+                          t0  = svld1_f64(svptrue_b64(), in_ptr[6*0+1].data);
+                          xm1 = svld1_f64(svptrue_b64(), in_ptr[6*5+1].data);
+                          xp1 = svsub_f64_z(svptrue_b64(), t0, xm1);
+                          xm1 = svadd_f64_z(svptrue_b64(), t0, xm1);
+                          t0  = svld1_f64(svptrue_b64(), in_ptr[6*0+2].data);
+                          xm2 = svld1_f64(svptrue_b64(), in_ptr[6*5+2].data);
+                          xp2 = svsub_f64_z(svptrue_b64(), t0, xm2);
+                          xm2 = svadd_f64_z(svptrue_b64(), t0, xm2);
+
+                          c0 = svdup_n_f64(coefficients_eo[0][0]);
+                          c1 = svdup_n_f64(coefficients_eo[15][0]);
+                          sp0 = svmul_f64_z(svptrue_b64(), xp0, c0);
+                          sm0 = svmul_f64_z(svptrue_b64(), xm0, c1);
+                          sp1 = svmul_f64_z(svptrue_b64(), xp1, c0);
+                          sm1 = svmul_f64_z(svptrue_b64(), xm1, c1);
+                          sp2 = svmul_f64_z(svptrue_b64(), xp2, c0);
+                          sm2 = svmul_f64_z(svptrue_b64(), xm2, c1);
+
+                          c0 = svdup_n_f64(coefficients_eo[1][0]);
+                          c1 = svdup_n_f64(coefficients_eo[16][0]);
+                          sp3 = svmul_f64_z(svptrue_b64(), xp0, c0);
+                          sm3 = svmul_f64_z(svptrue_b64(), xm0, c1);
+                          sp4 = svmul_f64_z(svptrue_b64(), xp1, c0);
+                          sm4 = svmul_f64_z(svptrue_b64(), xm1, c1);
+                          sp5 = svmul_f64_z(svptrue_b64(), xp2, c0);
+                          sm5 = svmul_f64_z(svptrue_b64(), xm2, c1);
+
+                          c0 = svdup_n_f64(coefficients_eo[2][0]);
+                          c1 = svdup_n_f64(coefficients_eo[17][0]);
+                          sp6 = svmul_f64_z(svptrue_b64(), xp0, c0);
+                          sm6 = svmul_f64_z(svptrue_b64(), xm0, c1);
+                          sp7 = svmul_f64_z(svptrue_b64(), xp1, c0);
+                          sm7 = svmul_f64_z(svptrue_b64(), xm1, c1);
+                          sp8 = svmul_f64_z(svptrue_b64(), xp2, c0);
+                          sm8 = svmul_f64_z(svptrue_b64(), xm2, c1);
+
+
+                          t0  = svld1_f64(svptrue_b64(), in_ptr[6*1].data);
+                          xm0 = svld1_f64(svptrue_b64(), in_ptr[6*4].data);
+                          xp0 = svsub_f64_z(svptrue_b64(), t0, xm0);
+                          xm0 = svadd_f64_z(svptrue_b64(), t0, xm0);
+                          t0  = svld1_f64(svptrue_b64(), in_ptr[6*1+1].data);
+                          xm1 = svld1_f64(svptrue_b64(), in_ptr[6*4+1].data);
+                          xp1 = svsub_f64_z(svptrue_b64(), t0, xm1);
+                          xm1 = svadd_f64_z(svptrue_b64(), t0, xm1);
+                          t0  = svld1_f64(svptrue_b64(), in_ptr[6*1+2].data);
+                          xm2 = svld1_f64(svptrue_b64(), in_ptr[6*4+2].data);
+                          xp2 = svsub_f64_z(svptrue_b64(), t0, xm2);
+                          xm2 = svadd_f64_z(svptrue_b64(), t0, xm2);
+
+                          c0 = svdup_n_f64(coefficients_eo[3][0]);
+                          c1 = svdup_n_f64(coefficients_eo[12][0]);
+                          sp0 = svmla_f64_z(svptrue_b64(), sp0, xp0, c0);
+                          sm0 = svmla_f64_z(svptrue_b64(), sm0, xm0, c1);
+                          sp1 = svmla_f64_z(svptrue_b64(), sp1, xp1, c0);
+                          sm1 = svmla_f64_z(svptrue_b64(), sm1, xm1, c1);
+                          sp2 = svmla_f64_z(svptrue_b64(), sp2, xp2, c0);
+                          sm2 = svmla_f64_z(svptrue_b64(), sm2, xm2, c1);
+
+                          c0 = svdup_n_f64(coefficients_eo[4][0]);
+                          c1 = svdup_n_f64(coefficients_eo[13][0]);
+                          sp3 = svmla_f64_z(svptrue_b64(), sp3, xp0, c0);
+                          sm3 = svmla_f64_z(svptrue_b64(), sm3, xm0, c1);
+                          sp4 = svmla_f64_z(svptrue_b64(), sp4, xp1, c0);
+                          sm4 = svmla_f64_z(svptrue_b64(), sm4, xm1, c1);
+                          sp5 = svmla_f64_z(svptrue_b64(), sp5, xp2, c0);
+                          sm5 = svmla_f64_z(svptrue_b64(), sm5, xm2, c1);
+
+                          c0 = svdup_n_f64(coefficients_eo[5][0]);
+                          c1 = svdup_n_f64(coefficients_eo[14][0]);
+                          sp6 = svmla_f64_z(svptrue_b64(), sp6, xp0, c0);
+                          sm6 = svmla_f64_z(svptrue_b64(), sm6, xm0, c1);
+                          sp7 = svmla_f64_z(svptrue_b64(), sp7, xp1, c0);
+                          sm7 = svmla_f64_z(svptrue_b64(), sm7, xm1, c1);
+                          sp8 = svmla_f64_z(svptrue_b64(), sp8, xp2, c0);
+                          sm8 = svmla_f64_z(svptrue_b64(), sm8, xm2, c1);
+
+
+                          t0  = svld1_f64(svptrue_b64(), in_ptr[6*2].data);
+                          xm0 = svld1_f64(svptrue_b64(), in_ptr[6*3].data);
+                          xp0 = svsub_f64_z(svptrue_b64(), t0, xm0);
+                          xm0 = svadd_f64_z(svptrue_b64(), t0, xm0);
+                          t0  = svld1_f64(svptrue_b64(), in_ptr[6*2+1].data);
+                          xm1 = svld1_f64(svptrue_b64(), in_ptr[6*3+1].data);
+                          xp1 = svsub_f64_z(svptrue_b64(), t0, xm1);
+                          xm1 = svadd_f64_z(svptrue_b64(), t0, xm1);
+                          t0  = svld1_f64(svptrue_b64(), in_ptr[6*2+2].data);
+                          xm2 = svld1_f64(svptrue_b64(), in_ptr[6*3+2].data);
+                          xp2 = svsub_f64_z(svptrue_b64(), t0, xm2);
+                          xm2 = svadd_f64_z(svptrue_b64(), t0, xm2);
+
+                          c0 = svdup_n_f64(coefficients_eo[6][0]);
+                          c1 = svdup_n_f64(coefficients_eo[9][0]);
+                          sp0 = svmla_f64_z(svptrue_b64(), sp0, xp0, c0);
+                          sm0 = svmla_f64_z(svptrue_b64(), sm0, xm0, c1);
+                          sp1 = svmla_f64_z(svptrue_b64(), sp1, xp1, c0);
+                          sm1 = svmla_f64_z(svptrue_b64(), sm1, xm1, c1);
+                          sp2 = svmla_f64_z(svptrue_b64(), sp2, xp2, c0);
+                          sm2 = svmla_f64_z(svptrue_b64(), sm2, xm2, c1);
+
+                          c0 = svdup_n_f64(coefficients_eo[7][0]);
+                          c1 = svdup_n_f64(coefficients_eo[10][0]);
+                          sp3 = svmla_f64_z(svptrue_b64(), sp3, xp0, c0);
+                          sm3 = svmla_f64_z(svptrue_b64(), sm3, xm0, c1);
+                          sp4 = svmla_f64_z(svptrue_b64(), sp4, xp1, c0);
+                          sm4 = svmla_f64_z(svptrue_b64(), sm4, xm1, c1);
+                          sp5 = svmla_f64_z(svptrue_b64(), sp5, xp2, c0);
+                          sm5 = svmla_f64_z(svptrue_b64(), sm5, xm2, c1);
+
+                          c0 = svdup_n_f64(coefficients_eo[8][0]);
+                          c1 = svdup_n_f64(coefficients_eo[11][0]);
+                          sp6 = svmla_f64_z(svptrue_b64(), sp6, xp0, c0);
+                          sm6 = svmla_f64_z(svptrue_b64(), sm6, xm0, c1);
+                          sp7 = svmla_f64_z(svptrue_b64(), sp7, xp1, c0);
+                          sm7 = svmla_f64_z(svptrue_b64(), sm7, xm1, c1);
+                          sp8 = svmla_f64_z(svptrue_b64(), sp8, xp2, c0);
+                          sm8 = svmla_f64_z(svptrue_b64(), sm8, xm2, c1);
+
+                          svst1_f64(svptrue_b64(), out_ptr[6*0].data,
+                                    svadd_f64_z(svptrue_b64(), sp0, sm0));
+                          svst1_f64(svptrue_b64(), out_ptr[6*0+1].data,
+                                    svadd_f64_z(svptrue_b64(), sp1, sm1));
+                          svst1_f64(svptrue_b64(), out_ptr[6*0+2].data,
+                                    svadd_f64_z(svptrue_b64(), sp2, sm2));
+                          svst1_f64(svptrue_b64(), out_ptr[6*5].data,
+                                    svsub_f64_z(svptrue_b64(), sp0, sm0));
+                          svst1_f64(svptrue_b64(), out_ptr[6*5+1].data,
+                                    svsub_f64_z(svptrue_b64(), sp1, sm1));
+                          svst1_f64(svptrue_b64(), out_ptr[6*5+2].data,
+                                    svsub_f64_z(svptrue_b64(), sp2, sm2));
+                          svst1_f64(svptrue_b64(), out_ptr[6*1].data,
+                                    svadd_f64_z(svptrue_b64(), sp3, sm3));
+                          svst1_f64(svptrue_b64(), out_ptr[6*1+1].data,
+                                    svadd_f64_z(svptrue_b64(), sp4, sm4));
+                          svst1_f64(svptrue_b64(), out_ptr[6*1+2].data,
+                                    svadd_f64_z(svptrue_b64(), sp5, sm5));
+                          svst1_f64(svptrue_b64(), out_ptr[6*4].data,
+                                    svsub_f64_z(svptrue_b64(), sp3, sm3));
+                          svst1_f64(svptrue_b64(), out_ptr[6*4+1].data,
+                                    svsub_f64_z(svptrue_b64(), sp4, sm4));
+                          svst1_f64(svptrue_b64(), out_ptr[6*4+2].data,
+                                    svsub_f64_z(svptrue_b64(), sp5, sm5));
+                          svst1_f64(svptrue_b64(), out_ptr[6*2].data,
+                                    svadd_f64_z(svptrue_b64(), sp6, sm6));
+                          svst1_f64(svptrue_b64(), out_ptr[6*2+1].data,
+                                    svadd_f64_z(svptrue_b64(), sp7, sm7));
+                          svst1_f64(svptrue_b64(), out_ptr[6*2+2].data,
+                                    svadd_f64_z(svptrue_b64(), sp8, sm8));
+                          svst1_f64(svptrue_b64(), out_ptr[6*3].data,
+                                    svsub_f64_z(svptrue_b64(), sp6, sm6));
+                          svst1_f64(svptrue_b64(), out_ptr[6*3+1].data,
+                                    svsub_f64_z(svptrue_b64(), sp7, sm7));
+                          svst1_f64(svptrue_b64(), out_ptr[6*3+2].data,
+                                    svsub_f64_z(svptrue_b64(), sp8, sm8));
+                        }
+                      for (unsigned int i=0; i<6; i+=3)
+                        {
+                          const auto in_ptr = phi.begin_values() + c * n_q_points + i * n_q_points;
+                          const auto out_ptr = phi_grads + (2 * c) * n_q_points_2d + i * n_q_points;
+                          svfloat64_t sp0, sm0, sp1, sm1, sp2, sm2, sp3, sm3, sp4, sm4,
+                            sp5, sm5, sp6, sm6, sp7, sm7, sp8, sm8;
+                          svfloat64_t t0, xp0, xm0, xp1, xm1, xp2, xm2, c0, c1;
+
+                          t0  = svld1_f64(svptrue_b64(), in_ptr[0].data);
+                          xm0 = svld1_f64(svptrue_b64(), in_ptr[5].data);
+                          xp0 = svsub_f64_z(svptrue_b64(), t0, xm0);
+                          xm0 = svadd_f64_z(svptrue_b64(), t0, xm0);
+                          t0  = svld1_f64(svptrue_b64(), in_ptr[6].data);
+                          xm1 = svld1_f64(svptrue_b64(), in_ptr[11].data);
+                          xp1 = svsub_f64_z(svptrue_b64(), t0, xm1);
+                          xm1 = svadd_f64_z(svptrue_b64(), t0, xm1);
+                          t0  = svld1_f64(svptrue_b64(), in_ptr[12].data);
+                          xm2 = svld1_f64(svptrue_b64(), in_ptr[17].data);
+                          xp2 = svsub_f64_z(svptrue_b64(), t0, xm2);
+                          xm2 = svadd_f64_z(svptrue_b64(), t0, xm2);
+
+                          c0 = svdup_n_f64(coefficients_eo[0][0]);
+                          c1 = svdup_n_f64(coefficients_eo[15][0]);
+                          sp0 = svmul_f64_z(svptrue_b64(), xp0, c0);
+                          sm0 = svmul_f64_z(svptrue_b64(), xm0, c1);
+                          sp1 = svmul_f64_z(svptrue_b64(), xp1, c0);
+                          sm1 = svmul_f64_z(svptrue_b64(), xm1, c1);
+                          sp2 = svmul_f64_z(svptrue_b64(), xp2, c0);
+                          sm2 = svmul_f64_z(svptrue_b64(), xm2, c1);
+
+                          c0 = svdup_n_f64(coefficients_eo[1][0]);
+                          c1 = svdup_n_f64(coefficients_eo[16][0]);
+                          sp3 = svmul_f64_z(svptrue_b64(), xp0, c0);
+                          sm3 = svmul_f64_z(svptrue_b64(), xm0, c1);
+                          sp4 = svmul_f64_z(svptrue_b64(), xp1, c0);
+                          sm4 = svmul_f64_z(svptrue_b64(), xm1, c1);
+                          sp5 = svmul_f64_z(svptrue_b64(), xp2, c0);
+                          sm5 = svmul_f64_z(svptrue_b64(), xm2, c1);
+
+                          c0 = svdup_n_f64(coefficients_eo[2][0]);
+                          c1 = svdup_n_f64(coefficients_eo[17][0]);
+                          sp6 = svmul_f64_z(svptrue_b64(), xp0, c0);
+                          sm6 = svmul_f64_z(svptrue_b64(), xm0, c1);
+                          sp7 = svmul_f64_z(svptrue_b64(), xp1, c0);
+                          sm7 = svmul_f64_z(svptrue_b64(), xm1, c1);
+                          sp8 = svmul_f64_z(svptrue_b64(), xp2, c0);
+                          sm8 = svmul_f64_z(svptrue_b64(), xm2, c1);
+
+
+                          t0  = svld1_f64(svptrue_b64(), in_ptr[1].data);
+                          xm0 = svld1_f64(svptrue_b64(), in_ptr[4].data);
+                          xp0 = svsub_f64_z(svptrue_b64(), t0, xm0);
+                          xm0 = svadd_f64_z(svptrue_b64(), t0, xm0);
+                          t0  = svld1_f64(svptrue_b64(), in_ptr[7].data);
+                          xm1 = svld1_f64(svptrue_b64(), in_ptr[10].data);
+                          xp1 = svsub_f64_z(svptrue_b64(), t0, xm1);
+                          xm1 = svadd_f64_z(svptrue_b64(), t0, xm1);
+                          t0  = svld1_f64(svptrue_b64(), in_ptr[13].data);
+                          xm2 = svld1_f64(svptrue_b64(), in_ptr[16].data);
+                          xp2 = svsub_f64_z(svptrue_b64(), t0, xm2);
+                          xm2 = svadd_f64_z(svptrue_b64(), t0, xm2);
+
+                          c0 = svdup_n_f64(coefficients_eo[3][0]);
+                          c1 = svdup_n_f64(coefficients_eo[12][0]);
+                          sp0 = svmla_f64_z(svptrue_b64(), sp0, xp0, c0);
+                          sm0 = svmla_f64_z(svptrue_b64(), sm0, xm0, c1);
+                          sp1 = svmla_f64_z(svptrue_b64(), sp1, xp1, c0);
+                          sm1 = svmla_f64_z(svptrue_b64(), sm1, xm1, c1);
+                          sp2 = svmla_f64_z(svptrue_b64(), sp2, xp2, c0);
+                          sm2 = svmla_f64_z(svptrue_b64(), sm2, xm2, c1);
+
+                          c0 = svdup_n_f64(coefficients_eo[4][0]);
+                          c1 = svdup_n_f64(coefficients_eo[13][0]);
+                          sp3 = svmla_f64_z(svptrue_b64(), sp3, xp0, c0);
+                          sm3 = svmla_f64_z(svptrue_b64(), sm3, xm0, c1);
+                          sp4 = svmla_f64_z(svptrue_b64(), sp4, xp1, c0);
+                          sm4 = svmla_f64_z(svptrue_b64(), sm4, xm1, c1);
+                          sp5 = svmla_f64_z(svptrue_b64(), sp5, xp2, c0);
+                          sm5 = svmla_f64_z(svptrue_b64(), sm5, xm2, c1);
+
+                          c0 = svdup_n_f64(coefficients_eo[5][0]);
+                          c1 = svdup_n_f64(coefficients_eo[14][0]);
+                          sp6 = svmla_f64_z(svptrue_b64(), sp6, xp0, c0);
+                          sm6 = svmla_f64_z(svptrue_b64(), sm6, xm0, c1);
+                          sp7 = svmla_f64_z(svptrue_b64(), sp7, xp1, c0);
+                          sm7 = svmla_f64_z(svptrue_b64(), sm7, xm1, c1);
+                          sp8 = svmla_f64_z(svptrue_b64(), sp8, xp2, c0);
+                          sm8 = svmla_f64_z(svptrue_b64(), sm8, xm2, c1);
+
+
+                          t0  = svld1_f64(svptrue_b64(), in_ptr[2].data);
+                          xm0 = svld1_f64(svptrue_b64(), in_ptr[3].data);
+                          xp0 = svsub_f64_z(svptrue_b64(), t0, xm0);
+                          xm0 = svadd_f64_z(svptrue_b64(), t0, xm0);
+                          t0  = svld1_f64(svptrue_b64(), in_ptr[8].data);
+                          xm1 = svld1_f64(svptrue_b64(), in_ptr[9].data);
+                          xp1 = svsub_f64_z(svptrue_b64(), t0, xm1);
+                          xm1 = svadd_f64_z(svptrue_b64(), t0, xm1);
+                          t0  = svld1_f64(svptrue_b64(), in_ptr[14].data);
+                          xm2 = svld1_f64(svptrue_b64(), in_ptr[15].data);
+                          xp2 = svsub_f64_z(svptrue_b64(), t0, xm2);
+                          xm2 = svadd_f64_z(svptrue_b64(), t0, xm2);
+
+                          c0 = svdup_n_f64(coefficients_eo[6][0]);
+                          c1 = svdup_n_f64(coefficients_eo[9][0]);
+                          sp0 = svmla_f64_z(svptrue_b64(), sp0, xp0, c0);
+                          sm0 = svmla_f64_z(svptrue_b64(), sm0, xm0, c1);
+                          sp1 = svmla_f64_z(svptrue_b64(), sp1, xp1, c0);
+                          sm1 = svmla_f64_z(svptrue_b64(), sm1, xm1, c1);
+                          sp2 = svmla_f64_z(svptrue_b64(), sp2, xp2, c0);
+                          sm2 = svmla_f64_z(svptrue_b64(), sm2, xm2, c1);
+
+                          c0 = svdup_n_f64(coefficients_eo[7][0]);
+                          c1 = svdup_n_f64(coefficients_eo[10][0]);
+                          sp3 = svmla_f64_z(svptrue_b64(), sp3, xp0, c0);
+                          sm3 = svmla_f64_z(svptrue_b64(), sm3, xm0, c1);
+                          sp4 = svmla_f64_z(svptrue_b64(), sp4, xp1, c0);
+                          sm4 = svmla_f64_z(svptrue_b64(), sm4, xm1, c1);
+                          sp5 = svmla_f64_z(svptrue_b64(), sp5, xp2, c0);
+                          sm5 = svmla_f64_z(svptrue_b64(), sm5, xm2, c1);
+
+                          c0 = svdup_n_f64(coefficients_eo[8][0]);
+                          c1 = svdup_n_f64(coefficients_eo[11][0]);
+                          sp6 = svmla_f64_z(svptrue_b64(), sp6, xp0, c0);
+                          sm6 = svmla_f64_z(svptrue_b64(), sm6, xm0, c1);
+                          sp7 = svmla_f64_z(svptrue_b64(), sp7, xp1, c0);
+                          sm7 = svmla_f64_z(svptrue_b64(), sm7, xm1, c1);
+                          sp8 = svmla_f64_z(svptrue_b64(), sp8, xp2, c0);
+                          sm8 = svmla_f64_z(svptrue_b64(), sm8, xm2, c1);
+
+                          svst1_f64(svptrue_b64(), out_ptr[0].data,
+                                    svadd_f64_z(svptrue_b64(), sp0, sm0));
+                          svst1_f64(svptrue_b64(), out_ptr[1].data,
+                                    svadd_f64_z(svptrue_b64(), sp3, sm3));
+                          svst1_f64(svptrue_b64(), out_ptr[2].data,
+                                    svadd_f64_z(svptrue_b64(), sp6, sm6));
+                          svst1_f64(svptrue_b64(), out_ptr[3].data,
+                                    svsub_f64_z(svptrue_b64(), sp6, sm6));
+                          svst1_f64(svptrue_b64(), out_ptr[4].data,
+                                    svsub_f64_z(svptrue_b64(), sp3, sm3));
+                          svst1_f64(svptrue_b64(), out_ptr[5].data,
+                                    svsub_f64_z(svptrue_b64(), sp0, sm0));
+                          svst1_f64(svptrue_b64(), out_ptr[6].data,
+                                    svadd_f64_z(svptrue_b64(), sp1, sm1));
+                          svst1_f64(svptrue_b64(), out_ptr[7].data,
+                                    svadd_f64_z(svptrue_b64(), sp4, sm4));
+                          svst1_f64(svptrue_b64(), out_ptr[8].data,
+                                    svadd_f64_z(svptrue_b64(), sp7, sm7));
+                          svst1_f64(svptrue_b64(), out_ptr[9].data,
+                                    svsub_f64_z(svptrue_b64(), sp7, sm7));
+                          svst1_f64(svptrue_b64(), out_ptr[10].data,
+                                    svsub_f64_z(svptrue_b64(), sp4, sm4));
+                          svst1_f64(svptrue_b64(), out_ptr[11].data,
+                                    svsub_f64_z(svptrue_b64(), sp1, sm1));
+                          svst1_f64(svptrue_b64(), out_ptr[12].data,
+                                    svadd_f64_z(svptrue_b64(), sp2, sm2));
+                          svst1_f64(svptrue_b64(), out_ptr[13].data,
+                                    svadd_f64_z(svptrue_b64(), sp5, sm5));
+                          svst1_f64(svptrue_b64(), out_ptr[14].data,
+                                    svadd_f64_z(svptrue_b64(), sp8, sm8));
+                          svst1_f64(svptrue_b64(), out_ptr[15].data,
+                                    svsub_f64_z(svptrue_b64(), sp8, sm8));
+                          svst1_f64(svptrue_b64(), out_ptr[16].data,
+                                    svsub_f64_z(svptrue_b64(), sp5, sm5));
+                          svst1_f64(svptrue_b64(), out_ptr[17].data,
+                                    svsub_f64_z(svptrue_b64(), sp2, sm2));
+                        }
+                    }
+                  else
+#endif
+                    {
                       Eval2::template apply<1, true, false, 1>(
                         phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                         phi.begin_values() + c * n_q_points + qz * n_q_points_2d,
@@ -1791,6 +2135,7 @@ namespace Poisson
                         phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                         phi.begin_values() + c * n_q_points + qz * n_q_points_2d,
                         phi_grads + 2 * c * n_q_points_2d);
+                    }
                     }
                   for (unsigned int qxy = 0; qxy < n_q_points_2d; ++qxy, ++q)
                     for (unsigned int c = 0; c < n_components; ++c)
