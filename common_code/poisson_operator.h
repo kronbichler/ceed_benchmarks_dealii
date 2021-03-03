@@ -166,6 +166,10 @@ namespace Poisson
       merged_coefficients.resize(n_q_points * data->n_cell_batches());
       quadrature_points.resize(n_q_points * dim * data->n_cell_batches());
 
+      coefficients_eo.resize(data_->get_shape_info().data[0].shape_gradients_collocation_eo.size());
+      for (unsigned int i=0; i<coefficients_eo.size(); ++i)
+        coefficients_eo[i] = data_->get_shape_info().data[0].shape_gradients_collocation_eo[i][0];
+
       if (false && Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
         {
           const auto &              di = data->get_dof_info(0);
@@ -1594,8 +1598,6 @@ namespace Poisson
 #ifdef __ARM_FEATURE_SVE
                   if (n_q_points_1d == 6 && fe_degree == 5)
                     {
-                      const VectorizedArrayType* coefficients_eo =
-                        phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin();
                       for (unsigned int i=0; i<6*6; i+=3)
                         {
                           const auto in_ptr = phi.begin_values() + c * n_q_points + i;
@@ -1618,8 +1620,8 @@ namespace Poisson
                           xp2 = svsub_f64_z(svptrue_b64(), t0, xm2);
                           xm2 = svadd_f64_z(svptrue_b64(), t0, xm2);
 
-                          c0 = svdup_n_f64(coefficients_eo[0][0]);
-                          c1 = svdup_n_f64(coefficients_eo[15][0]);
+                          c0 = svdup_n_f64(coefficients_eo[0]);
+                          c1 = svdup_n_f64(coefficients_eo[15]);
                           sp0 = svmul_f64_z(svptrue_b64(), xp0, c0);
                           sm0 = svmul_f64_z(svptrue_b64(), xm0, c1);
                           sp1 = svmul_f64_z(svptrue_b64(), xp1, c0);
@@ -1627,8 +1629,8 @@ namespace Poisson
                           sp2 = svmul_f64_z(svptrue_b64(), xp2, c0);
                           sm2 = svmul_f64_z(svptrue_b64(), xm2, c1);
 
-                          c0 = svdup_n_f64(coefficients_eo[1][0]);
-                          c1 = svdup_n_f64(coefficients_eo[16][0]);
+                          c0 = svdup_n_f64(coefficients_eo[1]);
+                          c1 = svdup_n_f64(coefficients_eo[16]);
                           sp3 = svmul_f64_z(svptrue_b64(), xp0, c0);
                           sm3 = svmul_f64_z(svptrue_b64(), xm0, c1);
                           sp4 = svmul_f64_z(svptrue_b64(), xp1, c0);
@@ -1636,8 +1638,8 @@ namespace Poisson
                           sp5 = svmul_f64_z(svptrue_b64(), xp2, c0);
                           sm5 = svmul_f64_z(svptrue_b64(), xm2, c1);
 
-                          c0 = svdup_n_f64(coefficients_eo[2][0]);
-                          c1 = svdup_n_f64(coefficients_eo[17][0]);
+                          c0 = svdup_n_f64(coefficients_eo[2]);
+                          c1 = svdup_n_f64(coefficients_eo[17]);
                           sp6 = svmul_f64_z(svptrue_b64(), xp0, c0);
                           sm6 = svmul_f64_z(svptrue_b64(), xm0, c1);
                           sp7 = svmul_f64_z(svptrue_b64(), xp1, c0);
@@ -1659,8 +1661,8 @@ namespace Poisson
                           xp2 = svsub_f64_z(svptrue_b64(), t0, xm2);
                           xm2 = svadd_f64_z(svptrue_b64(), t0, xm2);
 
-                          c0 = svdup_n_f64(coefficients_eo[3][0]);
-                          c1 = svdup_n_f64(coefficients_eo[12][0]);
+                          c0 = svdup_n_f64(coefficients_eo[3]);
+                          c1 = svdup_n_f64(coefficients_eo[12]);
                           sp0 = svmla_f64_z(svptrue_b64(), sp0, xp0, c0);
                           sm0 = svmla_f64_z(svptrue_b64(), sm0, xm0, c1);
                           sp1 = svmla_f64_z(svptrue_b64(), sp1, xp1, c0);
@@ -1668,8 +1670,8 @@ namespace Poisson
                           sp2 = svmla_f64_z(svptrue_b64(), sp2, xp2, c0);
                           sm2 = svmla_f64_z(svptrue_b64(), sm2, xm2, c1);
 
-                          c0 = svdup_n_f64(coefficients_eo[4][0]);
-                          c1 = svdup_n_f64(coefficients_eo[13][0]);
+                          c0 = svdup_n_f64(coefficients_eo[4]);
+                          c1 = svdup_n_f64(coefficients_eo[13]);
                           sp3 = svmla_f64_z(svptrue_b64(), sp3, xp0, c0);
                           sm3 = svmla_f64_z(svptrue_b64(), sm3, xm0, c1);
                           sp4 = svmla_f64_z(svptrue_b64(), sp4, xp1, c0);
@@ -1677,8 +1679,8 @@ namespace Poisson
                           sp5 = svmla_f64_z(svptrue_b64(), sp5, xp2, c0);
                           sm5 = svmla_f64_z(svptrue_b64(), sm5, xm2, c1);
 
-                          c0 = svdup_n_f64(coefficients_eo[5][0]);
-                          c1 = svdup_n_f64(coefficients_eo[14][0]);
+                          c0 = svdup_n_f64(coefficients_eo[5]);
+                          c1 = svdup_n_f64(coefficients_eo[14]);
                           sp6 = svmla_f64_z(svptrue_b64(), sp6, xp0, c0);
                           sm6 = svmla_f64_z(svptrue_b64(), sm6, xm0, c1);
                           sp7 = svmla_f64_z(svptrue_b64(), sp7, xp1, c0);
@@ -1700,8 +1702,8 @@ namespace Poisson
                           xp2 = svsub_f64_z(svptrue_b64(), t0, xm2);
                           xm2 = svadd_f64_z(svptrue_b64(), t0, xm2);
 
-                          c0 = svdup_n_f64(coefficients_eo[6][0]);
-                          c1 = svdup_n_f64(coefficients_eo[9][0]);
+                          c0 = svdup_n_f64(coefficients_eo[6]);
+                          c1 = svdup_n_f64(coefficients_eo[9]);
                           sp0 = svmla_f64_z(svptrue_b64(), sp0, xp0, c0);
                           sm0 = svmla_f64_z(svptrue_b64(), sm0, xm0, c1);
                           sp1 = svmla_f64_z(svptrue_b64(), sp1, xp1, c0);
@@ -1709,8 +1711,8 @@ namespace Poisson
                           sp2 = svmla_f64_z(svptrue_b64(), sp2, xp2, c0);
                           sm2 = svmla_f64_z(svptrue_b64(), sm2, xm2, c1);
 
-                          c0 = svdup_n_f64(coefficients_eo[7][0]);
-                          c1 = svdup_n_f64(coefficients_eo[10][0]);
+                          c0 = svdup_n_f64(coefficients_eo[7]);
+                          c1 = svdup_n_f64(coefficients_eo[10]);
                           sp3 = svmla_f64_z(svptrue_b64(), sp3, xp0, c0);
                           sm3 = svmla_f64_z(svptrue_b64(), sm3, xm0, c1);
                           sp4 = svmla_f64_z(svptrue_b64(), sp4, xp1, c0);
@@ -1718,8 +1720,8 @@ namespace Poisson
                           sp5 = svmla_f64_z(svptrue_b64(), sp5, xp2, c0);
                           sm5 = svmla_f64_z(svptrue_b64(), sm5, xm2, c1);
 
-                          c0 = svdup_n_f64(coefficients_eo[8][0]);
-                          c1 = svdup_n_f64(coefficients_eo[11][0]);
+                          c0 = svdup_n_f64(coefficients_eo[8]);
+                          c1 = svdup_n_f64(coefficients_eo[11]);
                           sp6 = svmla_f64_z(svptrue_b64(), sp6, xp0, c0);
                           sm6 = svmla_f64_z(svptrue_b64(), sm6, xm0, c1);
                           sp7 = svmla_f64_z(svptrue_b64(), sp7, xp1, c0);
@@ -1786,8 +1788,6 @@ namespace Poisson
 #ifdef __ARM_FEATURE_SVE
                   if (n_q_points_1d == 6 && fe_degree == 5)
                     {
-                      const VectorizedArrayType* coefficients_eo =
-                        phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin();
                       for (unsigned int i=0; i<6; i+=3)
                         {
                           const auto in_ptr = phi.begin_values()
@@ -1810,8 +1810,8 @@ namespace Poisson
                           xp2 = svsub_f64_z(svptrue_b64(), t0, xm2);
                           xm2 = svadd_f64_z(svptrue_b64(), t0, xm2);
 
-                          c0 = svdup_n_f64(coefficients_eo[0][0]);
-                          c1 = svdup_n_f64(coefficients_eo[15][0]);
+                          c0 = svdup_n_f64(coefficients_eo[0]);
+                          c1 = svdup_n_f64(coefficients_eo[15]);
                           sp0 = svmul_f64_z(svptrue_b64(), xp0, c0);
                           sm0 = svmul_f64_z(svptrue_b64(), xm0, c1);
                           sp1 = svmul_f64_z(svptrue_b64(), xp1, c0);
@@ -1819,8 +1819,8 @@ namespace Poisson
                           sp2 = svmul_f64_z(svptrue_b64(), xp2, c0);
                           sm2 = svmul_f64_z(svptrue_b64(), xm2, c1);
 
-                          c0 = svdup_n_f64(coefficients_eo[1][0]);
-                          c1 = svdup_n_f64(coefficients_eo[16][0]);
+                          c0 = svdup_n_f64(coefficients_eo[1]);
+                          c1 = svdup_n_f64(coefficients_eo[16]);
                           sp3 = svmul_f64_z(svptrue_b64(), xp0, c0);
                           sm3 = svmul_f64_z(svptrue_b64(), xm0, c1);
                           sp4 = svmul_f64_z(svptrue_b64(), xp1, c0);
@@ -1828,8 +1828,8 @@ namespace Poisson
                           sp5 = svmul_f64_z(svptrue_b64(), xp2, c0);
                           sm5 = svmul_f64_z(svptrue_b64(), xm2, c1);
 
-                          c0 = svdup_n_f64(coefficients_eo[2][0]);
-                          c1 = svdup_n_f64(coefficients_eo[17][0]);
+                          c0 = svdup_n_f64(coefficients_eo[2]);
+                          c1 = svdup_n_f64(coefficients_eo[17]);
                           sp6 = svmul_f64_z(svptrue_b64(), xp0, c0);
                           sm6 = svmul_f64_z(svptrue_b64(), xm0, c1);
                           sp7 = svmul_f64_z(svptrue_b64(), xp1, c0);
@@ -1851,8 +1851,8 @@ namespace Poisson
                           xp2 = svsub_f64_z(svptrue_b64(), t0, xm2);
                           xm2 = svadd_f64_z(svptrue_b64(), t0, xm2);
 
-                          c0 = svdup_n_f64(coefficients_eo[3][0]);
-                          c1 = svdup_n_f64(coefficients_eo[12][0]);
+                          c0 = svdup_n_f64(coefficients_eo[3]);
+                          c1 = svdup_n_f64(coefficients_eo[12]);
                           sp0 = svmla_f64_z(svptrue_b64(), sp0, xp0, c0);
                           sm0 = svmla_f64_z(svptrue_b64(), sm0, xm0, c1);
                           sp1 = svmla_f64_z(svptrue_b64(), sp1, xp1, c0);
@@ -1860,8 +1860,8 @@ namespace Poisson
                           sp2 = svmla_f64_z(svptrue_b64(), sp2, xp2, c0);
                           sm2 = svmla_f64_z(svptrue_b64(), sm2, xm2, c1);
 
-                          c0 = svdup_n_f64(coefficients_eo[4][0]);
-                          c1 = svdup_n_f64(coefficients_eo[13][0]);
+                          c0 = svdup_n_f64(coefficients_eo[4]);
+                          c1 = svdup_n_f64(coefficients_eo[13]);
                           sp3 = svmla_f64_z(svptrue_b64(), sp3, xp0, c0);
                           sm3 = svmla_f64_z(svptrue_b64(), sm3, xm0, c1);
                           sp4 = svmla_f64_z(svptrue_b64(), sp4, xp1, c0);
@@ -1869,8 +1869,8 @@ namespace Poisson
                           sp5 = svmla_f64_z(svptrue_b64(), sp5, xp2, c0);
                           sm5 = svmla_f64_z(svptrue_b64(), sm5, xm2, c1);
 
-                          c0 = svdup_n_f64(coefficients_eo[5][0]);
-                          c1 = svdup_n_f64(coefficients_eo[14][0]);
+                          c0 = svdup_n_f64(coefficients_eo[5]);
+                          c1 = svdup_n_f64(coefficients_eo[14]);
                           sp6 = svmla_f64_z(svptrue_b64(), sp6, xp0, c0);
                           sm6 = svmla_f64_z(svptrue_b64(), sm6, xm0, c1);
                           sp7 = svmla_f64_z(svptrue_b64(), sp7, xp1, c0);
@@ -1892,8 +1892,8 @@ namespace Poisson
                           xp2 = svsub_f64_z(svptrue_b64(), t0, xm2);
                           xm2 = svadd_f64_z(svptrue_b64(), t0, xm2);
 
-                          c0 = svdup_n_f64(coefficients_eo[6][0]);
-                          c1 = svdup_n_f64(coefficients_eo[9][0]);
+                          c0 = svdup_n_f64(coefficients_eo[6]);
+                          c1 = svdup_n_f64(coefficients_eo[9]);
                           sp0 = svmla_f64_z(svptrue_b64(), sp0, xp0, c0);
                           sm0 = svmla_f64_z(svptrue_b64(), sm0, xm0, c1);
                           sp1 = svmla_f64_z(svptrue_b64(), sp1, xp1, c0);
@@ -1901,8 +1901,8 @@ namespace Poisson
                           sp2 = svmla_f64_z(svptrue_b64(), sp2, xp2, c0);
                           sm2 = svmla_f64_z(svptrue_b64(), sm2, xm2, c1);
 
-                          c0 = svdup_n_f64(coefficients_eo[7][0]);
-                          c1 = svdup_n_f64(coefficients_eo[10][0]);
+                          c0 = svdup_n_f64(coefficients_eo[7]);
+                          c1 = svdup_n_f64(coefficients_eo[10]);
                           sp3 = svmla_f64_z(svptrue_b64(), sp3, xp0, c0);
                           sm3 = svmla_f64_z(svptrue_b64(), sm3, xm0, c1);
                           sp4 = svmla_f64_z(svptrue_b64(), sp4, xp1, c0);
@@ -1910,8 +1910,8 @@ namespace Poisson
                           sp5 = svmla_f64_z(svptrue_b64(), sp5, xp2, c0);
                           sm5 = svmla_f64_z(svptrue_b64(), sm5, xm2, c1);
 
-                          c0 = svdup_n_f64(coefficients_eo[8][0]);
-                          c1 = svdup_n_f64(coefficients_eo[11][0]);
+                          c0 = svdup_n_f64(coefficients_eo[8]);
+                          c1 = svdup_n_f64(coefficients_eo[11]);
                           sp6 = svmla_f64_z(svptrue_b64(), sp6, xp0, c0);
                           sm6 = svmla_f64_z(svptrue_b64(), sm6, xm0, c1);
                           sp7 = svmla_f64_z(svptrue_b64(), sp7, xp1, c0);
@@ -1958,7 +1958,8 @@ namespace Poisson
                         }
                       for (unsigned int i=0; i<6; i+=3)
                         {
-                          const auto in_ptr = phi.begin_values() + c * n_q_points + i * n_q_points;
+                          const auto in_ptr = phi.begin_values() + c * n_q_points
+                            + qz * n_q_points_2d + i * n_q_points;
                           const auto out_ptr = phi_grads + (2 * c) * n_q_points_2d + i * n_q_points;
                           svfloat64_t sp0, sm0, sp1, sm1, sp2, sm2, sp3, sm3, sp4, sm4,
                             sp5, sm5, sp6, sm6, sp7, sm7, sp8, sm8;
@@ -1977,8 +1978,8 @@ namespace Poisson
                           xp2 = svsub_f64_z(svptrue_b64(), t0, xm2);
                           xm2 = svadd_f64_z(svptrue_b64(), t0, xm2);
 
-                          c0 = svdup_n_f64(coefficients_eo[0][0]);
-                          c1 = svdup_n_f64(coefficients_eo[15][0]);
+                          c0 = svdup_n_f64(coefficients_eo[0]);
+                          c1 = svdup_n_f64(coefficients_eo[15]);
                           sp0 = svmul_f64_z(svptrue_b64(), xp0, c0);
                           sm0 = svmul_f64_z(svptrue_b64(), xm0, c1);
                           sp1 = svmul_f64_z(svptrue_b64(), xp1, c0);
@@ -1986,8 +1987,8 @@ namespace Poisson
                           sp2 = svmul_f64_z(svptrue_b64(), xp2, c0);
                           sm2 = svmul_f64_z(svptrue_b64(), xm2, c1);
 
-                          c0 = svdup_n_f64(coefficients_eo[1][0]);
-                          c1 = svdup_n_f64(coefficients_eo[16][0]);
+                          c0 = svdup_n_f64(coefficients_eo[1]);
+                          c1 = svdup_n_f64(coefficients_eo[16]);
                           sp3 = svmul_f64_z(svptrue_b64(), xp0, c0);
                           sm3 = svmul_f64_z(svptrue_b64(), xm0, c1);
                           sp4 = svmul_f64_z(svptrue_b64(), xp1, c0);
@@ -1995,8 +1996,8 @@ namespace Poisson
                           sp5 = svmul_f64_z(svptrue_b64(), xp2, c0);
                           sm5 = svmul_f64_z(svptrue_b64(), xm2, c1);
 
-                          c0 = svdup_n_f64(coefficients_eo[2][0]);
-                          c1 = svdup_n_f64(coefficients_eo[17][0]);
+                          c0 = svdup_n_f64(coefficients_eo[2]);
+                          c1 = svdup_n_f64(coefficients_eo[17]);
                           sp6 = svmul_f64_z(svptrue_b64(), xp0, c0);
                           sm6 = svmul_f64_z(svptrue_b64(), xm0, c1);
                           sp7 = svmul_f64_z(svptrue_b64(), xp1, c0);
@@ -2018,8 +2019,8 @@ namespace Poisson
                           xp2 = svsub_f64_z(svptrue_b64(), t0, xm2);
                           xm2 = svadd_f64_z(svptrue_b64(), t0, xm2);
 
-                          c0 = svdup_n_f64(coefficients_eo[3][0]);
-                          c1 = svdup_n_f64(coefficients_eo[12][0]);
+                          c0 = svdup_n_f64(coefficients_eo[3]);
+                          c1 = svdup_n_f64(coefficients_eo[12]);
                           sp0 = svmla_f64_z(svptrue_b64(), sp0, xp0, c0);
                           sm0 = svmla_f64_z(svptrue_b64(), sm0, xm0, c1);
                           sp1 = svmla_f64_z(svptrue_b64(), sp1, xp1, c0);
@@ -2027,8 +2028,8 @@ namespace Poisson
                           sp2 = svmla_f64_z(svptrue_b64(), sp2, xp2, c0);
                           sm2 = svmla_f64_z(svptrue_b64(), sm2, xm2, c1);
 
-                          c0 = svdup_n_f64(coefficients_eo[4][0]);
-                          c1 = svdup_n_f64(coefficients_eo[13][0]);
+                          c0 = svdup_n_f64(coefficients_eo[4]);
+                          c1 = svdup_n_f64(coefficients_eo[13]);
                           sp3 = svmla_f64_z(svptrue_b64(), sp3, xp0, c0);
                           sm3 = svmla_f64_z(svptrue_b64(), sm3, xm0, c1);
                           sp4 = svmla_f64_z(svptrue_b64(), sp4, xp1, c0);
@@ -2036,8 +2037,8 @@ namespace Poisson
                           sp5 = svmla_f64_z(svptrue_b64(), sp5, xp2, c0);
                           sm5 = svmla_f64_z(svptrue_b64(), sm5, xm2, c1);
 
-                          c0 = svdup_n_f64(coefficients_eo[5][0]);
-                          c1 = svdup_n_f64(coefficients_eo[14][0]);
+                          c0 = svdup_n_f64(coefficients_eo[5]);
+                          c1 = svdup_n_f64(coefficients_eo[14]);
                           sp6 = svmla_f64_z(svptrue_b64(), sp6, xp0, c0);
                           sm6 = svmla_f64_z(svptrue_b64(), sm6, xm0, c1);
                           sp7 = svmla_f64_z(svptrue_b64(), sp7, xp1, c0);
@@ -2059,8 +2060,8 @@ namespace Poisson
                           xp2 = svsub_f64_z(svptrue_b64(), t0, xm2);
                           xm2 = svadd_f64_z(svptrue_b64(), t0, xm2);
 
-                          c0 = svdup_n_f64(coefficients_eo[6][0]);
-                          c1 = svdup_n_f64(coefficients_eo[9][0]);
+                          c0 = svdup_n_f64(coefficients_eo[6]);
+                          c1 = svdup_n_f64(coefficients_eo[9]);
                           sp0 = svmla_f64_z(svptrue_b64(), sp0, xp0, c0);
                           sm0 = svmla_f64_z(svptrue_b64(), sm0, xm0, c1);
                           sp1 = svmla_f64_z(svptrue_b64(), sp1, xp1, c0);
@@ -2068,8 +2069,8 @@ namespace Poisson
                           sp2 = svmla_f64_z(svptrue_b64(), sp2, xp2, c0);
                           sm2 = svmla_f64_z(svptrue_b64(), sm2, xm2, c1);
 
-                          c0 = svdup_n_f64(coefficients_eo[7][0]);
-                          c1 = svdup_n_f64(coefficients_eo[10][0]);
+                          c0 = svdup_n_f64(coefficients_eo[7]);
+                          c1 = svdup_n_f64(coefficients_eo[10]);
                           sp3 = svmla_f64_z(svptrue_b64(), sp3, xp0, c0);
                           sm3 = svmla_f64_z(svptrue_b64(), sm3, xm0, c1);
                           sp4 = svmla_f64_z(svptrue_b64(), sp4, xp1, c0);
@@ -2077,8 +2078,8 @@ namespace Poisson
                           sp5 = svmla_f64_z(svptrue_b64(), sp5, xp2, c0);
                           sm5 = svmla_f64_z(svptrue_b64(), sm5, xm2, c1);
 
-                          c0 = svdup_n_f64(coefficients_eo[8][0]);
-                          c1 = svdup_n_f64(coefficients_eo[11][0]);
+                          c0 = svdup_n_f64(coefficients_eo[8]);
+                          c1 = svdup_n_f64(coefficients_eo[11]);
                           sp6 = svmla_f64_z(svptrue_b64(), sp6, xp0, c0);
                           sm6 = svmla_f64_z(svptrue_b64(), sm6, xm0, c1);
                           sp7 = svmla_f64_z(svptrue_b64(), sp7, xp1, c0);
@@ -2350,6 +2351,8 @@ namespace Poisson
     // for local_apply_construct_q:
     // Data in all quadrature points in collocated space
     AlignedVector<VectorizedArrayType> quadrature_points;
+
+    AlignedVector<Number> coefficients_eo;
 
     std::vector<unsigned int>  compressed_dof_indices;
     std::vector<unsigned char> all_indices_uniform;
