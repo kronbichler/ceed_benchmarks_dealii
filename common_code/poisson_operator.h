@@ -2221,14 +2221,14 @@ namespace Poisson
                           svfloat64_t r2 = svmul_f64_z(svptrue_b64(), d2, t0);
                           r2             = svmla_f64_z(svptrue_b64(), r2, d4, t1);
                           r2             = svmla_f64_z(svptrue_b64(), r2, d5, t2);
-                          svst1_f64(svptrue_b64(), r0, phi_grads[qxy + c * 2 * n_q_points_2d].data);
+                          svst1_f64(svptrue_b64(), phi_grads[qxy + c * 2 * n_q_points_2d].data, r0);
                           svst1_f64(svptrue_b64(),
-                                    r1,
-                                    phi_grads[qxy + (c * 2 + 1) * n_q_points_2d].data);
+                                    phi_grads[qxy + (c * 2 + 1) * n_q_points_2d].data,
+                                    r1);
                           svst1_f64(
                             svptrue_b64(),
-                            r2,
-                            phi_grads[q + 2 * n_components * n_q_points_2d + c * n_q_points].data);
+                            phi_grads[q + 2 * n_components * n_q_points_2d + c * n_q_points].data,
+                            r2);
                         }
                     }
 #else
