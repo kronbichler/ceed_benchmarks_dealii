@@ -2188,6 +2188,7 @@ namespace Poisson
                            merged_coefficients[cell * n_q_points + q][5] *
                              phi_grads[q + 2 * n_components * n_q_points_2d + c * n_q_points]);
                       }
+#endif
                   for (unsigned int c = 0; c < n_components; ++c)
                     {
 #ifdef __ARM_FEATURE_SVE
