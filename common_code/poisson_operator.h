@@ -1956,11 +1956,11 @@ namespace Poisson
                           svst1_f64(svptrue_b64(), out_ptr[6*3+2].data,
                                     svsub_f64_z(svptrue_b64(), sp8, sm8));
                         }
-                      for (unsigned int i=0; i<6; i+=3)
+                      for (unsigned int i=0; i<36; i+=18)
                         {
                           const auto in_ptr = phi.begin_values() + c * n_q_points
-                            + qz * n_q_points_2d + i * n_q_points;
-                          const auto out_ptr = phi_grads + (2 * c) * n_q_points_2d + i * n_q_points;
+                            + qz * n_q_points_2d + i;
+                          const auto out_ptr = phi_grads + (2 * c) * n_q_points_2d + i;
                           svfloat64_t sp0, sm0, sp1, sm1, sp2, sm2, sp3, sm3, sp4, sm4,
                             sp5, sm5, sp6, sm6, sp7, sm7, sp8, sm8;
                           svfloat64_t t0, xp0, xm0, xp1, xm1, xp2, xm2, c0, c1;
