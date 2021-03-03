@@ -1599,7 +1599,7 @@ namespace Poisson
                       for (unsigned int i=0; i<6*6; i+=3)
                         {
                           const auto in_ptr = phi.begin_values() + c * n_q_points + i;
-                          const auto out_ptr = phi.begin_values() + c * n_q_points + i +
+                          const auto out_ptr = phi_grads + c * n_q_points + i +
                             (2 * n_components * n_q_points_2d);
                           svfloat64_t sp0, sm0, sp1, sm1, sp2, sm2, sp3, sm3, sp4, sm4,
                             sp5, sm5, sp6, sm6, sp7, sm7, sp8, sm8;
