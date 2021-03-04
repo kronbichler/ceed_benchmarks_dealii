@@ -2400,13 +2400,13 @@ namespace Poisson
                                         svadd_f64_z(svptrue_b64(), sp2, sm2));
                               svst1_f64(svptrue_b64(),
                                         out_ptr[6 * 5].data,
-                                        svsub_f64_z(svptrue_b64(), sp0, sm0));
+                                        svsub_f64_z(svptrue_b64(), sm0, sp0));
                               svst1_f64(svptrue_b64(),
                                         out_ptr[6 * 5 + 1].data,
-                                        svsub_f64_z(svptrue_b64(), sp1, sm1));
+                                        svsub_f64_z(svptrue_b64(), sm1, sp1));
                               svst1_f64(svptrue_b64(),
                                         out_ptr[6 * 5 + 2].data,
-                                        svsub_f64_z(svptrue_b64(), sp2, sm2));
+                                        svsub_f64_z(svptrue_b64(), sm2, sp2));
                               svst1_f64(svptrue_b64(),
                                         out_ptr[6 * 1].data,
                                         svadd_f64_z(svptrue_b64(), sp3, sm3));
@@ -2418,13 +2418,13 @@ namespace Poisson
                                         svadd_f64_z(svptrue_b64(), sp5, sm5));
                               svst1_f64(svptrue_b64(),
                                         out_ptr[6 * 4].data,
-                                        svsub_f64_z(svptrue_b64(), sp3, sm3));
+                                        svsub_f64_z(svptrue_b64(), sm3, sp3));
                               svst1_f64(svptrue_b64(),
                                         out_ptr[6 * 4 + 1].data,
-                                        svsub_f64_z(svptrue_b64(), sp4, sm4));
+                                        svsub_f64_z(svptrue_b64(), sm4, sp4));
                               svst1_f64(svptrue_b64(),
                                         out_ptr[6 * 4 + 2].data,
-                                        svsub_f64_z(svptrue_b64(), sp5, sm5));
+                                        svsub_f64_z(svptrue_b64(), sm5, sp5));
                               svst1_f64(svptrue_b64(),
                                         out_ptr[6 * 2].data,
                                         svadd_f64_z(svptrue_b64(), sp6, sm6));
@@ -2436,13 +2436,13 @@ namespace Poisson
                                         svadd_f64_z(svptrue_b64(), sp8, sm8));
                               svst1_f64(svptrue_b64(),
                                         out_ptr[6 * 3].data,
-                                        svsub_f64_z(svptrue_b64(), sp6, sm6));
+                                        svsub_f64_z(svptrue_b64(), sm6, sp6));
                               svst1_f64(svptrue_b64(),
                                         out_ptr[6 * 3 + 1].data,
-                                        svsub_f64_z(svptrue_b64(), sp7, sm7));
+                                        svsub_f64_z(svptrue_b64(), sm7, sp7));
                               svst1_f64(svptrue_b64(),
                                         out_ptr[6 * 3 + 2].data,
-                                        svsub_f64_z(svptrue_b64(), sp8, sm8));
+                                        svsub_f64_z(svptrue_b64(), sm8, sp8));
                             }
                           for (unsigned int i = 0; i < 36; i += 18)
                             {
@@ -2594,17 +2594,17 @@ namespace Poisson
                                         out_ptr[3].data,
                                         svadd_f64_z(svptrue_b64(),
                                                     svld1_f64(svptrue_b64(), out_ptr[3].data),
-                                                    svsub_f64_z(svptrue_b64(), sp6, sm6)));
+                                                    svsub_f64_z(svptrue_b64(), sm6, sp6)));
                               svst1_f64(svptrue_b64(),
                                         out_ptr[4].data,
                                         svadd_f64_z(svptrue_b64(),
                                                     svld1_f64(svptrue_b64(), out_ptr[4].data),
-                                                    svsub_f64_z(svptrue_b64(), sp3, sm3)));
+                                                    svsub_f64_z(svptrue_b64(), sm3, sp3)));
                               svst1_f64(svptrue_b64(),
                                         out_ptr[5].data,
                                         svadd_f64_z(svptrue_b64(),
                                                     svld1_f64(svptrue_b64(), out_ptr[5].data),
-                                                    svsub_f64_z(svptrue_b64(), sp0, sm0)));
+                                                    svsub_f64_z(svptrue_b64(), sm0, sp0)));
                               svst1_f64(svptrue_b64(),
                                         out_ptr[6].data,
                                         svadd_f64_z(svptrue_b64(),
@@ -2624,17 +2624,17 @@ namespace Poisson
                                         out_ptr[9].data,
                                         svadd_f64_z(svptrue_b64(),
                                                     svld1_f64(svptrue_b64(), out_ptr[9].data),
-                                                    svsub_f64_z(svptrue_b64(), sp7, sm7)));
+                                                    svsub_f64_z(svptrue_b64(), sm7, sp7)));
                               svst1_f64(svptrue_b64(),
                                         out_ptr[10].data,
                                         svadd_f64_z(svptrue_b64(),
                                                     svld1_f64(svptrue_b64(), out_ptr[10].data),
-                                                    svsub_f64_z(svptrue_b64(), sp4, sm4)));
+                                                    svsub_f64_z(svptrue_b64(), sm4, sp4)));
                               svst1_f64(svptrue_b64(),
                                         out_ptr[11].data,
                                         svadd_f64_z(svptrue_b64(),
                                                     svld1_f64(svptrue_b64(), out_ptr[11].data),
-                                                    svsub_f64_z(svptrue_b64(), sp1, sm1)));
+                                                    svsub_f64_z(svptrue_b64(), sm1, sp1)));
                               svst1_f64(svptrue_b64(),
                                         out_ptr[12].data,
                                         svadd_f64_z(svptrue_b64(),
@@ -2654,17 +2654,17 @@ namespace Poisson
                                         out_ptr[15].data,
                                         svadd_f64_z(svptrue_b64(),
                                                     svld1_f64(svptrue_b64(), out_ptr[15].data),
-                                                    svsub_f64_z(svptrue_b64(), sp8, sm8)));
+                                                    svsub_f64_z(svptrue_b64(), sm8, sp8)));
                               svst1_f64(svptrue_b64(),
                                         out_ptr[16].data,
                                         svadd_f64_z(svptrue_b64(),
                                                     svld1_f64(svptrue_b64(), out_ptr[16].data),
-                                                    svsub_f64_z(svptrue_b64(), sp5, sm5)));
+                                                    svsub_f64_z(svptrue_b64(), sm5, sp5)));
                               svst1_f64(svptrue_b64(),
                                         out_ptr[17].data,
                                         svadd_f64_z(svptrue_b64(),
                                                     svld1_f64(svptrue_b64(), out_ptr[17].data),
-                                                    svsub_f64_z(svptrue_b64(), sp2, sm2)));
+                                                    svsub_f64_z(svptrue_b64(), sm2, sp2)));
                             }
                         }
                       else
@@ -2836,17 +2836,17 @@ namespace Poisson
                                     out_ptr[36 * 5].data,
                                     svadd_f64_z(svptrue_b64(),
                                                 svld1_f64(svptrue_b64(), out_ptr[36 * 5].data),
-                                                svsub_f64_z(svptrue_b64(), sp0, sm0)));
+                                                svsub_f64_z(svptrue_b64(), sm0, sp0)));
                           svst1_f64(svptrue_b64(),
                                     out_ptr[36 * 5 + 1].data,
                                     svadd_f64_z(svptrue_b64(),
                                                 svld1_f64(svptrue_b64(), out_ptr[36 * 5 + 1].data),
-                                                svsub_f64_z(svptrue_b64(), sp1, sm1)));
+                                                svsub_f64_z(svptrue_b64(), sm1, sp1)));
                           svst1_f64(svptrue_b64(),
                                     out_ptr[36 * 5 + 2].data,
                                     svadd_f64_z(svptrue_b64(),
                                                 svld1_f64(svptrue_b64(), out_ptr[36 * 5 + 2].data),
-                                                svsub_f64_z(svptrue_b64(), sp2, sm2)));
+                                                svsub_f64_z(svptrue_b64(), sm2, sp2)));
                           svst1_f64(svptrue_b64(),
                                     out_ptr[36 * 1].data,
                                     svadd_f64_z(svptrue_b64(),
@@ -2866,17 +2866,17 @@ namespace Poisson
                                     out_ptr[36 * 4].data,
                                     svadd_f64_z(svptrue_b64(),
                                                 svld1_f64(svptrue_b64(), out_ptr[36 * 4].data),
-                                                svsub_f64_z(svptrue_b64(), sp3, sm3)));
+                                                svsub_f64_z(svptrue_b64(), sm3, sp3)));
                           svst1_f64(svptrue_b64(),
                                     out_ptr[36 * 4 + 1].data,
                                     svadd_f64_z(svptrue_b64(),
                                                 svld1_f64(svptrue_b64(), out_ptr[36 * 4 + 1].data),
-                                                svsub_f64_z(svptrue_b64(), sp4, sm4)));
+                                                svsub_f64_z(svptrue_b64(), sm4, sp4)));
                           svst1_f64(svptrue_b64(),
                                     out_ptr[36 * 4 + 2].data,
                                     svadd_f64_z(svptrue_b64(),
                                                 svld1_f64(svptrue_b64(), out_ptr[36 * 4 + 2].data),
-                                                svsub_f64_z(svptrue_b64(), sp5, sm5)));
+                                                svsub_f64_z(svptrue_b64(), sm5, sp5)));
                           svst1_f64(svptrue_b64(),
                                     out_ptr[36 * 2].data,
                                     svadd_f64_z(svptrue_b64(),
@@ -2896,17 +2896,17 @@ namespace Poisson
                                     out_ptr[36 * 3].data,
                                     svadd_f64_z(svptrue_b64(),
                                                 svld1_f64(svptrue_b64(), out_ptr[36 * 3].data),
-                                                svsub_f64_z(svptrue_b64(), sp6, sm6)));
+                                                svsub_f64_z(svptrue_b64(), sm6, sp6)));
                           svst1_f64(svptrue_b64(),
                                     out_ptr[36 * 3 + 1].data,
                                     svadd_f64_z(svptrue_b64(),
                                                 svld1_f64(svptrue_b64(), out_ptr[36 * 3 + 1].data),
-                                                svsub_f64_z(svptrue_b64(), sp7, sm7)));
+                                                svsub_f64_z(svptrue_b64(), sm7, sp7)));
                           svst1_f64(svptrue_b64(),
                                     out_ptr[36 * 3 + 2].data,
                                     svadd_f64_z(svptrue_b64(),
                                                 svld1_f64(svptrue_b64(), out_ptr[36 * 3 + 2].data),
-                                                svsub_f64_z(svptrue_b64(), sp8, sm8)));
+                                                svsub_f64_z(svptrue_b64(), sm8, sp8)));
                         }
                     }
                   else
