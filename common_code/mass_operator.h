@@ -146,7 +146,7 @@ namespace Mass
                                    const std::pair<unsigned int, unsigned int> &cell_range) const
     {
       FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number, VectorizedArrayType>
-                                                                                             phi_read(data);
+        phi_read(data);
       FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number, VectorizedArrayType> phi(
         data);
       for (unsigned int cell = cell_range.first; cell < cell_range.second; ++cell)
@@ -352,32 +352,33 @@ namespace Mass
                            const Number beta_old) const
     {
       Tensor<1, 7, VectorizedArray<Number>> sums;
-      this->data->cell_loop(&MassOperator::local_apply_cell,
-                            this,
-                            h,
-                            d,
-                            [&](const unsigned int start_range, const unsigned int end_range) {
-                              do_cg_update4b<1, Number, true>(start_range,
-                                                              end_range,
-                                                              h.begin(),
-                                                              x.begin(),
-                                                              g.begin(),
-                                                              d.begin(),
-                                                              prec.get_vector().begin(),
-                                                              alpha,
-                                                              beta,
-                                                              alpha_old,
-                                                              beta_old);
-                            },
-                            [&](const unsigned int start_range, const unsigned int end_range) {
-                              do_cg_update3b<1, Number>(start_range,
-                                                        end_range,
-                                                        g.begin(),
-                                                        d.begin(),
-                                                        h.begin(),
-                                                        prec.get_vector().begin(),
-                                                        sums);
-                            });
+      this->data->cell_loop(
+        &MassOperator::local_apply_cell,
+        this,
+        h,
+        d,
+        [&](const unsigned int start_range, const unsigned int end_range) {
+          do_cg_update4b<1, Number, true>(start_range,
+                                          end_range,
+                                          h.begin(),
+                                          x.begin(),
+                                          g.begin(),
+                                          d.begin(),
+                                          prec.get_vector().begin(),
+                                          alpha,
+                                          beta,
+                                          alpha_old,
+                                          beta_old);
+        },
+        [&](const unsigned int start_range, const unsigned int end_range) {
+          do_cg_update3b<1, Number>(start_range,
+                                    end_range,
+                                    g.begin(),
+                                    d.begin(),
+                                    h.begin(),
+                                    prec.get_vector().begin(),
+                                    sums);
+        });
 
       dealii::Tensor<1, 7> results;
       for (unsigned int i = 0; i < 7; ++i)
@@ -418,8 +419,14 @@ namespace Mass
         {
           phi.reinit(cell);
           if (fe_degree > 2)
-            read_dof_values_compressed<dim, fe_degree, 1, value_type>(
-              src, compressed_dof_indices, all_indices_uniform, cell, phi.begin_dof_values());
+            read_dof_values_compressed<dim, fe_degree, n_q_points_1d, 1, value_type>(
+              src,
+              compressed_dof_indices,
+              all_indices_uniform,
+              cell,
+              {},
+              true,
+              phi.begin_dof_values());
           else
             phi.read_dof_values(src);
           phi.evaluate(true, false);
@@ -427,8 +434,14 @@ namespace Mass
             phi.submit_value(phi.get_value(q), q);
           phi.integrate(true, false);
           if (fe_degree > 2)
-            distribute_local_to_global_compressed<dim, fe_degree, 1, Number>(
-              dst, compressed_dof_indices, all_indices_uniform, cell, phi.begin_dof_values());
+            distribute_local_to_global_compressed<dim, fe_degree, n_q_points_1d, 1, value_type>(
+              dst,
+              compressed_dof_indices,
+              all_indices_uniform,
+              cell,
+              {},
+              true,
+              phi.begin_dof_values());
           else
             phi.distribute_local_to_global(dst);
         }

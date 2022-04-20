@@ -163,7 +163,7 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
   matrix_free->initialize_dof_vector(input);
   matrix_free->initialize_dof_vector(output);
   matrix_free->initialize_dof_vector(tmp);
-  for (unsigned int i = 0; i < input.local_size(); ++i)
+  for (unsigned int i = 0; i < input.locally_owned_size(); ++i)
     input.local_element(i) = i % 8;
 
   Utilities::MPI::MinMaxAvg data = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD);
@@ -179,7 +179,7 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
   matrix_free->initialize_dof_vector(diag_mat.get_vector());
   output = 1.;
   mass_operator.vmult(diag_mat.get_vector(), output);
-  for (unsigned int i = 0; i < diag_mat.get_vector().local_size(); ++i)
+  for (unsigned int i = 0; i < diag_mat.get_vector().locally_owned_size(); ++i)
     diag_mat.get_vector().local_element(i) = 1. / diag_mat.get_vector().local_element(i);
   if (short_output == false)
     {

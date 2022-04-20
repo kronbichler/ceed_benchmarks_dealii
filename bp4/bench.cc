@@ -152,7 +152,7 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
   tmp.reinit(dim);
   laplace_operator.initialize_dof_vector(tmp);
   for (unsigned int d = 0; d < dim; ++d)
-    for (unsigned int i = 0; i < input.block(0).local_size(); ++i)
+    for (unsigned int i = 0; i < input.block(0).locally_owned_size(); ++i)
       if (!constraints.is_constrained(input.block(0).get_partitioner()->local_to_global(i)))
         input.block(d).local_element(i) = (i + d) % 8;
 
@@ -329,7 +329,8 @@ do_test(const int s_in, const bool compact_output)
 
   if (s_in < 1)
     {
-      unsigned int s = 1 + std::log2(Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD));
+      unsigned int s =
+        1 + static_cast<unsigned int>(std::log2(Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD)));
       // std::max(3U, static_cast<unsigned int>
       //         (std::log2(1024/fe_degree/fe_degree/fe_degree)));
       if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)

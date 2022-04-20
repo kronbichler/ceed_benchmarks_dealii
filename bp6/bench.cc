@@ -126,7 +126,7 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
   tmp.reinit(dim);
   laplace_operator.initialize_dof_vector(tmp);
   for (unsigned int d = 0; d < dim; ++d)
-    for (unsigned int i = 0; i < input.block(0).local_size(); ++i)
+    for (unsigned int i = 0; i < input.block(0).locally_owned_size(); ++i)
       if (!constraints.is_constrained(input.block(0).get_partitioner()->local_to_global(i)))
         input.block(d).local_element(i) = (i + d) % 8;
 

@@ -15,7 +15,7 @@ public:
         const dealii::LinearAlgebra::distributed::BlockVector<Number> &src) const
   {
     AssertThrow(dst.n_blocks() == dim, dealii::ExcNotImplemented());
-    for (unsigned int i = 0; i < diagonal.local_size(); ++i)
+    for (unsigned int i = 0; i < diagonal.locally_owned_size(); ++i)
       {
         const Number diag = diagonal.local_element(i);
         for (unsigned int d = 0; d < dim; ++d)
@@ -31,7 +31,7 @@ public:
                 dealii::ExcNotImplemented("Dimension mismatch " + std::to_string(dst.size()) +
                                           " vs " + std::to_string(dim) + " x " +
                                           std::to_string(diagonal.size())));
-    for (unsigned int i = 0, c = 0; i < diagonal.local_size(); ++i)
+    for (unsigned int i = 0, c = 0; i < diagonal.locally_owned_size(); ++i)
       {
         const Number diag = diagonal.local_element(i);
         for (unsigned int d = 0; d < dim; ++d, ++c)

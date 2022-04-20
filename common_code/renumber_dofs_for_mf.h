@@ -207,6 +207,7 @@ Renumber<dim, Number, VectorizedArrayType>::get_assembly_result(
       default:
         assert(false);
     }
+  return {};
 }
 
 template <int dim, typename Number, typename VectorizedArrayType>
@@ -226,6 +227,7 @@ Renumber<dim, Number, VectorizedArrayType>::get_renumber_func() const
       default:
         assert(false);
     }
+  return {};
 }
 
 template <int dim, typename Number, typename VectorizedArrayType>
@@ -242,6 +244,7 @@ Renumber<dim, Number, VectorizedArrayType>::get_grouping_result(
       default:
         assert(false);
     }
+  return {};
 }
 
 template <int dim, typename Number, typename VectorizedArrayType>

@@ -21,7 +21,8 @@ namespace Poisson
   using namespace dealii;
 
   template <typename Number>
-  inline DEAL_II_ALWAYS_INLINE Number do_invert(Tensor<2, 2, Number> &t)
+  inline DEAL_II_ALWAYS_INLINE Number
+  do_invert(Tensor<2, 2, Number> &t)
   {
     const Number det     = t[0][0] * t[1][1] - t[1][0] * t[0][1];
     const Number inv_det = 1.0 / det;
@@ -35,7 +36,8 @@ namespace Poisson
 
 
   template <typename Number>
-  inline DEAL_II_ALWAYS_INLINE Number do_invert(Tensor<2, 3, Number> &t)
+  inline DEAL_II_ALWAYS_INLINE Number
+  do_invert(Tensor<2, 3, Number> &t)
   {
     const Number tr00    = t[1][1] * t[2][2] - t[1][2] * t[2][1];
     const Number tr10    = t[1][2] * t[2][0] - t[1][0] * t[2][2];
@@ -174,7 +176,7 @@ namespace Poisson
         {
           const auto &              di = data->get_dof_info(0);
           const auto &              ti = data->get_task_info();
-          std::vector<unsigned int> distances(di.vector_partitioner->local_size() / 64 + 1,
+          std::vector<unsigned int> distances(di.vector_partitioner->locally_owned_size() / 64 + 1,
                                               numbers::invalid_unsigned_int);
           for (unsigned int id =
                  di.cell_loop_pre_list_index[ti.partition_row_index[ti.partition_row_index.size() -
@@ -526,35 +528,35 @@ namespace Poisson
                            const Number beta_old) const
     {
       Tensor<1, 7, VectorizedArray<Number>> sums;
-      this->data->cell_loop(&LaplaceOperator::template local_apply_linear_geo<false>,
-                            this,
-                            h,
-                            d,
-                            [&](const unsigned int start_range, const unsigned int end_range) {
-                              for (unsigned int bl = 0; bl < ::internal::get_n_blocks(x); ++bl)
-                                do_cg_update4b<1, Number, true>(
-                                  start_range,
-                                  end_range,
-                                  ::internal::get_block(h, bl).begin(),
-                                  ::internal::get_block(x, bl).begin(),
-                                  ::internal::get_block(g, bl).begin(),
-                                  ::internal::get_block(d, bl).begin(),
-                                  prec.get_vector().begin(),
-                                  alpha,
-                                  beta,
-                                  alpha_old,
-                                  beta_old);
-                            },
-                            [&](const unsigned int start_range, const unsigned int end_range) {
-                              for (unsigned int bl = 0; bl < ::internal::get_n_blocks(x); ++bl)
-                                do_cg_update3b<1, Number>(start_range,
-                                                          end_range,
-                                                          ::internal::get_block(g, bl).begin(),
-                                                          ::internal::get_block(d, bl).begin(),
-                                                          ::internal::get_block(h, bl).begin(),
-                                                          prec.get_vector().begin(),
-                                                          sums);
-                            });
+      this->data->cell_loop(
+        &LaplaceOperator::template local_apply_linear_geo<false>,
+        this,
+        h,
+        d,
+        [&](const unsigned int start_range, const unsigned int end_range) {
+          for (unsigned int bl = 0; bl < ::internal::get_n_blocks(x); ++bl)
+            do_cg_update4b<1, Number, true>(start_range,
+                                            end_range,
+                                            ::internal::get_block(h, bl).begin(),
+                                            ::internal::get_block(x, bl).begin(),
+                                            ::internal::get_block(g, bl).begin(),
+                                            ::internal::get_block(d, bl).begin(),
+                                            prec.get_vector().begin(),
+                                            alpha,
+                                            beta,
+                                            alpha_old,
+                                            beta_old);
+        },
+        [&](const unsigned int start_range, const unsigned int end_range) {
+          for (unsigned int bl = 0; bl < ::internal::get_n_blocks(x); ++bl)
+            do_cg_update3b<1, Number>(start_range,
+                                      end_range,
+                                      ::internal::get_block(g, bl).begin(),
+                                      ::internal::get_block(d, bl).begin(),
+                                      ::internal::get_block(h, bl).begin(),
+                                      prec.get_vector().begin(),
+                                      sums);
+        });
 
       dealii::Tensor<1, 7> results;
       for (unsigned int i = 0; i < 7; ++i)
@@ -753,7 +755,7 @@ namespace Poisson
           phi.distribute_local_to_global(diag);
         }
       diag.compress(VectorOperation::add);
-      for (unsigned int i = 0; i < diag.local_size(); ++i)
+      for (unsigned int i = 0; i < diag.locally_owned_size(); ++i)
         if (diag.local_element(i) == 0.)
           diag.local_element(i) = 1.;
         else
@@ -1585,16 +1587,19 @@ namespace Poisson
                   if (fe_degree > 2 &&
                       phi.get_shape_info().data[0].element_type !=
                         dealii::internal::MatrixFreeFunctions::tensor_symmetric_collocation)
-                    dealii::internal::EvaluatorTensorProduct<dealii::internal::evaluate_evenodd,
-                                                             dim,
-                                                             fe_degree + 1,
-                                                             n_q_points_1d,
-                                                             VectorizedArrayType,
-                                                             VectorizedArrayType>::
-                      template apply<2, true, false, 0>(
-                        phi.get_shape_info().data[0].shape_values_eo.begin(),
-                        phi.begin_values() + c * n_q_points,
-                        phi.begin_values() + c * n_q_points);
+                    {
+                      dealii::internal::EvaluatorTensorProduct<dealii::internal::evaluate_evenodd,
+                                                               dim,
+                                                               fe_degree + 1,
+                                                               n_q_points_1d,
+                                                               VectorizedArrayType,
+                                                               VectorizedArrayType>::
+                        template apply<2, true, false, 0>(
+                          phi.get_shape_info().data[0].shape_values_eo.begin(),
+                          phi.begin_values() + c * n_q_points,
+                          phi.begin_values() + c * n_q_points);
+                    }
+
 #ifdef __ARM_FEATURE_SVE
                   if (n_q_points_1d == 6 && fe_degree == 5)
                     {

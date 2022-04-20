@@ -87,7 +87,7 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
   mass_operator.initialize_dof_vector(input);
   mass_operator.initialize_dof_vector(output);
   for (unsigned int d = 0; d < dim; ++d)
-    for (unsigned int i = 0; i < input.block(d).local_size(); ++i)
+    for (unsigned int i = 0; i < input.block(d).locally_owned_size(); ++i)
       input.block(d).local_element(i) = (i + d) % 8;
 
   LinearAlgebra::distributed::BlockVector<double> tmp;
@@ -96,7 +96,7 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
   mass_operator.vmult(tmp, output);
   DiagonalMatrixBlocked<dim, double> diag_mat;
   diag_mat.diagonal = tmp.block(0);
-  for (unsigned int i = 0; i < tmp.block(0).local_size(); ++i)
+  for (unsigned int i = 0; i < tmp.block(0).locally_owned_size(); ++i)
     diag_mat.diagonal.local_element(i) = 1. / tmp.block(0).local_element(i);
   if (short_output == false)
     {

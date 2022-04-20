@@ -77,7 +77,8 @@ cg_update1(dealii::LinearAlgebra::distributed::Vector<Number> &      r,
     reinterpret_cast<dealii::VectorizedArray<Number> *>(r.begin());
   const dealii::VectorizedArray<Number> *arr_h =
     reinterpret_cast<const dealii::VectorizedArray<Number> *>(h.begin());
-  for (unsigned int i = 0; i < r.local_size() / dealii::VectorizedArray<Number>::size(); ++i)
+  for (unsigned int i = 0; i < r.locally_owned_size() / dealii::VectorizedArray<Number>::size();
+       ++i)
     {
       dealii::VectorizedArray<Number> arr_prec;
       for (unsigned int v = 0; v < dealii::VectorizedArray<Number>::size(); ++v)
@@ -87,9 +88,9 @@ cg_update1(dealii::LinearAlgebra::distributed::Vector<Number> &      r,
       norm_r += arr_r[i] * arr_r[i];
       prod_gh += arr_r[i] * arr_prec * arr_r[i];
     }
-  for (unsigned int i = (r.local_size() / dealii::VectorizedArray<Number>::size()) *
+  for (unsigned int i = (r.locally_owned_size() / dealii::VectorizedArray<Number>::size()) *
                         dealii::VectorizedArray<Number>::size();
-       i < r.local_size();
+       i < r.locally_owned_size();
        ++i)
     {
       r.local_element(i) += alpha * h.local_element(i);
@@ -126,7 +127,8 @@ cg_update1(dealii::LinearAlgebra::distributed::BlockVector<Number> &      r,
     arr_h[d] = reinterpret_cast<const dealii::VectorizedArray<Number> *>(h.block(d).begin());
   const dealii::VectorizedArray<Number> *arr_prec =
     reinterpret_cast<const dealii::VectorizedArray<Number> *>(prec.begin());
-  for (unsigned int i = 0; i < r.block(0).local_size() / dealii::VectorizedArray<Number>::size();
+  for (unsigned int i = 0;
+       i < r.block(0).locally_owned_size() / dealii::VectorizedArray<Number>::size();
        ++i)
     for (unsigned int d = 0; d < n_components; ++d)
       {
@@ -134,9 +136,10 @@ cg_update1(dealii::LinearAlgebra::distributed::BlockVector<Number> &      r,
         norm_r += arr_r[d][i] * arr_r[d][i];
         prod_gh += arr_r[d][i] * arr_prec[i] * arr_r[d][i];
       }
-  for (unsigned int i = (r.block(0).local_size() / dealii::VectorizedArray<Number>::size()) *
-                        dealii::VectorizedArray<Number>::size();
-       i < r.block(0).local_size();
+  for (unsigned int i =
+         (r.block(0).locally_owned_size() / dealii::VectorizedArray<Number>::size()) *
+         dealii::VectorizedArray<Number>::size();
+       i < r.block(0).locally_owned_size();
        ++i)
     for (unsigned int d = 0; d < n_components; ++d)
       {
@@ -174,7 +177,8 @@ cg_update2(dealii::LinearAlgebra::distributed::Vector<Number> &      x,
     reinterpret_cast<dealii::VectorizedArray<Number> *>(x.begin());
   const dealii::VectorizedArray<Number> *arr_r =
     reinterpret_cast<const dealii::VectorizedArray<Number> *>(r.begin());
-  for (unsigned int i = 0; i < r.local_size() / dealii::VectorizedArray<Number>::size(); ++i)
+  for (unsigned int i = 0; i < r.locally_owned_size() / dealii::VectorizedArray<Number>::size();
+       ++i)
     {
       dealii::VectorizedArray<Number> arr_prec;
       for (unsigned int v = 0; v < dealii::VectorizedArray<Number>::size(); ++v)
@@ -183,9 +187,9 @@ cg_update2(dealii::LinearAlgebra::distributed::Vector<Number> &      x,
       arr_x[i] += alpha * arr_p[i];
       arr_p[i] = beta * arr_p[i] - arr_prec * arr_r[i];
     }
-  for (unsigned int i = (r.local_size() / dealii::VectorizedArray<Number>::size()) *
+  for (unsigned int i = (r.locally_owned_size() / dealii::VectorizedArray<Number>::size()) *
                         dealii::VectorizedArray<Number>::size();
-       i < r.local_size();
+       i < r.locally_owned_size();
        ++i)
     {
       x.local_element(i) += alpha * p.local_element(i);
@@ -218,16 +222,18 @@ cg_update2(dealii::LinearAlgebra::distributed::BlockVector<Number> &      x,
     arr_p[d] = reinterpret_cast<dealii::VectorizedArray<Number> *>(p.block(d).begin());
   const dealii::VectorizedArray<Number> *arr_prec =
     reinterpret_cast<const dealii::VectorizedArray<Number> *>(prec.begin());
-  for (unsigned int i = 0; i < r.block(0).local_size() / dealii::VectorizedArray<Number>::size();
+  for (unsigned int i = 0;
+       i < r.block(0).locally_owned_size() / dealii::VectorizedArray<Number>::size();
        ++i)
     for (unsigned int d = 0; d < n_components; ++d)
       {
         arr_x[d][i] += alpha * arr_p[d][i];
         arr_p[d][i] = beta * arr_p[d][i] - arr_prec[i] * arr_r[d][i];
       }
-  for (unsigned int i = (r.block(0).local_size() / dealii::VectorizedArray<Number>::size()) *
-                        dealii::VectorizedArray<Number>::size();
-       i < r.block(0).local_size();
+  for (unsigned int i =
+         (r.block(0).locally_owned_size() / dealii::VectorizedArray<Number>::size()) *
+         dealii::VectorizedArray<Number>::size();
+       i < r.block(0).locally_owned_size();
        ++i)
     for (unsigned int d = 0; d < n_components; ++d)
       {
@@ -373,7 +379,8 @@ cg_update3(
     reinterpret_cast<const dealii::VectorizedArray<Number> *>(h.begin());
   const dealii::VectorizedArray<Number> *arr_prec =
     reinterpret_cast<const dealii::VectorizedArray<Number> *>(prec.begin());
-  for (unsigned int i = 0; i < r.local_size() / dealii::VectorizedArray<Number>::size(); ++i)
+  for (unsigned int i = 0; i < r.locally_owned_size() / dealii::VectorizedArray<Number>::size();
+       ++i)
     {
       sums[0] += arr_h[i] * arr_h[i];
       sums[1] += arr_r[i] * arr_h[i];
@@ -383,9 +390,9 @@ cg_update3(
       sums[3] += arr_r[i] * zi;
       sums[4] += arr_h[i] * zi;
     }
-  for (unsigned int i = (r.local_size() / dealii::VectorizedArray<Number>::size()) *
+  for (unsigned int i = (r.locally_owned_size() / dealii::VectorizedArray<Number>::size()) *
                         dealii::VectorizedArray<Number>::size();
-       i < r.local_size();
+       i < r.locally_owned_size();
        ++i)
     {
       sums[0][0] += h.local_element(i) * h.local_element(i);
@@ -476,8 +483,13 @@ cg_update3b(
   static_assert(n_components == 1, "Only single component support");
 
   dealii::Tensor<1, 7, dealii::VectorizedArray<Number>> sums;
-  do_cg_update3b<n_components, Number>(
-    0, r.local_size(), r.begin(), d.begin(), h.begin(), preconditioner.get_vector().begin(), sums);
+  do_cg_update3b<n_components, Number>(0,
+                                       r.locally_owned_size(),
+                                       r.begin(),
+                                       d.begin(),
+                                       h.begin(),
+                                       preconditioner.get_vector().begin(),
+                                       sums);
 
   dealii::Tensor<1, 7> results;
   for (unsigned int i = 0; i < 7; ++i)
@@ -678,7 +690,7 @@ cg_update4(
 {
   static_assert(n_components == 1, "Only single component support");
   do_cg_update4<n_components, Number, false>(0,
-                                             r.local_size(),
+                                             r.locally_owned_size(),
                                              h.begin(),
                                              x.begin(),
                                              r.begin(),
@@ -915,7 +927,7 @@ public:
                         internal::get_block(g, bl).begin());
                     const number       alpha_plus_alpha_old = alpha + alpha_old / beta_old;
                     const number       alpha_old_beta_old   = alpha_old / beta_old;
-                    const unsigned int end = internal::get_block(g, bl).local_size();
+                    const unsigned int end = internal::get_block(g, bl).locally_owned_size();
                     for (unsigned int i = 0; i < end / dealii::VectorizedArray<number>::size(); ++i)
                       {
                         dealii::VectorizedArray<number> arr_prec;
