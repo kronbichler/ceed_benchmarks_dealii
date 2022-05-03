@@ -3,6 +3,8 @@
 
 #include <deal.II/distributed/tria.h>
 
+#include <deal.II/dofs/dof_renumbering.h>
+
 #include <deal.II/fe/fe_q.h>
 #include <deal.II/fe/fe_system.h>
 
@@ -27,7 +29,6 @@
 #include "../common_code/curved_manifold.h"
 #include "../common_code/diagonal_matrix_blocked.h"
 #include "../common_code/poisson_operator.h"
-#include "../common_code/renumber_dofs_for_mf.h"
 #include "../common_code/solver_cg_optimized.h"
 
 using namespace dealii;
@@ -267,8 +268,7 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
 
   // renumber Dofs to minimize the number of partitions in import indices of
   // partitioner
-  Renumber<dim, double> renum(0, 1, 2);
-  renum.renumber(dof_handler, constraints, mf_data);
+  DoFRenumbering::matrix_free_data_locality(dof_handler, constraints, mf_data);
 
   DoFTools::extract_locally_relevant_dofs(dof_handler, relevant_dofs);
   constraints.clear();
@@ -327,7 +327,7 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
   laplace_operator.initialize_dof_vector(input);
   laplace_operator.initialize_dof_vector(output);
   laplace_operator.initialize_dof_vector(tmp);
-  for (unsigned int i = 0; i < input.local_size(); ++i)
+  for (unsigned int i = 0; i < input.locally_owned_size(); ++i)
     if (!constraints.is_constrained(input.get_partitioner()->local_to_global(i)))
       input.local_element(i) = i % 8;
 
@@ -423,7 +423,7 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
   VectorTools::interpolate_boundary_values(
     mapping, dof_handler, 0, Functions::ZeroFunction<dim>(dim), constraints);
   constraints.close();
-  renum.renumber(dof_handler, constraints, mf_data);
+  DoFRenumbering::matrix_free_data_locality(dof_handler, constraints, mf_data);
 
   DoFTools::extract_locally_relevant_dofs(dof_handler, relevant_dofs);
   constraints.clear();

@@ -3,6 +3,7 @@
 
 #include <deal.II/distributed/tria.h>
 
+#include <deal.II/dofs/dof_renumbering.h>
 #include <deal.II/dofs/dof_tools.h>
 
 #include <deal.II/fe/fe_q.h>
@@ -32,7 +33,6 @@
 
 #include "../common_code/curved_manifold.h"
 #include "../common_code/mass_operator.h"
-#include "../common_code/renumber_dofs_for_mf.h"
 #include "../common_code/solver_cg_optimized.h"
 
 using namespace dealii;
@@ -94,8 +94,7 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
 
   // renumber Dofs to minimize the number of partitions in import indices of
   // partitioner
-  Renumber<dim, double, VectorizedArrayType> renum(0, 1, 2);
-  renum.renumber(dof_handler, constraints, mf_data);
+  DoFRenumbering::matrix_free_data_locality(dof_handler, constraints, mf_data);
 
   std::shared_ptr<MatrixFree<dim, double, VectorizedArrayType>> matrix_free(
     new MatrixFree<dim, double, VectorizedArrayType>());
