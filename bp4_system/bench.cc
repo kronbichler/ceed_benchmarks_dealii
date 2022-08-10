@@ -20,6 +20,7 @@
 #include <deal.II/matrix_free/matrix_free.h>
 #include <deal.II/matrix_free/operators.h>
 
+#include <deal.II/numerics/data_out.h>
 #include <deal.II/numerics/vector_tools.h>
 
 #ifdef LIKWID_PERFMON
@@ -37,7 +38,10 @@ using namespace dealii;
 
 template <int dim, int fe_degree, int n_q_points>
 void
-test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
+test(const unsigned int s,
+     const bool         short_output,
+     const MPI_Comm &   comm_shmem,
+     const bool         do_adaptivity)
 {
 #ifndef USE_SHMEM
   (void)comm_shmem;
@@ -70,6 +74,40 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
   tria.set_all_manifold_ids(1);
   tria.set_manifold(1, manifold);
   tria.refine_global(n_refine);
+  if (do_adaptivity)
+    {
+      for (auto cell : tria.active_cell_iterators())
+        if (cell->is_locally_owned())
+          {
+            Point<dim> center = cell->center();
+            for (unsigned int d = 0; d < dim; ++d)
+              center[d] = (center[d] - std::floor(center[d])) - 0.5;
+            if (center.norm() < 0.275)
+              cell->set_refine_flag();
+          }
+      tria.execute_coarsening_and_refinement();
+
+      for (auto cell : tria.active_cell_iterators())
+        if (cell->is_locally_owned())
+          {
+            Point<dim> center = cell->center();
+            for (unsigned int d = 0; d < dim; ++d)
+              center[d] = (center[d] - std::floor(center[d])) - 0.5;
+            if (0.15 <= center.norm() && center.norm() <= 0.215)
+              cell->set_refine_flag();
+          }
+      tria.execute_coarsening_and_refinement();
+      for (auto cell : tria.active_cell_iterators())
+        if (cell->is_locally_owned())
+          {
+            Point<dim> center = cell->center();
+            for (unsigned int d = 0; d < dim; ++d)
+              center[d] = (center[d] - std::floor(center[d])) - 0.5;
+            if (0.1675 <= center.norm() && center.norm() <= 0.195)
+              cell->set_refine_flag();
+          }
+      tria.execute_coarsening_and_refinement();
+    }
 
   FE_Q<dim>            fe_scalar(fe_degree);
   FESystem<dim>        fe_q(fe_scalar, dim);
@@ -101,6 +139,14 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
   VectorTools::interpolate_boundary_values(
     mapping, dof_handler, 0, Functions::ZeroFunction<dim>(dim), constraints);
   constraints.close();
+
+  DataOut<dim> data_out;
+  data_out.attach_dof_handler(dof_handler);
+  Vector<double> subdomain(tria.n_active_cells());
+  subdomain = (double)Utilities::MPI::this_mpi_process(MPI_COMM_WORLD);
+  data_out.add_data_vector(subdomain, "subdomain");
+  data_out.build_patches();
+  data_out.write_vtu_in_parallel("grid.vtu", MPI_COMM_WORLD);
 
   std::shared_ptr<MatrixFree<dim, double>> matrix_free(new MatrixFree<dim, double>());
 
@@ -315,9 +361,9 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
 
 template <int dim, int fe_degree, int n_q_points>
 void
-do_test(const int s_in, const bool compact_output)
+do_test(const int s_in, const bool compact_output, const bool do_adaptivity)
 {
-  MPI_Comm comm_shmem;
+  MPI_Comm comm_shmem = MPI_COMM_SELF;
 
 #ifdef USE_SHMEM
   MPI_Comm_split_type(MPI_COMM_WORLD,
@@ -346,14 +392,14 @@ do_test(const int s_in, const bool compact_output)
       while (Utilities::fixed_power<dim>(fe_degree + 1) * (1UL << s) * dim <
              6000000ULL * Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD))
         {
-          test<dim, fe_degree, n_q_points>(s, compact_output, comm_shmem);
+          test<dim, fe_degree, n_q_points>(s, compact_output, comm_shmem, do_adaptivity);
           ++s;
         }
       if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
         std::cout << std::endl << std::endl;
     }
   else
-    test<dim, fe_degree, n_q_points>(s_in, compact_output, comm_shmem);
+    test<dim, fe_degree, n_q_points>(s_in, compact_output, comm_shmem, do_adaptivity);
 
 #ifdef USE_SHMEM
   MPI_Comm_free(&comm_shmem);
@@ -374,35 +420,38 @@ main(int argc, char **argv)
   unsigned int degree         = 1;
   unsigned int s              = -1;
   bool         compact_output = true;
+  bool         do_adaptivity  = false;
   if (argc > 1)
     degree = std::atoi(argv[1]);
   if (argc > 2)
     s = std::atoi(argv[2]);
   if (argc > 3)
     compact_output = std::atoi(argv[3]);
+  if (argc > 4)
+    do_adaptivity = std::atoi(argv[4]);
 
   if (degree == 1)
-    do_test<3, 1, 3>(s, compact_output);
+    do_test<3, 1, 3>(s, compact_output, do_adaptivity);
   else if (degree == 2)
-    do_test<3, 2, 4>(s, compact_output);
+    do_test<3, 2, 4>(s, compact_output, do_adaptivity);
   else if (degree == 3)
-    do_test<3, 3, 5>(s, compact_output);
+    do_test<3, 3, 5>(s, compact_output, do_adaptivity);
   else if (degree == 4)
-    do_test<3, 4, 6>(s, compact_output);
+    do_test<3, 4, 6>(s, compact_output, do_adaptivity);
   else if (degree == 5)
-    do_test<3, 5, 7>(s, compact_output);
+    do_test<3, 5, 7>(s, compact_output, do_adaptivity);
   else if (degree == 6)
-    do_test<3, 6, 8>(s, compact_output);
+    do_test<3, 6, 8>(s, compact_output, do_adaptivity);
   else if (degree == 7)
-    do_test<3, 7, 9>(s, compact_output);
+    do_test<3, 7, 9>(s, compact_output, do_adaptivity);
   else if (degree == 8)
-    do_test<3, 8, 10>(s, compact_output);
+    do_test<3, 8, 10>(s, compact_output, do_adaptivity);
   else if (degree == 9)
-    do_test<3, 9, 11>(s, compact_output);
+    do_test<3, 9, 11>(s, compact_output, do_adaptivity);
   else if (degree == 10)
-    do_test<3, 10, 12>(s, compact_output);
+    do_test<3, 10, 12>(s, compact_output, do_adaptivity);
   else if (degree == 11)
-    do_test<3, 11, 13>(s, compact_output);
+    do_test<3, 11, 13>(s, compact_output, do_adaptivity);
   else
     AssertThrow(false, ExcMessage("Only degrees up to 11 implemented"));
 

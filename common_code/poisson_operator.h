@@ -160,6 +160,7 @@ namespace Poisson
     initialize(std::shared_ptr<const MatrixFree<dim, Number, VectorizedArrayType>> data_,
                const AffineConstraints<double> &                                   constraints)
     {
+      fast_read  = !data_->get_dof_handler(0).get_triangulation().has_hanging_nodes();
       this->data = data_;
       quad_1d    = QGauss<1>(n_q_points_1d);
       cell_vertex_coefficients.resize(data->n_cell_batches());
@@ -486,8 +487,7 @@ namespace Poisson
     void
     vmult(VectorType &dst, const VectorType &src) const
     {
-      this->data->cell_loop(
-        &LaplaceOperator::template local_apply_linear_geo<false>, this, dst, src, true);
+      this->data->cell_loop(&LaplaceOperator::local_apply_quadratic_geo, this, dst, src, true);
       internal::set_constrained_entries(data->get_constrained_dofs(0), src, dst);
     }
 
@@ -587,7 +587,7 @@ namespace Poisson
         IsBlockVector<VectorType>::value ? 1 : n_components;
       Tensor<1, 7, VectorizedArray<Number>> sums;
       this->data->cell_loop(
-        &LaplaceOperator::template local_apply_linear_geo<false>,
+        &LaplaceOperator::local_apply_quadratic_geo,
         this,
         h,
         d,
@@ -710,7 +710,8 @@ namespace Poisson
     void
     vmult_quadratic(VectorType &dst, const VectorType &src) const
     {
-      this->data->cell_loop(&LaplaceOperator::local_apply_quadratic_geo, this, dst, src, true);
+      this->data->cell_loop(
+        &LaplaceOperator::template local_apply_linear_geo<false>, this, dst, src, true);
       internal::set_constrained_entries(data->get_constrained_dofs(0), src, dst);
     }
 
@@ -744,10 +745,10 @@ namespace Poisson
                 phi.submit_dof_value(VectorizedArrayType(), j);
               phi.submit_dof_value(make_vectorized_array<VectorizedArrayType>(1.), i);
 
-              phi.evaluate(false, true);
+              phi.evaluate(EvaluationFlags::gradients);
               for (unsigned int q = 0; q < phi.n_q_points; ++q)
                 phi.submit_gradient(phi.get_gradient(q), q);
-              phi.integrate(false, true);
+              phi.integrate(EvaluationFlags::gradients);
               diagonal[i] = phi.get_dof_value(i);
             }
           for (unsigned int i = 0; i < phi.dofs_per_cell; ++i)
@@ -787,7 +788,7 @@ namespace Poisson
       for (unsigned int cell = cell_range.first; cell < cell_range.second; ++cell)
         {
           phi.reinit(cell);
-          if (fe_degree > 2)
+          if (fe_degree > 2 && fast_read)
             for (unsigned int bl = 0; bl < ::internal::get_n_blocks(src); ++bl)
               read_dof_values_compressed<dim,
                                          fe_degree,
@@ -805,7 +806,7 @@ namespace Poisson
           else
             {
               phi.read_dof_values(src);
-              phi.evaluate(true, false);
+              phi.evaluate(EvaluationFlags::values);
             }
           VectorizedArrayType *phi_grads = phi.begin_gradients();
           if (dim == 2)
@@ -955,7 +956,7 @@ namespace Poisson
                     phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                     phi_grads + (2 * n_components * n_q_points_2d) + c * n_q_points,
                     phi.begin_values() + c * n_q_points);
-                  if (fe_degree > 2 &&
+                  if (fe_degree > 2 && fast_read &&
                       phi.get_shape_info().data[0].element_type !=
                         dealii::internal::MatrixFreeFunctions::tensor_symmetric_collocation)
                     dealii::internal::EvaluatorTensorProduct<dealii::internal::evaluate_evenodd,
@@ -971,7 +972,7 @@ namespace Poisson
                 }
             }
 
-          if (fe_degree > 2)
+          if (fe_degree > 2 && fast_read)
             for (unsigned int bl = 0; bl < ::internal::get_n_blocks(src); ++bl)
               distribute_local_to_global_compressed<dim,
                                                     fe_degree,
@@ -987,7 +988,7 @@ namespace Poisson
                   dealii::internal::MatrixFreeFunctions::tensor_symmetric_collocation,
                 phi.begin_values() + bl * n_q_points);
           else
-            phi.integrate_scatter(true, false, dst);
+            phi.integrate_scatter(EvaluationFlags::values, dst);
         }
     }
 
@@ -1013,7 +1014,7 @@ namespace Poisson
       for (unsigned int cell = cell_range.first; cell < cell_range.second; ++cell)
         {
           phi.reinit(cell);
-          if (fe_degree > 2)
+          if (fe_degree > 2 && fast_read)
             for (unsigned int bl = 0; bl < ::internal::get_n_blocks(src); ++bl)
               read_dof_values_compressed<dim,
                                          fe_degree,
@@ -1031,7 +1032,7 @@ namespace Poisson
           else
             {
               phi.read_dof_values(src);
-              phi.evaluate(true, false);
+              phi.evaluate(EvaluationFlags::values);
             }
           const std::array<Tensor<1, dim, VectorizedArrayType>,
                            GeometryInfo<dim>::vertices_per_cell> &v =
@@ -1211,7 +1212,7 @@ namespace Poisson
                     phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                     phi_grads + (2 * n_components * n_q_points_2d) + c * n_q_points,
                     phi.begin_values() + c * n_q_points);
-                  if (!do_sum && fe_degree > 2 &&
+                  if (!do_sum && fe_degree > 2 && fast_read &&
                       phi.get_shape_info().data[0].element_type !=
                         dealii::internal::MatrixFreeFunctions::tensor_symmetric_collocation)
                     dealii::internal::EvaluatorTensorProduct<dealii::internal::evaluate_evenodd,
@@ -1235,7 +1236,7 @@ namespace Poisson
                 scratch[i] = phi.begin_dof_values()[i];
             }
 
-          if (!do_sum && fe_degree > 2)
+          if (!do_sum && fe_degree > 2 && fast_read)
             for (unsigned int bl = 0; bl < ::internal::get_n_blocks(src); ++bl)
               distribute_local_to_global_compressed<dim,
                                                     fe_degree,
@@ -1252,7 +1253,7 @@ namespace Poisson
                 phi.begin_values() + bl * n_q_points);
           else
             {
-              phi.integrate_scatter(true, false, dst);
+              phi.integrate_scatter(EvaluationFlags::values, dst);
               if (do_sum)
                 {
                   VectorizedArrayType local_sum = VectorizedArrayType();
@@ -1292,7 +1293,7 @@ namespace Poisson
       for (unsigned int cell = cell_range.first; cell < cell_range.second; ++cell)
         {
           phi.reinit(cell);
-          if (fe_degree > 2)
+          if (fe_degree > 2 && fast_read)
             for (unsigned int bl = 0; bl < ::internal::get_n_blocks(src); ++bl)
               read_dof_values_compressed<dim,
                                          fe_degree,
@@ -1310,7 +1311,7 @@ namespace Poisson
           else
             {
               phi.read_dof_values(src);
-              phi.evaluate(true, false);
+              phi.evaluate(EvaluationFlags::values);
             }
           const auto &         v         = cell_quadratic_coefficients[cell];
           VectorizedArrayType *phi_grads = phi.begin_gradients();
@@ -1494,7 +1495,7 @@ namespace Poisson
                     phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                     phi_grads + (2 * n_components * n_q_points_2d) + c * n_q_points,
                     phi.begin_values() + c * n_q_points);
-                  if (fe_degree > 2 &&
+                  if (fe_degree > 2 && fast_read &&
                       phi.get_shape_info().data[0].element_type !=
                         dealii::internal::MatrixFreeFunctions::tensor_symmetric_collocation)
                     dealii::internal::EvaluatorTensorProduct<dealii::internal::evaluate_evenodd,
@@ -1510,7 +1511,7 @@ namespace Poisson
                 }
             }
 
-          if (fe_degree > 2)
+          if (fe_degree > 2 && fast_read)
             for (unsigned int bl = 0; bl < ::internal::get_n_blocks(src); ++bl)
               distribute_local_to_global_compressed<dim,
                                                     fe_degree,
@@ -1526,7 +1527,7 @@ namespace Poisson
                   dealii::internal::MatrixFreeFunctions::tensor_symmetric_collocation,
                 phi.begin_values() + bl * n_q_points);
           else
-            phi.integrate_scatter(true, false, dst);
+            phi.integrate_scatter(EvaluationFlags::values, dst);
         }
     }
 
@@ -1554,7 +1555,7 @@ namespace Poisson
       for (unsigned int cell = cell_range.first; cell < cell_range.second; ++cell)
         {
           phi.reinit(cell);
-          if (fe_degree > 2)
+          if (fe_degree > 2 && fast_read)
             for (unsigned int bl = 0; bl < ::internal::get_n_blocks(src); ++bl)
               read_dof_values_compressed<dim,
                                          fe_degree,
@@ -1572,7 +1573,7 @@ namespace Poisson
           else
             {
               phi.read_dof_values(src);
-              phi.evaluate(true, false);
+              phi.evaluate(EvaluationFlags::values);
             }
           VectorizedArrayType *phi_grads = phi.begin_gradients();
           if (dim == 2)
@@ -2920,7 +2921,7 @@ namespace Poisson
                       phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                       phi_grads + (2 * n_components * n_q_points_2d) + c * n_q_points,
                       phi.begin_values() + c * n_q_points);
-                  if (fe_degree > 2 &&
+                  if (fe_degree > 2 && fast_read &&
                       phi.get_shape_info().data[0].element_type !=
                         dealii::internal::MatrixFreeFunctions::tensor_symmetric_collocation)
                     dealii::internal::EvaluatorTensorProduct<dealii::internal::evaluate_evenodd,
@@ -2936,7 +2937,7 @@ namespace Poisson
                 }
             }
 
-          if (fe_degree > 2)
+          if (fe_degree > 2 && fast_read)
             for (unsigned int bl = 0; bl < ::internal::get_n_blocks(src); ++bl)
               distribute_local_to_global_compressed<dim,
                                                     fe_degree,
@@ -2952,7 +2953,7 @@ namespace Poisson
                   dealii::internal::MatrixFreeFunctions::tensor_symmetric_collocation,
                 phi.begin_values() + bl * n_q_points);
           else
-            phi.integrate_scatter(true, false, dst);
+            phi.integrate_scatter(EvaluationFlags::values, dst);
         }
     }
 
@@ -2981,7 +2982,7 @@ namespace Poisson
           //      phi.begin_dof_values() + bl * Utilities::pow(fe_degree + 1, dim));
           // else
           phi.read_dof_values(src);
-          phi.evaluate(false, true);
+          phi.evaluate(EvaluationFlags::gradients);
           VectorizedArrayType *phi_grads = phi.begin_gradients();
           if (dim == 3)
             for (unsigned int d = 0; d < dim; ++d)
@@ -3058,7 +3059,7 @@ namespace Poisson
                     }
                 }
             }
-          phi.integrate(false, true);
+          phi.integrate(EvaluationFlags::gradients);
           // if (fe_degree > 2)
           //  for (unsigned int bl = 0; bl < ::internal::get_n_blocks(src); ++bl)
           //    distribute_local_to_global_compressed<dim, fe_degree, n_read_components, Number>(
@@ -3099,6 +3100,8 @@ namespace Poisson
 
     std::vector<unsigned int>  compressed_dof_indices;
     std::vector<unsigned char> all_indices_uniform;
+
+    bool fast_read;
   };
 } // namespace Poisson
 
