@@ -725,6 +725,632 @@ namespace Poisson
       vmult(dst, src);
     }
 
+    void
+    apply_local(AlignedVector<VectorizedArrayType> &      dst,
+                const AlignedVector<VectorizedArrayType> &src) const
+    {
+      AssertThrow(n_q_points_1d == fe_degree + 1, ExcNotImplemented());
+      constexpr unsigned int n_q_points    = Utilities::pow(n_q_points_1d, dim);
+      constexpr unsigned int n_q_points_2d = Utilities::pow(n_q_points_1d, 2);
+
+      using TensorType = Tensor<1, dim, VectorizedArrayType>;
+      using Eval = dealii::internal::EvaluatorTensorProduct<dealii::internal::evaluate_evenodd,
+                                                            dim,
+                                                            n_q_points_1d,
+                                                            n_q_points_1d,
+                                                            VectorizedArrayType,
+                                                            VectorizedArrayType>;
+
+      FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number, VectorizedArrayType> phi(
+        *data);
+
+      for (unsigned int cell = 0; cell < data->n_cell_batches(); ++cell)
+        {
+          phi.reinit(cell);
+          const VectorizedArrayType *src_ptr   = src.data() + cell * n_q_points * n_components;
+          VectorizedArrayType *      dst_ptr   = dst.data() + cell * n_q_points * n_components;
+          VectorizedArrayType *      phi_grads = phi.begin_gradients();
+          if (dim > 2)
+            {
+              for (unsigned int c = 0; c < n_components; ++c)
+                Eval::template apply<2, true, false, 1>(
+                  phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
+                  src_ptr + c * n_q_points,
+                  phi_grads + (2 * n_components * n_q_points_2d) + c * n_q_points);
+            }
+          for (unsigned int q = 0, qz = 0; qz < n_q_points_1d; ++qz)
+            {
+              using Eval2 =
+                dealii::internal::EvaluatorTensorProduct<dealii::internal::evaluate_evenodd,
+                                                         2,
+                                                         n_q_points_1d,
+                                                         n_q_points_1d,
+                                                         VectorizedArrayType,
+                                                         VectorizedArrayType>;
+              for (unsigned int c = 0; c < n_components; ++c)
+                {
+                  Eval2::template apply<1, true, false, 1>(
+                    phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
+                    src_ptr + c * n_q_points + qz * n_q_points_2d,
+                    phi_grads + (2 * c + 1) * n_q_points_2d);
+                  Eval2::template apply<0, true, false, 1>(
+                    phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
+                    src_ptr + c * n_q_points + qz * n_q_points_2d,
+                    phi_grads + 2 * c * n_q_points_2d);
+                }
+              for (unsigned int qxy = 0; qxy < n_q_points_2d; ++qxy, ++q)
+                for (unsigned int c = 0; c < n_components; ++c)
+                  {
+                    VectorizedArrayType tmp0 = phi_grads[qxy + c * 2 * n_q_points_2d];
+                    VectorizedArrayType tmp1 = phi_grads[qxy + (c * 2 + 1) * n_q_points_2d];
+                    phi_grads[qxy + c * 2 * n_q_points_2d] =
+                      (merged_coefficients[cell * n_q_points + q][0] * tmp0 +
+                       merged_coefficients[cell * n_q_points + q][1] * tmp1 +
+                       merged_coefficients[cell * n_q_points + q][2] *
+                         phi_grads[q + 2 * n_components * n_q_points_2d + c * n_q_points]);
+                    phi_grads[qxy + (c * 2 + 1) * n_q_points_2d] =
+                      (merged_coefficients[cell * n_q_points + q][1] * tmp0 +
+                       merged_coefficients[cell * n_q_points + q][3] * tmp1 +
+                       merged_coefficients[cell * n_q_points + q][4] *
+                         phi_grads[q + 2 * n_components * n_q_points_2d + c * n_q_points]);
+                    phi_grads[q + 2 * n_components * n_q_points_2d + c * n_q_points] =
+                      (merged_coefficients[cell * n_q_points + q][2] * tmp0 +
+                       merged_coefficients[cell * n_q_points + q][4] * tmp1 +
+                       merged_coefficients[cell * n_q_points + q][5] *
+                         phi_grads[q + 2 * n_components * n_q_points_2d + c * n_q_points]);
+                  }
+              for (unsigned int c = 0; c < n_components; ++c)
+                {
+                  Eval2::template apply<0, false, false, 1>(
+                    phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
+                    phi_grads + 2 * c * n_q_points_2d,
+                    dst_ptr + c * n_q_points + qz * n_q_points_2d);
+                  Eval2::template apply<1, false, true, 1>(
+                    phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
+                    phi_grads + (2 * c + 1) * n_q_points_2d,
+                    dst_ptr + c * n_q_points + qz * n_q_points_2d);
+                }
+            }
+          for (unsigned int c = 0; c < n_components; ++c)
+            {
+              Eval::template apply<2, false, true, 1>(
+                phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
+                phi_grads + (2 * n_components * n_q_points_2d) + c * n_q_points,
+                dst_ptr + c * n_q_points);
+            }
+        }
+    }
+
+    void
+    apply_basic(AlignedVector<VectorizedArrayType> &      dst,
+                const AlignedVector<VectorizedArrayType> &src) const
+    {
+      AssertThrow(n_q_points_1d == fe_degree + 1, ExcNotImplemented());
+      constexpr unsigned int n_q_points    = Utilities::pow(n_q_points_1d, dim);
+      constexpr unsigned int n_q_points_2d = Utilities::pow(n_q_points_1d, 2);
+
+      using TensorType = Tensor<1, dim, VectorizedArrayType>;
+      using Eval = dealii::internal::EvaluatorTensorProduct<dealii::internal::evaluate_evenodd,
+                                                            dim,
+                                                            n_q_points_1d,
+                                                            n_q_points_1d,
+                                                            VectorizedArrayType,
+                                                            VectorizedArrayType>;
+
+      FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number, VectorizedArrayType> phi(
+        *data);
+
+      for (unsigned int cell = 0; cell < data->n_cell_batches(); ++cell)
+        {
+          phi.reinit(cell);
+          const VectorizedArrayType *src_ptr   = src.data() + cell * n_q_points * n_components;
+          VectorizedArrayType *      dst_ptr   = dst.data() + cell * n_q_points * n_components;
+          VectorizedArrayType *      phi_grads = phi.begin_gradients();
+          if (dim > 2)
+            {
+              for (unsigned int c = 0; c < n_components; ++c)
+                Eval::template apply<2, true, false, 1>(
+                  phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
+                  src_ptr + c * n_q_points,
+                  phi_grads + (2 * n_components * n_q_points_2d) + c * n_q_points);
+            }
+          for (unsigned int q = 0, qz = 0; qz < n_q_points_1d; ++qz)
+            {
+              using Eval2 =
+                dealii::internal::EvaluatorTensorProduct<dealii::internal::evaluate_evenodd,
+                                                         2,
+                                                         n_q_points_1d,
+                                                         n_q_points_1d,
+                                                         VectorizedArrayType,
+                                                         VectorizedArrayType>;
+              for (unsigned int c = 0; c < n_components; ++c)
+                {
+                  Eval2::template apply<1, true, false, 1>(
+                    phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
+                    src_ptr + c * n_q_points + qz * n_q_points_2d,
+                    phi_grads + (2 * c + 1) * n_q_points_2d);
+                  Eval2::template apply<0, true, false, 1>(
+                    phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
+                    src_ptr + c * n_q_points + qz * n_q_points_2d,
+                    phi_grads + 2 * c * n_q_points_2d);
+                }
+              for (unsigned int qxy = 0; qxy < n_q_points_2d; ++qxy, ++q)
+                for (unsigned int c = 0; c < n_components; ++c)
+                  {
+                    const VectorizedArrayType det = phi.JxW(q);
+                    const auto                jac = phi.inverse_jacobian(q);
+
+                    VectorizedArrayType tmp[dim], tmp2[dim];
+                    for (unsigned int d = 0; d < dim; ++d)
+                      {
+                        tmp[d] = jac[d][0] * phi_grads[qxy + c * 2 * n_q_points_2d] +
+                                 jac[d][1] * phi_grads[qxy + (c * 2 + 1) * n_q_points_2d] +
+                                 jac[d][2] *
+                                   phi_grads[q + 2 * n_components * n_q_points_2d + c * n_q_points];
+                        tmp[d] *= det;
+                      }
+                    for (unsigned int d = 0; d < dim; ++d)
+                      {
+                        tmp2[d] = jac[0][d] * tmp[0];
+                        for (unsigned int e = 1; e < dim; ++e)
+                          tmp2[d] += jac[e][d] * tmp[e];
+                      }
+                    phi_grads[qxy + c * 2 * n_q_points_2d]                           = tmp2[0];
+                    phi_grads[qxy + (c * 2 + 1) * n_q_points_2d]                     = tmp2[1];
+                    phi_grads[q + 2 * n_components * n_q_points_2d + c * n_q_points] = tmp2[2];
+                  }
+              for (unsigned int c = 0; c < n_components; ++c)
+                {
+                  Eval2::template apply<0, false, false, 1>(
+                    phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
+                    phi_grads + 2 * c * n_q_points_2d,
+                    dst_ptr + c * n_q_points + qz * n_q_points_2d);
+                  Eval2::template apply<1, false, true, 1>(
+                    phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
+                    phi_grads + (2 * c + 1) * n_q_points_2d,
+                    dst_ptr + c * n_q_points + qz * n_q_points_2d);
+                }
+            }
+          for (unsigned int c = 0; c < n_components; ++c)
+            {
+              Eval::template apply<2, false, true, 1>(
+                phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
+                phi_grads + (2 * n_components * n_q_points_2d) + c * n_q_points,
+                dst_ptr + c * n_q_points);
+            }
+        }
+    }
+
+    void
+    apply_q(AlignedVector<VectorizedArrayType> &      dst,
+            const AlignedVector<VectorizedArrayType> &src) const
+    {
+      AssertThrow(n_q_points_1d == fe_degree + 1, ExcNotImplemented());
+      constexpr unsigned int n_q_points    = Utilities::pow(n_q_points_1d, dim);
+      constexpr unsigned int n_q_points_2d = Utilities::pow(n_q_points_1d, 2);
+
+      using TensorType = Tensor<1, dim, VectorizedArrayType>;
+      using Eval = dealii::internal::EvaluatorTensorProduct<dealii::internal::evaluate_evenodd,
+                                                            dim,
+                                                            n_q_points_1d,
+                                                            n_q_points_1d,
+                                                            VectorizedArrayType,
+                                                            VectorizedArrayType>;
+
+      FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number, VectorizedArrayType> phi(
+        *data);
+      VectorizedArrayType jacobians_z[dim * n_q_points];
+
+      for (unsigned int cell = 0; cell < data->n_cell_batches(); ++cell)
+        {
+          phi.reinit(cell);
+          const VectorizedArrayType *src_ptr   = src.data() + cell * n_q_points * n_components;
+          VectorizedArrayType *      dst_ptr   = dst.data() + cell * n_q_points * n_components;
+          VectorizedArrayType *      phi_grads = phi.begin_gradients();
+          if (dim > 2)
+            {
+              for (unsigned int c = 0; c < n_components; ++c)
+                Eval::template apply<2, true, false, 1>(
+                  phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
+                  src_ptr + c * n_q_points,
+                  phi_grads + (2 * n_components * n_q_points_2d) + c * n_q_points);
+
+              for (unsigned int d = 0; d < dim; ++d)
+                dealii::internal::EvaluatorTensorProduct<dealii::internal::evaluate_evenodd,
+                                                         dim,
+                                                         n_q_points_1d,
+                                                         n_q_points_1d,
+                                                         VectorizedArrayType,
+                                                         VectorizedArrayType>::
+                  template apply<2, true, false, 1>(
+                    data->get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
+                    quadrature_points.begin() + (cell * dim + d) * n_q_points,
+                    jacobians_z + d * n_q_points);
+            }
+          for (unsigned int q = 0, qz = 0; qz < n_q_points_1d; ++qz)
+            {
+              using Eval2 =
+                dealii::internal::EvaluatorTensorProduct<dealii::internal::evaluate_evenodd,
+                                                         2,
+                                                         n_q_points_1d,
+                                                         n_q_points_1d,
+                                                         VectorizedArrayType,
+                                                         VectorizedArrayType>;
+              VectorizedArrayType jacobians_y[dim * n_q_points_2d];
+              for (unsigned int d = 0; d < dim; ++d)
+                Eval2::template apply<1, true, false, 1>(
+                  data->get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
+                  quadrature_points.begin() + (cell * dim + d) * n_q_points + qz * n_q_points_2d,
+                  jacobians_y + d * n_q_points_2d);
+
+              for (unsigned int c = 0; c < n_components; ++c)
+                {
+                  Eval2::template apply<1, true, false, 1>(
+                    phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
+                    src_ptr + c * n_q_points + qz * n_q_points_2d,
+                    phi_grads + (2 * c + 1) * n_q_points_2d);
+                  Eval2::template apply<0, true, false, 1>(
+                    phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
+                    src_ptr + c * n_q_points + qz * n_q_points_2d,
+                    phi_grads + 2 * c * n_q_points_2d);
+                }
+
+              for (unsigned int qy = 0; qy < n_q_points_1d; ++qy)
+                {
+                  VectorizedArrayType jacobians_x[dim * n_q_points_1d];
+                  for (unsigned int d = 0; d < dim; ++d)
+                    dealii::internal::EvaluatorTensorProduct<dealii::internal::evaluate_evenodd,
+                                                             1,
+                                                             n_q_points_1d,
+                                                             n_q_points_1d,
+                                                             VectorizedArrayType,
+                                                             VectorizedArrayType>::
+                      template apply<0, true, false, 1>(
+                        phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
+                        quadrature_points.begin() + (cell * dim + d) * n_q_points +
+                          qz * n_q_points_2d + qy * n_q_points_1d,
+                        jacobians_x + d * n_q_points_1d);
+                  for (unsigned int qx = 0; qx < n_q_points_1d; ++qx, ++q)
+                    {
+                      Tensor<2, dim, VectorizedArrayType> jac;
+                      for (unsigned int e = 0; e < dim; ++e)
+                        jac[2][e] = jacobians_z[e * n_q_points + q];
+                      for (unsigned int e = 0; e < dim; ++e)
+                        jac[1][e] = jacobians_y[e * n_q_points_2d + qy * n_q_points_1d + qx];
+                      for (unsigned int e = 0; e < dim; ++e)
+                        jac[0][e] = jacobians_x[e * n_q_points_1d + qx];
+                      VectorizedArrayType det = do_invert(jac);
+                      det                     = det * (data->get_quadrature().weight(q));
+
+                      for (unsigned int c = 0; c < n_components; ++c)
+                        {
+                          const VectorizedArrayType det = phi.JxW(q);
+                          const auto                jac = phi.inverse_jacobian(q);
+
+                          VectorizedArrayType tmp[dim], tmp2[dim];
+                          for (unsigned int d = 0; d < dim; ++d)
+                            {
+                              tmp[d] =
+                                jac[d][0] *
+                                  phi_grads[qy * n_q_points_1d + qx + c * 2 * n_q_points_2d] +
+                                jac[d][1] *
+                                  phi_grads[qy * n_q_points_1d + qx + (c * 2 + 1) * n_q_points_2d] +
+                                jac[d][2] *
+                                  phi_grads[q + 2 * n_components * n_q_points_2d + c * n_q_points];
+                              tmp[d] *= det;
+                            }
+                          for (unsigned int d = 0; d < dim; ++d)
+                            {
+                              tmp2[d] = jac[0][d] * tmp[0];
+                              for (unsigned int e = 1; e < dim; ++e)
+                                tmp2[d] += jac[e][d] * tmp[e];
+                            }
+                          phi_grads[qy * n_q_points_1d + qx + c * 2 * n_q_points_2d] = tmp2[0];
+                          phi_grads[qy * n_q_points_1d + qx + (c * 2 + 1) * n_q_points_2d] =
+                            tmp2[1];
+                          phi_grads[q + 2 * n_components * n_q_points_2d + c * n_q_points] =
+                            tmp2[2];
+                        }
+                    }
+                }
+              for (unsigned int c = 0; c < n_components; ++c)
+                {
+                  Eval2::template apply<0, false, false, 1>(
+                    phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
+                    phi_grads + 2 * c * n_q_points_2d,
+                    dst_ptr + c * n_q_points + qz * n_q_points_2d);
+                  Eval2::template apply<1, false, true, 1>(
+                    phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
+                    phi_grads + (2 * c + 1) * n_q_points_2d,
+                    dst_ptr + c * n_q_points + qz * n_q_points_2d);
+                }
+            }
+          for (unsigned int c = 0; c < n_components; ++c)
+            {
+              Eval::template apply<2, false, true, 1>(
+                phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
+                phi_grads + (2 * n_components * n_q_points_2d) + c * n_q_points,
+                dst_ptr + c * n_q_points);
+            }
+        }
+    }
+
+    void
+    apply_q1(AlignedVector<VectorizedArrayType> &      dst,
+             const AlignedVector<VectorizedArrayType> &src) const
+    {
+      AssertThrow(n_q_points_1d == fe_degree + 1, ExcNotImplemented());
+      constexpr unsigned int n_q_points    = Utilities::pow(n_q_points_1d, dim);
+      constexpr unsigned int n_q_points_2d = Utilities::pow(n_q_points_1d, 2);
+
+      using TensorType = Tensor<1, dim, VectorizedArrayType>;
+      using Eval = dealii::internal::EvaluatorTensorProduct<dealii::internal::evaluate_evenodd,
+                                                            dim,
+                                                            n_q_points_1d,
+                                                            n_q_points_1d,
+                                                            VectorizedArrayType,
+                                                            VectorizedArrayType>;
+
+      FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number, VectorizedArrayType> phi(
+        *data);
+
+      for (unsigned int cell = 0; cell < data->n_cell_batches(); ++cell)
+        {
+          phi.reinit(cell);
+          const VectorizedArrayType *src_ptr   = src.data() + cell * n_q_points * n_components;
+          VectorizedArrayType *      dst_ptr   = dst.data() + cell * n_q_points * n_components;
+          VectorizedArrayType *      phi_grads = phi.begin_gradients();
+          if (dim > 2)
+            {
+              for (unsigned int c = 0; c < n_components; ++c)
+                Eval::template apply<2, true, false, 1>(
+                  phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
+                  src_ptr + c * n_q_points,
+                  phi_grads + (2 * n_components * n_q_points_2d) + c * n_q_points);
+            }
+
+          const std::array<Tensor<1, dim, VectorizedArrayType>,
+                           GeometryInfo<dim>::vertices_per_cell> &v =
+            cell_vertex_coefficients[cell];
+          for (unsigned int q = 0, qz = 0; qz < n_q_points_1d; ++qz)
+            {
+              using Eval2 =
+                dealii::internal::EvaluatorTensorProduct<dealii::internal::evaluate_evenodd,
+                                                         2,
+                                                         n_q_points_1d,
+                                                         n_q_points_1d,
+                                                         VectorizedArrayType,
+                                                         VectorizedArrayType>;
+              for (unsigned int c = 0; c < n_components; ++c)
+                {
+                  Eval2::template apply<1, true, false, 1>(
+                    phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
+                    src_ptr + c * n_q_points + qz * n_q_points_2d,
+                    phi_grads + (2 * c + 1) * n_q_points_2d);
+                  Eval2::template apply<0, true, false, 1>(
+                    phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
+                    src_ptr + c * n_q_points + qz * n_q_points_2d,
+                    phi_grads + 2 * c * n_q_points_2d);
+                }
+
+              for (unsigned int qy = 0; qy < n_q_points_1d; ++qy)
+                {
+                  const auto z = quad_1d.point(qz)[0];
+                  const auto y = quad_1d.point(qy)[0];
+                  // x-derivative, already complete
+                  Tensor<1, dim, VectorizedArrayType> x_con = v[1] + z * v[5];
+                  x_con += y * (v[4] + z * v[7]);
+                  // y-derivative, constant part
+                  Tensor<1, dim, VectorizedArrayType> y_con = v[2] + z * v[6];
+                  // y-derivative, xi-dependent part
+                  Tensor<1, dim, VectorizedArrayType> y_var = v[4] + z * v[7];
+                  // z-derivative, constant part
+                  Tensor<1, dim, VectorizedArrayType> z_con = v[3] + y * v[6];
+                  // z-derivative, variable part
+                  Tensor<1, dim, VectorizedArrayType> z_var = v[5] + y * v[7];
+                  double q_weight_tmp = quad_1d.weight(qz) * quad_1d.weight(qy);
+                  for (unsigned int qx = 0; qx < n_q_points_1d; ++qx, ++q)
+                    {
+                      const Number                        x = quad_1d.point(qx)[0];
+                      Tensor<2, dim, VectorizedArrayType> jac;
+                      jac[1] = y_con + x * y_var;
+                      jac[2] = z_con + x * z_var;
+                      for (unsigned int d = 0; d < dim; ++d)
+                        jac[0][d] = x_con[d];
+                      VectorizedArrayType det = do_invert(jac);
+                      det                     = det * (q_weight_tmp * quad_1d.weight(qx));
+
+                      for (unsigned int c = 0; c < n_components; ++c)
+                        {
+                          VectorizedArrayType tmp[dim], tmp2[dim];
+                          for (unsigned int d = 0; d < dim; ++d)
+                            {
+                              tmp[d] =
+                                jac[d][0] *
+                                  phi_grads[qy * n_q_points_1d + qx + c * 2 * n_q_points_2d] +
+                                jac[d][1] *
+                                  phi_grads[qy * n_q_points_1d + qx + (c * 2 + 1) * n_q_points_2d] +
+                                jac[d][2] *
+                                  phi_grads[q + 2 * n_components * n_q_points_2d + c * n_q_points];
+                              tmp[d] *= det;
+                            }
+                          for (unsigned int d = 0; d < dim; ++d)
+                            {
+                              tmp2[d] = jac[0][d] * tmp[0];
+                              for (unsigned int e = 1; e < dim; ++e)
+                                tmp2[d] += jac[e][d] * tmp[e];
+                            }
+                          phi_grads[qy * n_q_points_1d + qx + c * 2 * n_q_points_2d] = tmp2[0];
+                          phi_grads[qy * n_q_points_1d + qx + (c * 2 + 1) * n_q_points_2d] =
+                            tmp2[1];
+                          phi_grads[q + 2 * n_components * n_q_points_2d + c * n_q_points] =
+                            tmp2[2];
+                        }
+                    }
+                }
+
+              for (unsigned int c = 0; c < n_components; ++c)
+                {
+                  Eval2::template apply<0, false, false, 1>(
+                    phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
+                    phi_grads + 2 * c * n_q_points_2d,
+                    dst_ptr + c * n_q_points + qz * n_q_points_2d);
+                  Eval2::template apply<1, false, true, 1>(
+                    phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
+                    phi_grads + (2 * c + 1) * n_q_points_2d,
+                    dst_ptr + c * n_q_points + qz * n_q_points_2d);
+                }
+            }
+          for (unsigned int c = 0; c < n_components; ++c)
+            {
+              Eval::template apply<2, false, true, 1>(
+                phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
+                phi_grads + (2 * n_components * n_q_points_2d) + c * n_q_points,
+                dst_ptr + c * n_q_points);
+            }
+        }
+    }
+
+    void
+    apply_q2(AlignedVector<VectorizedArrayType> &      dst,
+             const AlignedVector<VectorizedArrayType> &src) const
+    {
+      AssertThrow(n_q_points_1d == fe_degree + 1, ExcNotImplemented());
+      constexpr unsigned int n_q_points    = Utilities::pow(n_q_points_1d, dim);
+      constexpr unsigned int n_q_points_2d = Utilities::pow(n_q_points_1d, 2);
+
+      using TensorType = Tensor<1, dim, VectorizedArrayType>;
+      using Eval = dealii::internal::EvaluatorTensorProduct<dealii::internal::evaluate_evenodd,
+                                                            dim,
+                                                            n_q_points_1d,
+                                                            n_q_points_1d,
+                                                            VectorizedArrayType,
+                                                            VectorizedArrayType>;
+
+      FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number, VectorizedArrayType> phi(
+        *data);
+
+      using TensorType = Tensor<1, dim, VectorizedArrayType>;
+      std::array<TensorType, Utilities::pow(3, dim - 1)> xi;
+      std::array<TensorType, Utilities::pow(3, dim - 1)> di;
+
+      for (unsigned int cell = 0; cell < data->n_cell_batches(); ++cell)
+        {
+          phi.reinit(cell);
+          const VectorizedArrayType *src_ptr   = src.data() + cell * n_q_points * n_components;
+          VectorizedArrayType *      dst_ptr   = dst.data() + cell * n_q_points * n_components;
+          VectorizedArrayType *      phi_grads = phi.begin_gradients();
+          if (dim > 2)
+            {
+              for (unsigned int c = 0; c < n_components; ++c)
+                Eval::template apply<2, true, false, 1>(
+                  phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
+                  src_ptr + c * n_q_points,
+                  phi_grads + (2 * n_components * n_q_points_2d) + c * n_q_points);
+            }
+
+          const auto &v = cell_quadratic_coefficients[cell];
+
+          for (unsigned int q = 0, qz = 0; qz < n_q_points_1d; ++qz)
+            {
+              using Eval2 =
+                dealii::internal::EvaluatorTensorProduct<dealii::internal::evaluate_evenodd,
+                                                         2,
+                                                         n_q_points_1d,
+                                                         n_q_points_1d,
+                                                         VectorizedArrayType,
+                                                         VectorizedArrayType>;
+              for (unsigned int c = 0; c < n_components; ++c)
+                {
+                  Eval2::template apply<1, true, false, 1>(
+                    phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
+                    src_ptr + c * n_q_points + qz * n_q_points_2d,
+                    phi_grads + (2 * c + 1) * n_q_points_2d);
+                  Eval2::template apply<0, true, false, 1>(
+                    phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
+                    src_ptr + c * n_q_points + qz * n_q_points_2d,
+                    phi_grads + 2 * c * n_q_points_2d);
+                }
+
+              const Number z = quad_1d.point(qz)[0];
+              di[0]          = v[9] + (z + z) * v[18];
+              for (unsigned int i = 1; i < 9; ++i)
+                {
+                  xi[i] = v[i] + z * (v[9 + i] + z * v[18 + i]);
+                  di[i] = v[9 + i] + (z + z) * v[18 + i];
+                }
+              for (unsigned int qy = 0; qy < n_q_points_1d; ++qy)
+                {
+                  const auto       y            = quad_1d.point(qy)[0];
+                  const TensorType x1           = xi[1] + y * (xi[4] + y * xi[7]);
+                  const TensorType x2           = xi[2] + y * (xi[5] + y * xi[8]);
+                  const TensorType dy0          = xi[3] + (y + y) * xi[6];
+                  const TensorType dy1          = xi[4] + (y + y) * xi[7];
+                  const TensorType dy2          = xi[5] + (y + y) * xi[8];
+                  const TensorType dz0          = di[0] + y * (di[3] + y * di[6]);
+                  const TensorType dz1          = di[1] + y * (di[4] + y * di[7]);
+                  const TensorType dz2          = di[2] + y * (di[5] + y * di[8]);
+                  double           q_weight_tmp = quad_1d.weight(qz) * quad_1d.weight(qy);
+                  for (unsigned int qx = 0; qx < n_q_points_1d; ++qx, ++q)
+                    {
+                      const Number                        x = quad_1d.point(qx)[0];
+                      Tensor<2, dim, VectorizedArrayType> jac;
+                      jac[0]                  = x1 + (x + x) * x2;
+                      jac[1]                  = dy0 + x * (dy1 + x * dy2);
+                      jac[2]                  = dz0 + x * (dz1 + x * dz2);
+                      VectorizedArrayType det = do_invert(jac);
+                      det                     = det * (q_weight_tmp * quad_1d.weight(qx));
+
+                      for (unsigned int c = 0; c < n_components; ++c)
+                        {
+                          VectorizedArrayType tmp[dim], tmp2[dim];
+                          for (unsigned int d = 0; d < dim; ++d)
+                            {
+                              tmp[d] =
+                                jac[d][0] *
+                                  phi_grads[qy * n_q_points_1d + qx + c * 2 * n_q_points_2d] +
+                                jac[d][1] *
+                                  phi_grads[qy * n_q_points_1d + qx + (c * 2 + 1) * n_q_points_2d] +
+                                jac[d][2] *
+                                  phi_grads[q + 2 * n_components * n_q_points_2d + c * n_q_points];
+                              tmp[d] *= det;
+                            }
+                          for (unsigned int d = 0; d < dim; ++d)
+                            {
+                              tmp2[d] = jac[0][d] * tmp[0];
+                              for (unsigned int e = 1; e < dim; ++e)
+                                tmp2[d] += jac[e][d] * tmp[e];
+                            }
+                          phi_grads[qy * n_q_points_1d + qx + c * 2 * n_q_points_2d] = tmp2[0];
+                          phi_grads[qy * n_q_points_1d + qx + (c * 2 + 1) * n_q_points_2d] =
+                            tmp2[1];
+                          phi_grads[q + 2 * n_components * n_q_points_2d + c * n_q_points] =
+                            tmp2[2];
+                        }
+                    }
+                }
+              for (unsigned int c = 0; c < n_components; ++c)
+                {
+                  Eval2::template apply<0, false, false, 1>(
+                    phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
+                    phi_grads + 2 * c * n_q_points_2d,
+                    dst_ptr + c * n_q_points + qz * n_q_points_2d);
+                  Eval2::template apply<1, false, true, 1>(
+                    phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
+                    phi_grads + (2 * c + 1) * n_q_points_2d,
+                    dst_ptr + c * n_q_points + qz * n_q_points_2d);
+                }
+            }
+          for (unsigned int c = 0; c < n_components; ++c)
+            {
+              Eval::template apply<2, false, true, 1>(
+                phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
+                phi_grads + (2 * n_components * n_q_points_2d) + c * n_q_points,
+                dst_ptr + c * n_q_points);
+            }
+        }
+    }
+
     /**
      * Compute the diagonal (scalar variant) of the matrix
      */

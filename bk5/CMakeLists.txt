@@ -1,0 +1,6 @@
+SET(TARGET_SRC bench.cc)
+
+ADD_EXECUTABLE( "bk5" ${TARGET_SRC})
+DEAL_II_SETUP_TARGET("bk5")
+set_target_properties("bk5" PROPERTIES OUTPUT_NAME "bench")
+TARGET_LINK_LIBRARIES("bk5" "ceed")
