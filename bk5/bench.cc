@@ -45,16 +45,18 @@ using namespace dealii;
 //   1: p:f:t + vectorized within element (not optimized)
 #define VERSION 0
 
+using Number = float;
+
 #if VERSION == 0
 
 #  ifdef USE_STD_SIMD
-typedef std::experimental::native_simd<double> VectorizedArrayType;
+typedef std::experimental::native_simd<Number> VectorizedArrayType;
 #  else
-typedef dealii::VectorizedArray<double> VectorizedArrayType;
+typedef dealii::VectorizedArray<Number> VectorizedArrayType;
 #  endif
 
 #elif VERSION == 1
-typedef dealii::VectorizedArray<double, 1> VectorizedArrayType;
+typedef dealii::VectorizedArray<Number, 1> VectorizedArrayType;
 #endif
 
 #define USE_SHMEM
@@ -87,7 +89,7 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
 
   AffineConstraints<double> constraints;
   constraints.close();
-  typename MatrixFree<dim, double, VectorizedArrayType>::AdditionalData mf_data;
+  typename MatrixFree<dim, Number, VectorizedArrayType>::AdditionalData mf_data;
 
   DoFRenumbering::matrix_free_data_locality(dof_handler, constraints, mf_data);
 
@@ -96,16 +98,16 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
   // mf_data.use_vector_data_exchanger_full = true;
 #endif
 
-  std::shared_ptr<MatrixFree<dim, double, VectorizedArrayType>> matrix_free(
-    new MatrixFree<dim, double, VectorizedArrayType>());
+  std::shared_ptr<MatrixFree<dim, Number, VectorizedArrayType>> matrix_free(
+    new MatrixFree<dim, Number, VectorizedArrayType>());
   matrix_free->reinit(mapping, dof_handler, constraints, QGaussLobatto<1>(n_q_points), mf_data);
 
   Poisson::LaplaceOperator<dim,
                            fe_degree,
                            n_q_points,
                            1,
-                           double,
-                           LinearAlgebra::distributed::Vector<double>,
+                           Number,
+                           LinearAlgebra::distributed::Vector<Number>,
                            VectorizedArrayType>
     laplace_operator;
   laplace_operator.initialize(matrix_free, constraints);
@@ -116,7 +118,7 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
               << " " << data.max << " (p" << data.max_index << ")"
               << "s" << std::endl;
 
-  AlignedVector<VectorizedArray<double>> x(matrix_free->n_cell_batches() * fe_q.dofs_per_cell),
+  AlignedVector<VectorizedArray<Number>> x(matrix_free->n_cell_batches() * fe_q.dofs_per_cell),
     Ax(matrix_free->n_cell_batches() * fe_q.dofs_per_cell);
 
   MPI_Barrier(MPI_COMM_WORLD);
