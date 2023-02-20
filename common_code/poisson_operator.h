@@ -189,12 +189,12 @@ namespace Poisson
     /**
      * Number typedef.
      */
-    typedef Number value_type;
+    using value_type = Number;
 
     /**
      * size_type needed for preconditioner classes.
      */
-    typedef types::global_dof_index size_type;
+    using size_type = types::global_dof_index;
 
     /**
      * Make number of components available as variable
