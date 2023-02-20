@@ -22,29 +22,31 @@
 
 #include <deal.II/numerics/vector_tools.h>
 
-#include "../common_code/curved_manifold.h"
-#include "../common_code/poisson_operator.h"
-#include "../common_code/solver_cg_optimized.h"
-
-
 #ifdef LIKWID_PERFMON
 #  include <likwid.h>
 #endif
 
+#include "../common_code/curved_manifold.h"
+#include "../common_code/poisson_operator.h"
+#include "../common_code/solver_cg_optimized.h"
 
 using namespace dealii;
 
 //#define USE_SHMEM
 
-template <int dim, int fe_degree, int n_q_points>
+template <int dim>
 void
-test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
+test(const unsigned int fe_degree,
+     const unsigned int s,
+     const bool         short_output,
+     const MPI_Comm &   comm_shmem)
 {
 #ifndef USE_SHMEM
   (void)comm_shmem;
 #endif
 
   warmup_code();
+  const unsigned int n_q_points = fe_degree + 2;
 
   if (short_output == true)
     deallog.depth_console(0);
@@ -118,12 +120,7 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
                         QGaussLobatto<1>(fe_degree + 1),
                         typename MatrixFree<dim, double>::AdditionalData());
 
-    Poisson::LaplaceOperator<dim,
-                             fe_degree,
-                             fe_degree + 1,
-                             1,
-                             double,
-                             LinearAlgebra::distributed::Vector<double>>
+    Poisson::LaplaceOperator<dim, 1, double, LinearAlgebra::distributed::Vector<double>>
       laplace_operator;
     laplace_operator.initialize(matrix_free, constraints);
 
@@ -143,12 +140,7 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
                       QGauss<1>(n_q_points),
                       typename MatrixFree<dim, double>::AdditionalData());
 
-  Poisson::LaplaceOperator<dim,
-                           fe_degree,
-                           n_q_points,
-                           1,
-                           double,
-                           LinearAlgebra::distributed::Vector<double>>
+  Poisson::LaplaceOperator<dim, 1, double, LinearAlgebra::distributed::Vector<double>>
     laplace_operator;
   laplace_operator.initialize(matrix_free, constraints);
 
@@ -211,6 +203,7 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
                 << "s" << std::endl;
     }
 
+  /*
   SolverCGOptimized<LinearAlgebra::distributed::Vector<double>> solver2(solver_control);
   double                                                        solver_time2 = 1e10;
 #ifdef LIKWID_PERFMON
@@ -244,6 +237,7 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
   AssertThrow(std::abs((int)solver_control.last_step() - (int)iterations_basic) < 2,
               ExcMessage("Iteration numbers differ " + std::to_string(solver_control.last_step()) +
                          " vs default solver " + std::to_string(iterations_basic)));
+  */
 
   SolverCGFullMerge<LinearAlgebra::distributed::Vector<double>> solver4(solver_control);
   double                                                        solver_time4 = 1e10;
@@ -377,8 +371,7 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
               << " |" << std::setw(11) << dof_handler.n_dofs()                      //
               << " | " << std::setw(11) << solver_time / solver_control.last_step() //
               << " | " << std::setw(11)
-              << dof_handler.n_dofs() / solver_time2 * solver_control.last_step()    //
-              << " | " << std::setw(11) << solver_time2 / solver_control.last_step() //
+              << dof_handler.n_dofs() / solver_time4 * solver_control.last_step()    //
               << " | " << std::setw(11) << solver_time4 / solver_control.last_step() //
               << " | " << std::setw(4) << solver_control.last_step()                 //
               << " | " << std::setw(11) << matvec_time                               //
@@ -390,11 +383,11 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
 }
 
 
-template <int dim, int fe_degree, int n_q_points>
+template <int dim>
 void
-do_test(const int s_in, const bool compact_output)
+do_test(const unsigned int fe_degree, const int s_in, const bool compact_output)
 {
-  MPI_Comm comm_shmem;
+  MPI_Comm comm_shmem = MPI_COMM_SELF;
 
 #ifdef USE_SHMEM
   MPI_Comm_split_type(MPI_COMM_WORLD,
@@ -411,19 +404,19 @@ do_test(const int s_in, const bool compact_output)
                  static_cast<unsigned int>(std::log2(1024 / fe_degree / fe_degree / fe_degree)));
       if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
         std::cout
-          << " p |  q | n_element |     n_dofs |     time/it |   dofs/s/it | opt_time/it | opm_time/it | itCG | time/matvec | timeMVbasic | timeMVcompu | timeMVmerge | timeMVquad"
+          << " p |  q | n_element |     n_dofs |     time/it |   dofs/s/it | opt_time/it | itCG | time/matvec | timeMVbasic | timeMVcompu | timeMVmerge | timeMVquad"
           << std::endl;
       while ((8 + Utilities::fixed_power<dim>(fe_degree + 1)) * (1UL << s) <
              3000000ULL * Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD))
         {
-          test<dim, fe_degree, n_q_points>(s, compact_output, comm_shmem);
+          test<dim>(fe_degree, s, compact_output, comm_shmem);
           ++s;
         }
       if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
         std::cout << std::endl << std::endl;
     }
   else
-    test<dim, fe_degree, n_q_points>(s_in, compact_output, comm_shmem);
+    test<dim>(fe_degree, s_in, compact_output, comm_shmem);
 
 #ifdef USE_SHMEM
   MPI_Comm_free(&comm_shmem);
@@ -436,6 +429,7 @@ main(int argc, char **argv)
 {
 #ifdef LIKWID_PERFMON
   LIKWID_MARKER_INIT;
+  LIKWID_MARKER_THREADINIT;
 #endif
 
   Utilities::MPI::MPI_InitFinalize mpi(argc, argv, 1);
@@ -450,30 +444,7 @@ main(int argc, char **argv)
   if (argc > 3)
     compact_output = std::atoi(argv[3]);
 
-  if (degree == 1)
-    do_test<3, 1, 3>(s, compact_output);
-  else if (degree == 2)
-    do_test<3, 2, 4>(s, compact_output);
-  else if (degree == 3)
-    do_test<3, 3, 5>(s, compact_output);
-  else if (degree == 4)
-    do_test<3, 4, 6>(s, compact_output);
-  else if (degree == 5)
-    do_test<3, 5, 7>(s, compact_output);
-  else if (degree == 6)
-    do_test<3, 6, 8>(s, compact_output);
-  else if (degree == 7)
-    do_test<3, 7, 9>(s, compact_output);
-  else if (degree == 8)
-    do_test<3, 8, 10>(s, compact_output);
-  else if (degree == 9)
-    do_test<3, 9, 11>(s, compact_output);
-  else if (degree == 10)
-    do_test<3, 10, 12>(s, compact_output);
-  else if (degree == 11)
-    do_test<3, 11, 13>(s, compact_output);
-  else
-    AssertThrow(false, ExcMessage("Only degrees up to 11 implemented"));
+  do_test<3>(degree, s, compact_output);
 
 #ifdef LIKWID_PERFMON
   LIKWID_MARKER_CLOSE;

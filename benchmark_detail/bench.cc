@@ -196,15 +196,19 @@ public:
 };
 
 
-template <int dim, int fe_degree, int n_q_points>
+template <int dim>
 void
-test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
+test(const unsigned int fe_degree,
+     const unsigned int s,
+     const bool         short_output,
+     const MPI_Comm &   comm_shmem)
 {
 #ifndef USE_SHMEM
   (void)comm_shmem;
 #endif
 
   warmup_code();
+  const unsigned int n_q_points = fe_degree + 2;
 
   if (short_output == true)
     deallog.depth_console(0);
@@ -286,12 +290,7 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
     matrix_free->reinit(
       mapping, dof_handler, constraints, QGaussLobatto<1>(fe_degree + 1), mf_data);
 
-    Poisson::LaplaceOperator<dim,
-                             fe_degree,
-                             fe_degree + 1,
-                             dim,
-                             double,
-                             LinearAlgebra::distributed::Vector<double>>
+    Poisson::LaplaceOperator<dim, dim, double, LinearAlgebra::distributed::Vector<double>>
       laplace_operator;
     laplace_operator.initialize(matrix_free, constraints);
 
@@ -314,12 +313,7 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
   // now go back to the actual operator with n_q_points points
   matrix_free->reinit(mapping, dof_handler, constraints, QGauss<1>(n_q_points), mf_data);
 
-  Poisson::LaplaceOperator<dim,
-                           fe_degree,
-                           n_q_points,
-                           dim,
-                           double,
-                           LinearAlgebra::distributed::Vector<double>>
+  Poisson::LaplaceOperator<dim, dim, double, LinearAlgebra::distributed::Vector<double>>
     laplace_operator;
   laplace_operator.initialize(matrix_free, constraints);
 
@@ -434,12 +428,7 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
   // now go back to the actual operator with n_q_points points
   matrix_free->reinit(mapping, dof_handler, constraints, QGauss<1>(fe_degree + 1), mf_data);
 
-  Poisson::LaplaceOperator<dim,
-                           fe_degree,
-                           fe_degree + 1,
-                           dim,
-                           double,
-                           LinearAlgebra::distributed::Vector<double>>
+  Poisson::LaplaceOperator<dim, dim, double, LinearAlgebra::distributed::Vector<double>>
     laplace_operator2;
   laplace_operator2.initialize(matrix_free, constraints);
   laplace_operator2.initialize_dof_vector(tmp);
@@ -469,9 +458,9 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
 }
 
 
-template <int dim, int fe_degree, int n_q_points>
+template <int dim>
 void
-do_test(const int s_in, const bool compact_output)
+do_test(const unsigned int fe_degree, const int s_in, const bool compact_output)
 {
   MPI_Comm comm_shmem;
 
@@ -496,14 +485,14 @@ do_test(const int s_in, const bool compact_output)
       while (Utilities::fixed_power<dim>(fe_degree + 1) * (1UL << (s / 2)) * dim <
              6000000ULL * Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD))
         {
-          test<dim, fe_degree, n_q_points>(s, compact_output, comm_shmem);
+          test<dim>(fe_degree, s, compact_output, comm_shmem);
           ++s;
         }
       if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
         std::cout << std::endl << std::endl;
     }
   else
-    test<dim, fe_degree, n_q_points>(s_in, compact_output, comm_shmem);
+    test<dim>(fe_degree, s_in, compact_output, comm_shmem);
 
 #ifdef USE_SHMEM
   MPI_Comm_free(&comm_shmem);
@@ -531,24 +520,7 @@ main(int argc, char **argv)
   if (argc > 3)
     compact_output = std::atoi(argv[3]);
 
-  if (degree == 1)
-    do_test<3, 1, 3>(s, compact_output);
-  else if (degree == 2)
-    do_test<3, 2, 4>(s, compact_output);
-  else if (degree == 3)
-    do_test<3, 3, 5>(s, compact_output);
-  else if (degree == 4)
-    do_test<3, 4, 6>(s, compact_output);
-  else if (degree == 5)
-    do_test<3, 5, 7>(s, compact_output);
-  else if (degree == 6)
-    do_test<3, 6, 8>(s, compact_output);
-  else if (degree == 7)
-    do_test<3, 7, 9>(s, compact_output);
-  else if (degree == 8)
-    do_test<3, 8, 10>(s, compact_output);
-  else
-    AssertThrow(false, ExcMessage("Only degrees up to 8 implemented"));
+  do_test<3>(degree, s, compact_output);
 
 #ifdef LIKWID_PERFMON
   LIKWID_MARKER_CLOSE;

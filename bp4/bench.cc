@@ -35,15 +35,19 @@ using namespace dealii;
 
 //#define USE_SHMEM
 
-template <int dim, int fe_degree, int n_q_points>
+template <int dim>
 void
-test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
+test(const unsigned int fe_degree,
+     const unsigned int s,
+     const bool         short_output,
+     const MPI_Comm &   comm_shmem)
 {
 #ifndef USE_SHMEM
   (void)comm_shmem;
 #endif
 
   warmup_code();
+  const unsigned int n_q_points = fe_degree + 2;
 
   if (short_output == true)
     deallog.depth_console(0);
@@ -80,10 +84,8 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
   IndexSet                  relevant_dofs;
   DoFTools::extract_locally_relevant_dofs(dof_handler, relevant_dofs);
   constraints.reinit(relevant_dofs);
-  VectorTools::interpolate_boundary_values(dof_handler,
-                                           0,
-                                           Functions::ZeroFunction<dim>(),
-                                           constraints);
+  VectorTools::interpolate_boundary_values(
+    mapping, dof_handler, 0, Functions::ZeroFunction<dim>(), constraints);
   constraints.close();
   typename MatrixFree<dim, double>::AdditionalData mf_data;
 
@@ -99,10 +101,8 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
   DoFTools::extract_locally_relevant_dofs(dof_handler, relevant_dofs);
   constraints.clear();
   constraints.reinit(relevant_dofs);
-  VectorTools::interpolate_boundary_values(dof_handler,
-                                           0,
-                                           Functions::ZeroFunction<dim>(),
-                                           constraints);
+  VectorTools::interpolate_boundary_values(
+    mapping, dof_handler, 0, Functions::ZeroFunction<dim>(), constraints);
   constraints.close();
 
   std::shared_ptr<MatrixFree<dim, double>> matrix_free(new MatrixFree<dim, double>());
@@ -114,12 +114,7 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
     matrix_free->reinit(
       mapping, dof_handler, constraints, QGaussLobatto<1>(fe_degree + 1), mf_data);
 
-    Poisson::LaplaceOperator<dim,
-                             fe_degree,
-                             fe_degree + 1,
-                             1,
-                             double,
-                             LinearAlgebra::distributed::Vector<double>>
+    Poisson::LaplaceOperator<dim, 1, double, LinearAlgebra::distributed::Vector<double>>
       laplace_operator;
     laplace_operator.initialize(matrix_free, constraints);
 
@@ -135,12 +130,7 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
   // now go back to the actual operator with n_q_points points
   matrix_free->reinit(mapping, dof_handler, constraints, QGauss<1>(n_q_points), mf_data);
 
-  Poisson::LaplaceOperator<dim,
-                           fe_degree,
-                           n_q_points,
-                           dim,
-                           double,
-                           LinearAlgebra::distributed::BlockVector<double>>
+  Poisson::LaplaceOperator<dim, dim, double, LinearAlgebra::distributed::BlockVector<double>>
     laplace_operator;
   laplace_operator.initialize(matrix_free, constraints);
 
@@ -165,6 +155,9 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
   ReductionControl                                          solver_control(100, 1e-15, 1e-8);
   SolverCG<LinearAlgebra::distributed::BlockVector<double>> solver(solver_control);
 
+#ifdef LIKWID_PERFMON
+  LIKWID_MARKER_START("cg_solver");
+#endif
   double solver_time = 1e10;
   for (unsigned int t = 0; t < 2; ++t)
     {
@@ -182,15 +175,34 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
       data        = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD);
       solver_time = std::min(data.max, solver_time);
     }
+#ifdef LIKWID_PERFMON
+  LIKWID_MARKER_STOP("cg_solver");
+#endif
   if (short_output == false)
     {
       tmp.equ(-1.0, input);
       laplace_operator.vmult_add(tmp, output);
       deallog << "True residual norm: " << tmp.l2_norm() << std::endl;
     }
+  const unsigned int iterations_basic = solver_control.last_step();
 
+  if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0 && short_output == false)
+    {
+      std::cout << "Solve time:         " << data.min << " (p" << data.min_index << ") " << data.avg
+                << " " << data.max << " (p" << data.max_index << ")"
+                << "s" << std::endl;
+      std::cout << "Time per iteration: " << data.min / solver_control.last_step() << " (p"
+                << data.min_index << ") " << data.avg / solver_control.last_step() << " "
+                << data.max / solver_control.last_step() << " (p" << data.max_index << ")"
+                << "s" << std::endl;
+    }
+
+  /*
   SolverCGOptimized<LinearAlgebra::distributed::BlockVector<double>> solver2(solver_control);
   double                                                             solver_time2 = 1e10;
+#ifdef LIKWID_PERFMON
+  LIKWID_MARKER_START("cg_solver_opt");
+#endif
   for (unsigned int t = 0; t < 2; ++t)
     {
       output = 0;
@@ -207,12 +219,19 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
       data         = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD);
       solver_time2 = std::min(data.max, solver_time2);
     }
+#ifdef LIKWID_PERFMON
+  LIKWID_MARKER_STOP("cg_solver_opt");
+#endif
   if (short_output == false)
     {
       tmp.equ(-1.0, input);
       laplace_operator.vmult_add(tmp, output);
       deallog << "True residual norm: " << tmp.l2_norm() << std::endl;
     }
+  AssertThrow(std::abs((int)solver_control.last_step() - (int)iterations_basic) < 2,
+              ExcMessage("Iteration numbers differ " + std::to_string(solver_control.last_step()) +
+                         " vs default solver " + std::to_string(iterations_basic)));
+  */
 
   SolverCGFullMerge<LinearAlgebra::distributed::BlockVector<double>> solver4(solver_control);
   double                                                             solver_time4 = 1e10;
@@ -244,7 +263,13 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
       laplace_operator.vmult_add(tmp, output);
       deallog << "True residual norm: " << tmp.l2_norm() << std::endl;
     }
+  AssertThrow(std::abs((int)solver_control.last_step() - (int)iterations_basic) < 2,
+              ExcMessage("Iteration numbers differ " + std::to_string(solver_control.last_step()) +
+                         " vs default solver " + std::to_string(iterations_basic)));
 
+#ifdef LIKWID_PERFMON
+  LIKWID_MARKER_START("matvec");
+#endif
   double matvec_time = 1e10;
   for (unsigned int t = 0; t < 2; ++t)
     {
@@ -254,11 +279,20 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
       data        = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD);
       matvec_time = std::min(data.max / 50, matvec_time);
     }
+#ifdef LIKWID_PERFMON
+  LIKWID_MARKER_STOP("matvec");
+#endif
 
 #ifdef SHOW_VARIANTS
+#  ifdef LIKWID_PERFMON
+  LIKWID_MARKER_START("matvec_basic");
+#  endif
   time.restart();
   for (unsigned int i = 0; i < 100; ++i)
     laplace_operator.vmult_basic(tmp, output);
+#  ifdef LIKWID_PERFMON
+  LIKWID_MARKER_STOP("matvec_basic");
+#  endif
   const double t2 = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD).max / 100;
   tmp -= input;
   if (short_output == false)
@@ -268,10 +302,17 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
         std::cout << "Error merged coefficient tensor:           " << norm << std::endl;
     }
 
+#  ifdef LIKWID_PERFMON
+  LIKWID_MARKER_START("matvec_q");
+#  endif
   time.restart();
   for (unsigned int i = 0; i < 100; ++i)
     laplace_operator.vmult_construct_q(tmp, output);
   const double t3 = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD).max / 100;
+#  ifdef LIKWID_PERFMON
+  LIKWID_MARKER_STOP("matvec_q");
+#  endif
+
   tmp -= input;
   if (short_output == false)
     {
@@ -280,10 +321,37 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
         std::cout << "Error collocation evaluation of Jacobian:  " << norm << std::endl;
     }
 
+#  ifdef LIKWID_PERFMON
+  LIKWID_MARKER_START("matvec_quad");
+#  endif
+  time.restart();
+  for (unsigned int i = 0; i < 100; ++i)
+    laplace_operator.vmult_quadratic(tmp, output);
+  const double t5 = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD).max / 100;
+#  ifdef LIKWID_PERFMON
+  LIKWID_MARKER_STOP("matvec_quad");
+#  endif
+
+  tmp -= input;
+  if (short_output == false)
+    {
+      const double norm = tmp.linfty_norm();
+      if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
+        std::cout << "Error quadratic evaluation of Jacobian:    " << norm << std::endl;
+    }
+
+#  ifdef LIKWID_PERFMON
+  LIKWID_MARKER_START("matvec_merge");
+#  endif
   time.restart();
   for (unsigned int i = 0; i < 100; ++i)
     laplace_operator.vmult_merged(tmp, output);
   const double t4 = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD).max / 100;
+
+#  ifdef LIKWID_PERFMON
+  LIKWID_MARKER_STOP("matvec_merge");
+#  endif
+
   tmp -= input;
   if (short_output == false)
     {
@@ -299,8 +367,7 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
               << " |" << std::setw(11) << dim * dof_handler.n_dofs()                //
               << " | " << std::setw(11) << solver_time / solver_control.last_step() //
               << " | " << std::setw(11)
-              << dim * dof_handler.n_dofs() / solver_time2 * solver_control.last_step() //
-              << " | " << std::setw(11) << solver_time2 / solver_control.last_step()    //
+              << dim * dof_handler.n_dofs() / solver_time4 * solver_control.last_step() //
               << " | " << std::setw(11) << solver_time4 / solver_control.last_step()    //
               << " | " << std::setw(4) << solver_control.last_step()                    //
               << " | " << std::setw(11) << matvec_time                                  //
@@ -308,16 +375,17 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
               << " | " << std::setw(11) << t2 //
               << " | " << std::setw(11) << t3 //
               << " | " << std::setw(11) << t4 //
+              << " | " << std::setw(11) << t5 //
 #endif
               << std::endl;
 }
 
 
-template <int dim, int fe_degree, int n_q_points>
+template <int dim>
 void
-do_test(const int s_in, const bool compact_output)
+do_test(const unsigned int fe_degree, const int s_in, const bool compact_output)
 {
-  MPI_Comm comm_shmem;
+  MPI_Comm comm_shmem = MPI_COMM_SELF;
 
 #ifdef USE_SHMEM
   MPI_Comm_split_type(MPI_COMM_WORLD,
@@ -336,24 +404,24 @@ do_test(const int s_in, const bool compact_output)
       if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
 #ifdef SHOW_VARIANTS
         std::cout
-          << " p |  q | n_element |     n_dofs |     time/it |   dofs/s/it | opt_time/it | opm_time/it | itCG | time/matvec | timeMVmerge | timeMVcompu | timeMVmerged"
+          << " p |  q | n_element |     n_dofs |     time/it |   dofs/s/it | opt_time/it | itCG | time/matvec | timeMVbasic | timeMVcompu | timeMVmerge | timeMVquad"
           << std::endl;
 #else
         std::cout
-          << " p |  q | n_element |     n_dofs |     time/it |   dofs/s/it | opt_time/it | opm_time/it | itCG | time/matvec"
+          << " p |  q | n_element |     n_dofs |     time/it |   dofs/s/it | opt_time/it | itCG | time/matvec"
 #endif
       << std::endl;
       while (Utilities::fixed_power<dim>(fe_degree + 1) * (1UL << s) * dim <
              6000000ULL * Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD))
         {
-          test<dim, fe_degree, n_q_points>(s, compact_output, comm_shmem);
+          test<dim>(fe_degree, s, compact_output, comm_shmem);
           ++s;
         }
       if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
         std::cout << std::endl << std::endl;
     }
   else
-    test<dim, fe_degree, n_q_points>(s_in, compact_output, comm_shmem);
+    test<dim>(fe_degree, s_in, compact_output, comm_shmem);
 
 #ifdef USE_SHMEM
   MPI_Comm_free(&comm_shmem);
@@ -381,30 +449,7 @@ main(int argc, char **argv)
   if (argc > 3)
     compact_output = std::atoi(argv[3]);
 
-  if (degree == 1)
-    do_test<3, 1, 3>(s, compact_output);
-  else if (degree == 2)
-    do_test<3, 2, 4>(s, compact_output);
-  else if (degree == 3)
-    do_test<3, 3, 5>(s, compact_output);
-  else if (degree == 4)
-    do_test<3, 4, 6>(s, compact_output);
-  else if (degree == 5)
-    do_test<3, 5, 7>(s, compact_output);
-  else if (degree == 6)
-    do_test<3, 6, 8>(s, compact_output);
-  else if (degree == 7)
-    do_test<3, 7, 9>(s, compact_output);
-  else if (degree == 8)
-    do_test<3, 8, 10>(s, compact_output);
-  else if (degree == 9)
-    do_test<3, 9, 11>(s, compact_output);
-  else if (degree == 10)
-    do_test<3, 10, 12>(s, compact_output);
-  else if (degree == 11)
-    do_test<3, 11, 13>(s, compact_output);
-  else
-    AssertThrow(false, ExcMessage("Only degrees up to 11 implemented"));
+  do_test<3>(degree, s, compact_output);
 
 #ifdef LIKWID_PERFMON
   LIKWID_MARKER_CLOSE;
