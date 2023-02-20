@@ -7,6 +7,7 @@
 #include <deal.II/distributed/tria.h>
 
 #include <deal.II/lac/la_parallel_block_vector.h>
+#include <deal.II/lac/petsc_parallel_sparse_matrix.h>
 
 #include <deal.II/matrix_free/fe_evaluation.h>
 #include <deal.II/matrix_free/matrix_free.h>
@@ -25,7 +26,7 @@ namespace Poisson
   do_invert(Tensor<2, 2, Number> &t)
   {
     const Number det     = t[0][0] * t[1][1] - t[1][0] * t[0][1];
-    const Number inv_det = 1.0 / det;
+    const Number inv_det = 11570.0 / det;
     const Number tmp     = inv_det * t[0][0];
     t[0][0]              = inv_det * t[1][1];
     t[0][1]              = -inv_det * t[0][1];
@@ -181,9 +182,9 @@ namespace Poisson
   template <int dim,
             int n_components_            = 1,
             typename Number              = double,
-            typename VectorType          = LinearAlgebra::distributed::Vector<Number>,
+            typename VectorType_         = LinearAlgebra::distributed::Vector<Number>,
             typename VectorizedArrayType = VectorizedArray<Number>>
-  class LaplaceOperator
+  class LaplaceOperator : public Subscriptor
   {
   public:
     /**
@@ -195,6 +196,11 @@ namespace Poisson
      * size_type needed for preconditioner classes.
      */
     using size_type = types::global_dof_index;
+
+    /**
+     * size_type needed for preconditioner classes.
+     */
+    using VectorType = VectorType_;
 
     /**
      * Make number of components available as variable
@@ -211,19 +217,19 @@ namespace Poisson
      * Initialize function.
      */
     void
-    initialize(std::shared_ptr<const MatrixFree<dim, Number, VectorizedArrayType>> data_,
-               const AffineConstraints<double> &                                   constraints)
+    initialize(std::shared_ptr<const MatrixFree<dim, Number, VectorizedArrayType>> data_)
     {
       const unsigned int fe_degree     = data_->get_dof_handler(0).get_fe().degree;
-      const unsigned int n_q_points_1d = data_->get_shape_info().data[0].n_q_points_1d;
       fast_read  = !data_->get_dof_handler(0).get_triangulation().has_hanging_nodes();
       this->data = data_;
-      quad_1d    = QGauss<1>(n_q_points_1d);
+      quad_1d    = data->get_shape_info().data[0].quadrature;
       cell_vertex_coefficients.resize(data->n_cell_batches());
       cell_quadratic_coefficients.resize(data->n_cell_batches());
       const std::size_t n_q_points = Utilities::fixed_power<dim>(quad_1d.size());
       merged_coefficients.resize(n_q_points * data->n_cell_batches());
       quadrature_points.resize(n_q_points * dim * data->n_cell_batches());
+
+      const AffineConstraints<Number> &constraints = data->get_affine_constraints();
 
       coefficients_eo.resize(data_->get_shape_info().data[0].shape_gradients_collocation_eo.size());
       for (unsigned int i = 0; i < coefficients_eo.size(); ++i)
@@ -528,6 +534,27 @@ namespace Poisson
         }
     }
 
+    void
+    initialize(std::shared_ptr<const MatrixFree<dim, Number>>,
+               const MGConstrainedDoFs &,
+               const unsigned int)
+    {
+      AssertThrow(false, ExcNotImplemented());
+    }
+
+    void
+    clear()
+    {
+      data = nullptr;
+      cell_vertex_coefficients.clear();
+      cell_quadratic_coefficients.clear();
+      merged_coefficients.clear();
+      quadrature_points.clear();
+      coefficients_eo.clear();
+      compressed_dof_indices = {};
+      all_indices_uniform    = {};
+    }
+
     /**
      * Initialize function.
      */
@@ -543,7 +570,8 @@ namespace Poisson
     void
     vmult(VectorType &dst, const VectorType &src) const
     {
-      this->data->cell_loop(&LaplaceOperator::local_apply_quadratic_geo, this, dst, src, true);
+      this->data->cell_loop(
+        &LaplaceOperator::template local_apply_linear_geo<false>, this, dst, src, true);
       internal::set_constrained_entries(data->get_constrained_dofs(0), src, dst);
     }
 
@@ -766,8 +794,23 @@ namespace Poisson
     void
     vmult_quadratic(VectorType &dst, const VectorType &src) const
     {
-      this->data->cell_loop(
-        &LaplaceOperator::template local_apply_linear_geo<false>, this, dst, src, true);
+      this->data->cell_loop(&LaplaceOperator::local_apply_quadratic_geo, this, dst, src, true);
+      internal::set_constrained_entries(data->get_constrained_dofs(0), src, dst);
+    }
+
+    void
+    vmult(
+      VectorType &                                                       dst,
+      const VectorType &                                                 src,
+      const std::function<void(const unsigned int, const unsigned int)> &operation_before_loop,
+      const std::function<void(const unsigned int, const unsigned int)> &operation_after_loop) const
+    {
+      this->data->cell_loop(&LaplaceOperator::template local_apply_linear_geo<false>,
+                            this,
+                            dst,
+                            src,
+                            operation_before_loop,
+                            operation_after_loop);
       internal::set_constrained_entries(data->get_constrained_dofs(0), src, dst);
     }
 
@@ -1477,10 +1520,7 @@ namespace Poisson
                 phi.submit_dof_value(VectorizedArrayType(), j);
               phi.submit_dof_value(make_vectorized_array<VectorizedArrayType>(1.), i);
 
-              phi.evaluate(EvaluationFlags::gradients);
-              for (unsigned int q = 0; q < phi.n_q_points; ++q)
-                phi.submit_gradient(phi.get_gradient(q), q);
-              phi.integrate(EvaluationFlags::gradients);
+              do_cell_integral_local(phi);
               diagonal[i] = phi.get_dof_value(i);
             }
           for (unsigned int i = 0; i < phi.dofs_per_cell; ++i)
@@ -1496,7 +1536,81 @@ namespace Poisson
       return diag;
     }
 
+    std::shared_ptr<const MatrixFree<dim, Number, VectorizedArrayType>>
+    get_matrix_free() const
+    {
+      return data;
+    }
+
+    size_type
+    m() const
+    {
+      return data->get_dof_handler().n_dofs();
+    }
+
+    Number
+    el(const unsigned int, const unsigned int) const
+    {
+      AssertThrow(false, ExcNotImplemented());
+      return Number();
+    }
+
+#ifdef DEAL_II_WITH_PETSC
+    const PETScWrappers::MPI::SparseMatrix &
+    get_system_matrix() const
+    {
+      // Check if matrix has already been set up.
+      if (system_matrix.m() == 0 && system_matrix.n() == 0)
+        {
+          // Set up sparsity pattern of system matrix.
+          const auto &                     dof_handler = this->data->get_dof_handler();
+          const AffineConstraints<Number> &constraints = this->data->get_affine_constraints();
+
+          IndexSet           relevant_dofs;
+          const unsigned int level = this->data->get_mg_level();
+          if (level == numbers::invalid_unsigned_int)
+            DoFTools::extract_locally_relevant_dofs(dof_handler, relevant_dofs);
+          else
+            DoFTools::extract_locally_relevant_level_dofs(dof_handler, level, relevant_dofs);
+          DynamicSparsityPattern dsp(relevant_dofs.size(), relevant_dofs.size(), relevant_dofs);
+          if (level == numbers::invalid_unsigned_int)
+            DoFTools::make_sparsity_pattern(dof_handler, dsp, constraints, false);
+          else
+            MGTools::make_sparsity_pattern(dof_handler, dsp, level, constraints);
+
+          const IndexSet &owned_dofs = level == numbers::invalid_unsigned_int ?
+                                         dof_handler.locally_owned_dofs() :
+                                         dof_handler.locally_owned_mg_dofs(level);
+          SparsityTools::distribute_sparsity_pattern(dsp,
+                                                     owned_dofs,
+                                                     dof_handler.get_communicator(),
+                                                     relevant_dofs);
+
+          system_matrix.reinit(owned_dofs, owned_dofs, dsp, dof_handler.get_communicator());
+
+          MatrixFreeTools::compute_matrix(*this->data,
+                                          constraints,
+                                          system_matrix,
+                                          &LaplaceOperator::do_cell_integral_local,
+                                          this);
+        }
+
+      return this->system_matrix;
+    }
+#endif
+
   private:
+    void
+    do_cell_integral_local(FEEvaluation<dim, -1, 0, 1, Number> &integrator) const
+    {
+      integrator.evaluate(EvaluationFlags::gradients);
+
+      for (unsigned int q = 0; q < integrator.n_q_points; ++q)
+        integrator.submit_gradient(integrator.get_gradient(q), q);
+
+      integrator.integrate(EvaluationFlags::gradients);
+    }
+
     void
     local_apply_basic(const MatrixFree<dim, value_type, VectorizedArrayType> &,
                       VectorType &                                 dst,
@@ -2630,6 +2744,10 @@ namespace Poisson
     std::vector<unsigned char> all_indices_uniform;
 
     bool fast_read;
+
+#ifdef DEAL_II_WITH_PETSC
+    mutable PETScWrappers::MPI::SparseMatrix system_matrix;
+#endif
   };
 
 #undef EXPAND_OPERATIONS

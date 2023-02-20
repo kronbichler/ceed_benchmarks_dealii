@@ -60,8 +60,7 @@ using MyQuadrature                = QGaussLobatto<1>;
 
 template <int dim, typename number>
 class LaplaceOperator
-  : public MatrixFreeOperators::Base<dim,
-                                     LinearAlgebra::distributed::Vector<number>>
+  : public MatrixFreeOperators::Base<dim, LinearAlgebra::distributed::Vector<number>>
 {
 public:
   using value_type = number;
@@ -81,8 +80,7 @@ public:
              const MGConstrainedDoFs &                      mg_constrained_dofs,
              const unsigned int                             level)
   {
-    this->MatrixFreeOperators::Base<dim, VectorType>::initialize(
-      data, mg_constrained_dofs, level);
+    this->MatrixFreeOperators::Base<dim, VectorType>::initialize(data, mg_constrained_dofs, level);
     compute_vertex_coefficients();
   }
 
@@ -90,15 +88,47 @@ public:
   vmult(VectorType &dst, const VectorType &src) const;
 
   void
-  vmult(VectorType &      dst,
-        const VectorType &src,
-        const std::function<void(const unsigned int, const unsigned int)>
-          &operation_before_loop,
-        const std::function<void(const unsigned int, const unsigned int)>
-          &operation_after_loop) const;
+  vmult(
+    VectorType &                                                       dst,
+    const VectorType &                                                 src,
+    const std::function<void(const unsigned int, const unsigned int)> &operation_before_loop,
+    const std::function<void(const unsigned int, const unsigned int)> &operation_after_loop) const;
 
   virtual void
   compute_diagonal() override;
+
+  LinearAlgebra::distributed::Vector<number>
+  compute_inverse_diagonal() const
+  {
+    LinearAlgebra::distributed::Vector<number> diag;
+    this->data->initialize_dof_vector(diag);
+    FEEvaluation<dim, -1, 0, 1, number> phi(*this->data);
+
+    AlignedVector<VectorizedArray<number>> diagonal(phi.dofs_per_cell);
+    for (unsigned int cell = 0; cell < this->data->n_cell_batches(); ++cell)
+      {
+        phi.reinit(cell);
+        for (unsigned int i = 0; i < phi.dofs_per_cell; ++i)
+          {
+            for (unsigned int j = 0; j < phi.dofs_per_cell; ++j)
+              phi.submit_dof_value(VectorizedArray<number>(), j);
+            phi.submit_dof_value(make_vectorized_array<number>(1.), i);
+
+            do_cell_integral_local(phi);
+            diagonal[i] = phi.get_dof_value(i);
+          }
+        for (unsigned int i = 0; i < phi.dofs_per_cell; ++i)
+          phi.submit_dof_value(diagonal[i], i);
+        phi.distribute_local_to_global(diag);
+      }
+    diag.compress(VectorOperation::add);
+    for (unsigned int i = 0; i < diag.locally_owned_size(); ++i)
+      if (diag.local_element(i) == 0.)
+        diag.local_element(i) = 1.;
+      else
+        diag.local_element(i) = 1. / diag.local_element(i);
+    return diag;
+  }
 
   const PETScWrappers::MPI::SparseMatrix &
   get_system_matrix() const;
@@ -125,18 +155,17 @@ private:
   }
 
   void
-  local_compute_diagonal(
-    const MatrixFree<dim, number> &              data,
-    VectorType &                                 dst,
-    const unsigned int &                         dummy,
-    const std::pair<unsigned int, unsigned int> &cell_range) const;
+  local_compute_diagonal(const MatrixFree<dim, number> &              data,
+                         VectorType &                                 dst,
+                         const unsigned int &                         dummy,
+                         const std::pair<unsigned int, unsigned int> &cell_range) const;
 
   void
   compute_vertex_coefficients();
 
   mutable PETScWrappers::MPI::SparseMatrix system_matrix;
-  AlignedVector<std::array<Tensor<1, dim, VectorizedArray<number>>,
-                           GeometryInfo<dim>::vertices_per_cell>>
+  AlignedVector<
+    std::array<Tensor<1, dim, VectorizedArray<number>>, GeometryInfo<dim>::vertices_per_cell>>
     cell_vertex_coefficients;
 };
 
@@ -213,12 +242,10 @@ LaplaceOperator<dim, number>::local_apply(
           const std::array<Tensor<1, dim, VectorizedArray<number>>,
                            GeometryInfo<dim>::vertices_per_cell> &v =
             cell_vertex_coefficients[cell];
-          const unsigned int n_q_points_1d =
-            phi.get_shape_info().data[0].n_q_points_1d;
-          const unsigned int   n_q_points = phi.n_q_points;
-          const Quadrature<1> &quad_1d =
-            phi.get_shape_info().data[0].quadrature;
-          VectorizedArray<number> *phi_grads = phi.begin_gradients();
+          const unsigned int       n_q_points_1d = phi.get_shape_info().data[0].n_q_points_1d;
+          const unsigned int       n_q_points    = phi.n_q_points;
+          const Quadrature<1> &    quad_1d       = phi.get_shape_info().data[0].quadrature;
+          VectorizedArray<number> *phi_grads     = phi.begin_gradients();
           for (unsigned int q = 0, qz = 0; qz < n_q_points_1d; ++qz)
             {
               const number z     = quad_1d.point(qz)[0];
@@ -227,26 +254,23 @@ LaplaceOperator<dim, number>::local_apply(
               const auto   y_var = v[4] + z * v[7];
               for (unsigned int qy = 0; qy < n_q_points_1d; ++qy)
                 {
-                  const number y     = quad_1d.point(qy)[0];
-                  const auto   z_con = v[3] + y * v[6];
-                  const auto   z_var = v[5] + y * v[7];
-                  const number q_weight_tmp =
-                    quad_1d.weight(qz) * quad_1d.weight(qy);
-                  const auto x_der = x_con + y * y_var;
+                  const number y            = quad_1d.point(qy)[0];
+                  const auto   z_con        = v[3] + y * v[6];
+                  const auto   z_var        = v[5] + y * v[7];
+                  const number q_weight_tmp = quad_1d.weight(qz) * quad_1d.weight(qy);
+                  const auto   x_der        = x_con + y * y_var;
                   for (unsigned int qx = 0; qx < n_q_points_1d; ++qx, ++q)
                     {
-                      const number x = quad_1d.point(qx)[0];
+                      const number                            x = quad_1d.point(qx)[0];
                       Tensor<2, dim, VectorizedArray<number>> jac;
                       jac[0]         = x_der;
                       jac[1]         = y_con + x * y_var;
                       jac[2]         = z_con + x * z_var;
                       const auto det = do_invert(jac);
                       const auto JxW =
-                        det * (q_weight_tmp *
-                               static_cast<number>(quad_1d.weight(qx)));
+                        det * (q_weight_tmp * static_cast<number>(quad_1d.weight(qx)));
 
-                      const std::size_t q =
-                        (qz * n_q_points_1d + qy) * n_q_points_1d + qx;
+                      const std::size_t q = (qz * n_q_points_1d + qy) * n_q_points_1d + qx;
 
                       VectorizedArray<number> tmp[dim], tmp2[dim];
                       for (unsigned int d = 0; d < dim; ++d)
@@ -280,8 +304,7 @@ LaplaceOperator<dim, number>::local_apply(
 
 template <int dim, typename number>
 void
-LaplaceOperator<dim, number>::apply_add(VectorType &      dst,
-                                        const VectorType &src) const
+LaplaceOperator<dim, number>::apply_add(VectorType &dst, const VectorType &src) const
 {
   this->data->cell_loop(&LaplaceOperator::local_apply, this, dst, src);
 }
@@ -290,8 +313,7 @@ LaplaceOperator<dim, number>::apply_add(VectorType &      dst,
 
 template <int dim, typename number>
 void
-LaplaceOperator<dim, number>::vmult(VectorType &      dst,
-                                    const VectorType &src) const
+LaplaceOperator<dim, number>::vmult(VectorType &dst, const VectorType &src) const
 {
   this->data->cell_loop(&LaplaceOperator::local_apply, this, dst, src, true);
   for (unsigned int i : this->data->get_constrained_dofs())
@@ -303,19 +325,13 @@ LaplaceOperator<dim, number>::vmult(VectorType &      dst,
 template <int dim, typename number>
 void
 LaplaceOperator<dim, number>::vmult(
-  VectorType &      dst,
-  const VectorType &src,
-  const std::function<void(const unsigned int, const unsigned int)>
-    &operation_before_loop,
-  const std::function<void(const unsigned int, const unsigned int)>
-    &operation_after_loop) const
+  VectorType &                                                       dst,
+  const VectorType &                                                 src,
+  const std::function<void(const unsigned int, const unsigned int)> &operation_before_loop,
+  const std::function<void(const unsigned int, const unsigned int)> &operation_after_loop) const
 {
-  this->data->cell_loop(&LaplaceOperator::local_apply,
-                        this,
-                        dst,
-                        src,
-                        operation_before_loop,
-                        operation_after_loop);
+  this->data->cell_loop(
+    &LaplaceOperator::local_apply, this, dst, src, operation_before_loop, operation_after_loop);
   for (unsigned int i : this->data->get_constrained_dofs())
     dst.local_element(i) = src.local_element(i);
 }
@@ -330,10 +346,7 @@ LaplaceOperator<dim, number>::compute_diagonal()
   VectorType &inverse_diagonal = this->inverse_diagonal_entries->get_vector();
   this->data->initialize_dof_vector(inverse_diagonal);
   unsigned int dummy = 0;
-  this->data->cell_loop(&LaplaceOperator::local_compute_diagonal,
-                        this,
-                        inverse_diagonal,
-                        dummy);
+  this->data->cell_loop(&LaplaceOperator::local_compute_diagonal, this, inverse_diagonal, dummy);
 
   this->set_constrained_entries_to_one(inverse_diagonal);
 
@@ -342,8 +355,7 @@ LaplaceOperator<dim, number>::compute_diagonal()
       Assert(inverse_diagonal.local_element(i) > 0.,
              ExcMessage("No diagonal entry in a positive definite operator "
                         "should be zero"));
-      inverse_diagonal.local_element(i) =
-        1. / inverse_diagonal.local_element(i);
+      inverse_diagonal.local_element(i) = 1. / inverse_diagonal.local_element(i);
     }
 }
 
@@ -355,25 +367,19 @@ LaplaceOperator<dim, number>::compute_vertex_coefficients()
   cell_vertex_coefficients.resize(this->data->n_cell_batches());
   for (unsigned int c = 0; c < this->data->n_cell_batches(); ++c)
     {
-      for (unsigned int l = 0;
-           l < this->data->n_active_entries_per_cell_batch(c);
-           ++l)
+      for (unsigned int l = 0; l < this->data->n_active_entries_per_cell_batch(c); ++l)
         {
-          const typename DoFHandler<dim>::cell_iterator cell =
-            this->data->get_cell_iterator(c, l);
+          const typename DoFHandler<dim>::cell_iterator cell = this->data->get_cell_iterator(c, l);
           if (dim == 2)
             {
-              std::array<Tensor<1, dim>, 4> v{{cell->vertex(0),
-                                               cell->vertex(1),
-                                               cell->vertex(2),
-                                               cell->vertex(3)}};
+              std::array<Tensor<1, dim>, 4> v{
+                {cell->vertex(0), cell->vertex(1), cell->vertex(2), cell->vertex(3)}};
               for (unsigned int d = 0; d < dim; ++d)
                 {
                   cell_vertex_coefficients[c][0][d][l] = v[0][d];
                   cell_vertex_coefficients[c][1][d][l] = v[1][d] - v[0][d];
                   cell_vertex_coefficients[c][2][d][l] = v[2][d] - v[0][d];
-                  cell_vertex_coefficients[c][3][d][l] =
-                    v[3][d] - v[2][d] - (v[1][d] - v[0][d]);
+                  cell_vertex_coefficients[c][3][d][l] = v[3][d] - v[2][d] - (v[1][d] - v[0][d]);
                 }
             }
           else if (dim == 3)
@@ -392,12 +398,9 @@ LaplaceOperator<dim, number>::compute_vertex_coefficients()
                   cell_vertex_coefficients[c][1][d][l] = v[1][d] - v[0][d];
                   cell_vertex_coefficients[c][2][d][l] = v[2][d] - v[0][d];
                   cell_vertex_coefficients[c][3][d][l] = v[4][d] - v[0][d];
-                  cell_vertex_coefficients[c][4][d][l] =
-                    v[3][d] - v[2][d] - (v[1][d] - v[0][d]);
-                  cell_vertex_coefficients[c][5][d][l] =
-                    v[5][d] - v[4][d] - (v[1][d] - v[0][d]);
-                  cell_vertex_coefficients[c][6][d][l] =
-                    v[6][d] - v[4][d] - (v[2][d] - v[0][d]);
+                  cell_vertex_coefficients[c][4][d][l] = v[3][d] - v[2][d] - (v[1][d] - v[0][d]);
+                  cell_vertex_coefficients[c][5][d][l] = v[5][d] - v[4][d] - (v[1][d] - v[0][d]);
+                  cell_vertex_coefficients[c][6][d][l] = v[6][d] - v[4][d] - (v[2][d] - v[0][d]);
                   cell_vertex_coefficients[c][7][d][l] =
                     (v[7][d] - v[6][d] - (v[5][d] - v[4][d]) -
                      (v[3][d] - v[2][d] - (v[1][d] - v[0][d])));
@@ -460,21 +463,16 @@ LaplaceOperator<dim, number>::get_system_matrix() const
   if (system_matrix.m() == 0 && system_matrix.n() == 0)
     {
       // Set up sparsity pattern of system matrix.
-      const auto &dof_handler = this->data->get_dof_handler();
-      const AffineConstraints<number> &constraints =
-        this->data->get_affine_constraints();
+      const auto &                     dof_handler = this->data->get_dof_handler();
+      const AffineConstraints<number> &constraints = this->data->get_affine_constraints();
 
       IndexSet           relevant_dofs;
       const unsigned int level = this->data->get_mg_level();
       if (level == numbers::invalid_unsigned_int)
         DoFTools::extract_locally_relevant_dofs(dof_handler, relevant_dofs);
       else
-        DoFTools::extract_locally_relevant_level_dofs(dof_handler,
-                                                      level,
-                                                      relevant_dofs);
-      DynamicSparsityPattern dsp(relevant_dofs.size(),
-                                 relevant_dofs.size(),
-                                 relevant_dofs);
+        DoFTools::extract_locally_relevant_level_dofs(dof_handler, level, relevant_dofs);
+      DynamicSparsityPattern dsp(relevant_dofs.size(), relevant_dofs.size(), relevant_dofs);
       if (level == numbers::invalid_unsigned_int)
         DoFTools::make_sparsity_pattern(dof_handler, dsp, constraints, false);
       else
@@ -488,16 +486,10 @@ LaplaceOperator<dim, number>::get_system_matrix() const
                                                  dof_handler.get_communicator(),
                                                  relevant_dofs);
 
-      system_matrix.reinit(owned_dofs,
-                           owned_dofs,
-                           dsp,
-                           dof_handler.get_communicator());
+      system_matrix.reinit(owned_dofs, owned_dofs, dsp, dof_handler.get_communicator());
 
-      MatrixFreeTools::compute_matrix(*this->data,
-                                      constraints,
-                                      system_matrix,
-                                      &LaplaceOperator::do_cell_integral_local,
-                                      this);
+      MatrixFreeTools::compute_matrix(
+        *this->data, constraints, system_matrix, &LaplaceOperator::do_cell_integral_local, this);
     }
 
   return this->system_matrix;
@@ -505,32 +497,30 @@ LaplaceOperator<dim, number>::get_system_matrix() const
 
 
 template <int dim, typename MatrixType>
-class MGTransferMF
-  : public MGTransferMatrixFree<dim, typename MatrixType::value_type>
+class MGTransferMF : public MGTransferMatrixFree<dim, typename MatrixType::value_type>
 {
 public:
   void
-  setup(const MGLevelObject<MatrixType> &laplace,
-        const MGConstrainedDoFs &        mg_constrained_dofs)
+  setup(const MGLevelObject<MatrixType> &laplace, const MGConstrainedDoFs &mg_constrained_dofs)
   {
-    this->MGTransferMatrixFree<dim, typename MatrixType::value_type>::
-      initialize_constraints(mg_constrained_dofs);
+    this->MGTransferMatrixFree<dim, typename MatrixType::value_type>::initialize_constraints(
+      mg_constrained_dofs);
     laplace_operator = &laplace;
   }
 
   template <class InVector, int spacedim>
   void
   copy_to_mg(
-    const DoFHandler<dim, spacedim> &mg_dof,
-    MGLevelObject<
-      LinearAlgebra::distributed::Vector<typename MatrixType::value_type>> &dst,
-    const InVector &src) const
+    const DoFHandler<dim, spacedim> &                                                   mg_dof,
+    MGLevelObject<LinearAlgebra::distributed::Vector<typename MatrixType::value_type>> &dst,
+    const InVector &                                                                    src) const
   {
-    for (unsigned int level = dst.min_level(); level <= dst.max_level();
-         ++level)
+    for (unsigned int level = dst.min_level(); level <= dst.max_level(); ++level)
       (*laplace_operator)[level].initialize_dof_vector(dst[level]);
-    MGLevelGlobalTransfer<LinearAlgebra::distributed::Vector<
-      typename MatrixType::value_type>>::copy_to_mg(mg_dof, dst, src);
+    MGLevelGlobalTransfer<
+      LinearAlgebra::distributed::Vector<typename MatrixType::value_type>>::copy_to_mg(mg_dof,
+                                                                                       dst,
+                                                                                       src);
   }
 
 private:
@@ -540,8 +530,7 @@ private:
 
 
 template <typename number>
-class MGCoarseSolverAMG
-  : public MGCoarseGridBase<LinearAlgebra::distributed::Vector<number>>
+class MGCoarseSolverAMG : public MGCoarseGridBase<LinearAlgebra::distributed::Vector<number>>
 {
 public:
   using VectorType = LinearAlgebra::distributed::Vector<number>;
@@ -555,11 +544,9 @@ public:
   {
     PETScWrappers::PreconditionBoomerAMG::AdditionalData data;
     data.symmetric_operator = true;
-    using RelaxationType =
-      PETScWrappers::PreconditionBoomerAMG::AdditionalData::RelaxationType;
-    data.relaxation_type_up = RelaxationType::Chebyshev; // symmetricSORJacobi;
-    data.relaxation_type_down =
-      RelaxationType::Chebyshev; // symmetricSORJacobi;
+    using RelaxationType    = PETScWrappers::PreconditionBoomerAMG::AdditionalData::RelaxationType;
+    data.relaxation_type_up = RelaxationType::Chebyshev;               // symmetricSORJacobi;
+    data.relaxation_type_down             = RelaxationType::Chebyshev; // symmetricSORJacobi;
     data.max_iter                         = n_v_cycles;
     data.aggressive_coarsening_num_levels = 1;
     algebraic_multigrid.initialize(system_matrix, data);
@@ -584,24 +571,20 @@ public:
         ierr = VecDestroy(&petsc_src);
         AssertThrow(ierr == 0, dealii::ExcPETScError(ierr));
 
-        const auto min_max_avg =
-          Utilities::MPI::min_max_avg(compute_time, MPI_COMM_WORLD);
-        const unsigned int n_digits_ranks = Utilities::needed_digits(
-          Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD) - 1);
+        const auto         min_max_avg = Utilities::MPI::min_max_avg(compute_time, MPI_COMM_WORLD);
+        const unsigned int n_digits_ranks =
+          Utilities::needed_digits(Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD) - 1);
         if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
-          std::cout << " Time " << std::left << std::setw(21) << "solve coarse"
-                    << std::setw(11) << min_max_avg.min << " [p"
-                    << std::setw(n_digits_ranks) << min_max_avg.min_index
-                    << "] " << std::setw(11) << min_max_avg.avg << std::setw(11)
-                    << min_max_avg.max << " [p" << std::setw(n_digits_ranks)
+          std::cout << " Time " << std::left << std::setw(21) << "solve coarse" << std::setw(11)
+                    << min_max_avg.min << " [p" << std::setw(n_digits_ranks)
+                    << min_max_avg.min_index << "] " << std::setw(11) << min_max_avg.avg
+                    << std::setw(11) << min_max_avg.max << " [p" << std::setw(n_digits_ranks)
                     << min_max_avg.max_index << "]" << std::endl;
       }
   }
 
   void
-  operator()(const unsigned int level,
-             VectorType &       dst,
-             const VectorType & src) const override
+  operator()(const unsigned int level, VectorType &dst, const VectorType &src) const override
   {
     Timer time;
     AssertThrow(level == 0, ExcNotImplemented());
@@ -672,9 +655,7 @@ public:
 
 private:
   void
-  setup_grid(const unsigned int n_refinements,
-             const double       epsy,
-             const double       epsz);
+  setup_grid(const unsigned int n_refinements, const double epsy, const double epsz);
   void
   setup_dofs();
   void
@@ -729,10 +710,9 @@ private:
 template <int dim>
 LaplaceProblem<dim>::LaplaceProblem(const unsigned int degree)
 #ifdef DEAL_II_WITH_P4EST
-  : triangulation(
-      MPI_COMM_WORLD,
-      Triangulation<dim>::limit_level_difference_at_vertices,
-      parallel::distributed::Triangulation<dim>::construct_multigrid_hierarchy)
+  : triangulation(MPI_COMM_WORLD,
+                  Triangulation<dim>::limit_level_difference_at_vertices,
+                  parallel::distributed::Triangulation<dim>::construct_multigrid_hierarchy)
 #else
   : triangulation(Triangulation<dim>::limit_level_difference_at_vertices)
 #endif
@@ -753,8 +733,7 @@ LaplaceProblem<dim>::setup_grid(const unsigned int n_refinements,
   const bool refine_before_deformation = false;
   GridGenerator::subdivided_hyper_cube(triangulation, 6);
 
-  const auto transformation_function = [epsy,
-                                        epsz](const Point<dim> &in_point) {
+  const auto transformation_function = [epsy, epsz](const Point<dim> &in_point) {
     Point<3> temp_point;
     kershaw(epsy,
             epsz,
@@ -775,9 +754,8 @@ LaplaceProblem<dim>::setup_grid(const unsigned int n_refinements,
     {
       triangulation.refine_global(n_refinements);
       const auto transform =
-        [transformation_function](
-          const typename Triangulation<dim>::cell_iterator &,
-          const Point<dim> &in_point) {
+        [transformation_function](const typename Triangulation<dim>::cell_iterator &,
+                                  const Point<dim> &in_point) {
           return transformation_function(in_point);
         };
       mapping.initialize(MappingQ1<dim>(), triangulation, transform, false);
@@ -804,8 +782,8 @@ LaplaceProblem<dim>::setup_dofs()
   pcout << " Number of DoFs: " << dof_handler.n_dofs() << std::endl;
 
   typename MatrixFree<dim, float>::AdditionalData additional_data;
-  additional_data.tasks_parallel_scheme =
-    MatrixFree<dim, float>::AdditionalData::none;
+  additional_data.tasks_parallel_scheme = MatrixFree<dim, float>::AdditionalData::none;
+  additional_data.overlap_communication_computation = false;
 
   // Renumber DoFs
   if (do_p_multigrid)
@@ -834,15 +812,13 @@ LaplaceProblem<dim>::setup_dofs()
       for (unsigned int level = 0; level < max_level; ++level)
         {
           level_dof_handlers[level].reinit(triangulation);
-          level_dof_handlers[level].distribute_dofs(
-            FE_Q<dim>(p_mg_level_degrees[level]));
+          level_dof_handlers[level].distribute_dofs(FE_Q<dim>(p_mg_level_degrees[level]));
         }
 
       for (unsigned int level = 0; level <= max_level; ++level)
         {
-          DoFHandler<dim> &dof_h =
-            level == max_level ? dof_handler : level_dof_handlers[level];
-          IndexSet relevant_dofs;
+          DoFHandler<dim> &dof_h = level == max_level ? dof_handler : level_dof_handlers[level];
+          IndexSet         relevant_dofs;
           DoFTools::extract_locally_relevant_dofs(dof_h, relevant_dofs);
           AffineConstraints<double> constraint;
           constraint.reinit(relevant_dofs);
@@ -851,9 +827,7 @@ LaplaceProblem<dim>::setup_dofs()
             mapping, dof_h, 0, Functions::ZeroFunction<dim>(), constraint);
           constraint.close();
 
-          DoFRenumbering::matrix_free_data_locality(dof_h,
-                                                    constraint,
-                                                    additional_data);
+          DoFRenumbering::matrix_free_data_locality(dof_h, constraint, additional_data);
         }
     }
   else
@@ -861,25 +835,19 @@ LaplaceProblem<dim>::setup_dofs()
       dof_handler.distribute_mg_dofs();
       const std::set<types::boundary_id> dirichlet_boundary = {0};
       mg_constrained_dofs.initialize(dof_handler);
-      mg_constrained_dofs.make_zero_boundary_constraints(dof_handler,
-                                                         dirichlet_boundary);
+      mg_constrained_dofs.make_zero_boundary_constraints(dof_handler, dirichlet_boundary);
 
-      for (unsigned int level = 0; level < triangulation.n_global_levels();
-           ++level)
+      for (unsigned int level = 0; level < triangulation.n_global_levels(); ++level)
         {
           IndexSet relevant_dofs;
-          DoFTools::extract_locally_relevant_level_dofs(dof_handler,
-                                                        level,
-                                                        relevant_dofs);
+          DoFTools::extract_locally_relevant_level_dofs(dof_handler, level, relevant_dofs);
           AffineConstraints<double> constraint;
           constraint.reinit(relevant_dofs);
           constraint.add_lines(mg_constrained_dofs.get_boundary_indices(level));
           constraint.close();
           additional_data.mg_level = level;
 
-          DoFRenumbering::matrix_free_data_locality(dof_handler,
-                                                    constraint,
-                                                    additional_data);
+          DoFRenumbering::matrix_free_data_locality(dof_handler, constraint, additional_data);
         }
     }
 
@@ -902,17 +870,12 @@ void
 LaplaceProblem<dim>::setup_matrix_free()
 {
   typename MatrixFree<dim, double>::AdditionalData additional_data;
-  additional_data.tasks_parallel_scheme =
-    MatrixFree<dim, double>::AdditionalData::none;
+  additional_data.tasks_parallel_scheme = MatrixFree<dim, double>::AdditionalData::none;
   additional_data.mapping_update_flags =
     (update_gradients | update_JxW_values | update_quadrature_points);
-  std::shared_ptr<MatrixFree<dim, double>> system_mf_storage(
-    new MatrixFree<dim, double>());
-  system_mf_storage->reinit(mapping,
-                            dof_handler,
-                            constraints,
-                            MyQuadrature(fe.degree + 1),
-                            additional_data);
+  std::shared_ptr<MatrixFree<dim, double>> system_mf_storage(new MatrixFree<dim, double>());
+  system_mf_storage->reinit(
+    mapping, dof_handler, constraints, MyQuadrature(fe.degree + 1), additional_data);
   system_matrix.initialize(system_mf_storage);
 
   system_matrix.initialize_dof_vector(solution);
@@ -946,8 +909,7 @@ LaplaceProblem<dim>::setup_matrix_free()
             MatrixFree<dim, LevelNumber>::AdditionalData::none;
           additional_data.mapping_update_flags =
             (update_gradients | update_JxW_values | update_quadrature_points);
-          auto mg_mf_storage_level =
-            std::make_shared<MatrixFree<dim, LevelNumber>>();
+          auto mg_mf_storage_level = std::make_shared<MatrixFree<dim, LevelNumber>>();
           mg_mf_storage_level->reinit(mapping,
                                       dof_h,
                                       level_constraints[level],
@@ -965,18 +927,14 @@ LaplaceProblem<dim>::setup_matrix_free()
 
       const std::set<types::boundary_id> dirichlet_boundary = {0};
       mg_constrained_dofs.initialize(dof_handler);
-      mg_constrained_dofs.make_zero_boundary_constraints(dof_handler,
-                                                         dirichlet_boundary);
+      mg_constrained_dofs.make_zero_boundary_constraints(dof_handler, dirichlet_boundary);
 
       for (unsigned int level = 0; level < nlevels; ++level)
         {
           IndexSet relevant_dofs;
-          DoFTools::extract_locally_relevant_level_dofs(dof_handler,
-                                                        level,
-                                                        relevant_dofs);
+          DoFTools::extract_locally_relevant_level_dofs(dof_handler, level, relevant_dofs);
           level_constraints[level].reinit(relevant_dofs);
-          level_constraints[level].add_lines(
-            mg_constrained_dofs.get_boundary_indices(level));
+          level_constraints[level].add_lines(mg_constrained_dofs.get_boundary_indices(level));
           level_constraints[level].close();
 
           typename MatrixFree<dim, LevelNumber>::AdditionalData additional_data;
@@ -985,17 +943,14 @@ LaplaceProblem<dim>::setup_matrix_free()
           additional_data.mapping_update_flags =
             (update_gradients | update_JxW_values | update_quadrature_points);
           additional_data.mg_level = level;
-          auto mg_mf_storage_level =
-            std::make_shared<MatrixFree<dim, LevelNumber>>();
+          auto mg_mf_storage_level = std::make_shared<MatrixFree<dim, LevelNumber>>();
           mg_mf_storage_level->reinit(mapping,
                                       dof_handler,
                                       level_constraints[level],
                                       MyQuadrature(fe.degree + 1),
                                       additional_data);
 
-          mg_matrices[level].initialize(mg_mf_storage_level,
-                                        mg_constrained_dofs,
-                                        level);
+          mg_matrices[level].initialize(mg_mf_storage_level, mg_constrained_dofs, level);
         }
     }
 }
@@ -1010,9 +965,7 @@ LaplaceProblem<dim>::assemble_rhs()
 
   system_rhs = 0;
   FEEvaluation<dim, -1> phi(*system_matrix.get_matrix_free());
-  for (unsigned int cell = 0;
-       cell < system_matrix.get_matrix_free()->n_cell_batches();
-       ++cell)
+  for (unsigned int cell = 0; cell < system_matrix.get_matrix_free()->n_cell_batches(); ++cell)
     {
       phi.reinit(cell);
       for (unsigned int q = 0; q < phi.n_q_points; ++q)
@@ -1034,23 +987,21 @@ LaplaceProblem<dim>::setup_transfer()
       const unsigned int max_level = p_mg_level_degrees.size();
       mg_transfers_p.resize(0, max_level);
       for (unsigned int level = 0; level < max_level; ++level)
-        mg_transfers_p[level + 1].reinit(level + 1 == max_level ?
-                                           dof_handler :
-                                           level_dof_handlers[level + 1],
+        mg_transfers_p[level + 1].reinit(level + 1 == max_level ? dof_handler :
+                                                                  level_dof_handlers[level + 1],
                                          level_dof_handlers[level],
                                          level_constraints[level + 1],
                                          level_constraints[level]);
-      mg_transfer_p =
-        std::make_unique<MGTransferGlobalCoarsening<dim, VectorType>>(
-          mg_transfers_p, [&](const unsigned int level, VectorType &vec) {
-            mg_matrices[level].initialize_dof_vector(vec);
-          });
+      mg_transfer_p = std::make_unique<MGTransferGlobalCoarsening<dim, VectorType>>(
+        mg_transfers_p, [&](const unsigned int level, VectorType &vec) {
+          mg_matrices[level].initialize_dof_vector(vec);
+        });
     }
   else
     {
       mg_transfer.setup(mg_matrices, mg_constrained_dofs);
-      std::vector<std::shared_ptr<const Utilities::MPI::Partitioner>>
-        partitioners(dof_handler.get_triangulation().n_global_levels());
+      std::vector<std::shared_ptr<const Utilities::MPI::Partitioner>> partitioners(
+        dof_handler.get_triangulation().n_global_levels());
       for (unsigned int level = 0; level < partitioners.size(); ++level)
         {
           VectorType vec;
@@ -1083,9 +1034,9 @@ LaplaceProblem<dim>::setup_smoother()
           smoother_data[0].degree              = numbers::invalid_unsigned_int;
           smoother_data[0].eig_cg_n_iterations = mg_matrices[0].m();
         }
-      mg_matrices[level].compute_diagonal();
-      smoother_data[level].preconditioner =
-        mg_matrices[level].get_matrix_diagonal_inverse();
+      smoother_data[level].preconditioner = std::make_shared<DiagonalMatrix<VectorType>>();
+      smoother_data[level].preconditioner->get_vector() =
+        mg_matrices[level].compute_inverse_diagonal();
     }
   mg_smoother.initialize(mg_matrices, smoother_data);
 }
@@ -1098,14 +1049,12 @@ LaplaceProblem<dim>::setup_coarse_solver()
 {
   if (do_coarse_amg)
     {
-      mg_coarse = std::make_unique<
-        MGCoarseSolverAMG<typename LevelMatrixType::value_type>>(
+      mg_coarse = std::make_unique<MGCoarseSolverAMG<typename LevelMatrixType::value_type>>(
         mg_matrices[0].get_system_matrix(), 2);
     }
   else
     {
-      auto coarse_solver =
-        std::make_unique<MGCoarseGridApplySmoother<VectorType>>();
+      auto coarse_solver = std::make_unique<MGCoarseGridApplySmoother<VectorType>>();
       coarse_solver->initialize(mg_smoother);
       mg_coarse = std::move(coarse_solver);
     }
@@ -1124,20 +1073,17 @@ LaplaceProblem<dim>::solve()
 
   if (do_p_multigrid)
     {
-      Multigrid<VectorType> mg(
-        mg_matrix, *mg_coarse, *mg_transfer_p, mg_smoother, mg_smoother);
-      PreconditionMG<dim,
-                     VectorType,
-                     MGTransferGlobalCoarsening<dim, VectorType>>
-        preconditioner(dof_handler, mg, *mg_transfer_p);
+      Multigrid<VectorType> mg(mg_matrix, *mg_coarse, *mg_transfer_p, mg_smoother, mg_smoother);
+      PreconditionMG<dim, VectorType, MGTransferGlobalCoarsening<dim, VectorType>> preconditioner(
+        dof_handler, mg, *mg_transfer_p);
 
       cg.solve(system_matrix, solution, system_rhs, preconditioner);
     }
   else
     {
-      Multigrid<VectorType> mg(
-        mg_matrix, *mg_coarse, mg_transfer, mg_smoother, mg_smoother);
+      Multigrid<VectorType> mg(mg_matrix, *mg_coarse, mg_transfer, mg_smoother, mg_smoother);
 
+      /*
       MGLevelObject<MatrixFreeOperators::MGInterfaceOperator<LevelMatrixType>>
         mg_interface_matrices;
       mg_interface_matrices.resize(0, mg_matrices.max_level());
@@ -1145,36 +1091,32 @@ LaplaceProblem<dim>::solve()
         mg_interface_matrices[level].initialize(mg_matrices[level]);
       mg::Matrix<VectorType> mg_interface(mg_interface_matrices);
       mg.set_edge_matrices(mg_interface, mg_interface);
+      */
 
-      PreconditionMG<dim, VectorType, MGTransferMF<dim, LevelMatrixType>>
-        preconditioner(dof_handler, mg, mg_transfer);
+      PreconditionMG<dim, VectorType, MGTransferMF<dim, LevelMatrixType>> preconditioner(
+        dof_handler, mg, mg_transfer);
 
       cg.solve(system_matrix, solution, system_rhs, preconditioner);
     }
-  pcout << " Number of CG iterations: " << solver_control.last_step()
-        << std::endl;
+  pcout << " Number of CG iterations: " << solver_control.last_step() << std::endl;
 }
 
 
 
 template <int dim>
 void
-LaplaceProblem<dim>::run(const unsigned int n_refinements,
-                         const double       epsy,
-                         const double       epsz)
+LaplaceProblem<dim>::run(const unsigned int n_refinements, const double epsy, const double epsz)
 {
   pcout << " Running Poisson problem in " << dim << "D with " << n_refinements
         << " refinements and degree " << fe.degree << std::endl;
-  pcout << " Discretization parameters: degree=" << fe.degree
-        << " epsy=" << epsy << " epsz=" << epsz << std::endl;
+  pcout << " Discretization parameters: degree=" << fe.degree << " epsy=" << epsy
+        << " epsz=" << epsz << std::endl;
   const unsigned int n_vect_doubles = VectorizedArray<double>::size();
   const unsigned int n_vect_bits    = 8 * sizeof(double) * n_vect_doubles;
 
   pcout << " " << Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD)
-        << " processes, vectorization over " << n_vect_doubles
-        << " doubles = " << n_vect_bits << " bits ("
-        << Utilities::System::get_current_vectorization_level() << ')'
-        << std::endl;
+        << " processes, vectorization over " << n_vect_doubles << " doubles = " << n_vect_bits
+        << " bits (" << Utilities::System::get_current_vectorization_level() << ')' << std::endl;
   std::map<std::string, dealii::Timer> timer;
 
   timer["setup_grid"].start();
@@ -1244,19 +1186,16 @@ LaplaceProblem<dim>::run(const unsigned int n_refinements,
       data_out.attach_dof_handler(dof_handler);
       data_out.add_data_vector(solution, "solution");
       Vector<double> aspect_ratios =
-        GridTools::compute_aspect_ratio_of_cells(mapping,
-                                                 triangulation,
-                                                 QGauss<dim>(3));
+        GridTools::compute_aspect_ratio_of_cells(mapping, triangulation, QGauss<dim>(3));
       data_out.add_data_vector(aspect_ratios, "aspect_ratio");
 
       data_out.build_patches(mapping);
 
       DataOutBase::VtkFlags flags;
-      flags.compression_level = DataOutBase::CompressionLevel::best_speed;
+      flags.compression_level        = DataOutBase::CompressionLevel::best_speed;
       flags.write_higher_order_cells = true;
       data_out.set_flags(flags);
-      data_out.write_vtu_with_pvtu_record(
-        "./", "solution", n_refinements, MPI_COMM_WORLD, 1);
+      data_out.write_vtu_with_pvtu_record("./", "solution", n_refinements, MPI_COMM_WORLD, 1);
     }
   timer["output"].stop();
 
@@ -1265,14 +1204,12 @@ LaplaceProblem<dim>::run(const unsigned int n_refinements,
     {
       const auto min_max_avg =
         Utilities::MPI::min_max_avg(entry.second.wall_time(), MPI_COMM_WORLD);
-      const unsigned int n_digits_ranks = Utilities::needed_digits(
-        Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD) - 1);
-      pcout << " Time " << std::left << std::setw(21) << entry.first
-            << std::setw(11) << min_max_avg.min << " [p"
-            << std::setw(n_digits_ranks) << min_max_avg.min_index << "] "
-            << std::setw(11) << min_max_avg.avg << std::setw(11)
-            << min_max_avg.max << " [p" << std::setw(n_digits_ranks)
-            << min_max_avg.max_index << "]" << std::endl;
+      const unsigned int n_digits_ranks =
+        Utilities::needed_digits(Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD) - 1);
+      pcout << " Time " << std::left << std::setw(21) << entry.first << std::setw(11)
+            << min_max_avg.min << " [p" << std::setw(n_digits_ranks) << min_max_avg.min_index
+            << "] " << std::setw(11) << min_max_avg.avg << std::setw(11) << min_max_avg.max << " [p"
+            << std::setw(n_digits_ranks) << min_max_avg.max_index << "]" << std::endl;
     }
 }
 

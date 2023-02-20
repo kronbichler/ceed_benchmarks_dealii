@@ -127,7 +127,7 @@ test(const unsigned int fe_degree,
   typename MatrixFree<dim, double>::AdditionalData mf_data;
 
 #ifdef USE_SHMEM
-  mf_data.communicator_sm                = comm_shmem;
+  mf_data.communicator_sm = comm_shmem;
   // mf_data.use_vector_data_exchanger_full = true;
 #endif
 
@@ -161,7 +161,7 @@ test(const unsigned int fe_degree,
 
     Poisson::LaplaceOperator<dim, dim, double, LinearAlgebra::distributed::Vector<double>>
       laplace_operator;
-    laplace_operator.initialize(matrix_free, constraints);
+    laplace_operator.initialize(matrix_free);
 
     const auto vector = laplace_operator.compute_inverse_diagonal();
     IndexSet   reduced(vector.size() / dim);
@@ -184,7 +184,7 @@ test(const unsigned int fe_degree,
 
   Poisson::LaplaceOperator<dim, dim, double, LinearAlgebra::distributed::Vector<double>>
     laplace_operator;
-  laplace_operator.initialize(matrix_free, constraints);
+  laplace_operator.initialize(matrix_free);
 
   LinearAlgebra::distributed::Vector<double> input, output, tmp;
   laplace_operator.initialize_dof_vector(input);

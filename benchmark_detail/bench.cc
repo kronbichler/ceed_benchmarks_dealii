@@ -292,7 +292,7 @@ test(const unsigned int fe_degree,
 
     Poisson::LaplaceOperator<dim, dim, double, LinearAlgebra::distributed::Vector<double>>
       laplace_operator;
-    laplace_operator.initialize(matrix_free, constraints);
+    laplace_operator.initialize(matrix_free);
 
     const auto vector = laplace_operator.compute_inverse_diagonal();
     IndexSet   reduced(vector.size() / dim);
@@ -315,7 +315,7 @@ test(const unsigned int fe_degree,
 
   Poisson::LaplaceOperator<dim, dim, double, LinearAlgebra::distributed::Vector<double>>
     laplace_operator;
-  laplace_operator.initialize(matrix_free, constraints);
+  laplace_operator.initialize(matrix_free);
 
   LinearAlgebra::distributed::Vector<double> input, output, tmp;
   laplace_operator.initialize_dof_vector(input);
@@ -430,7 +430,7 @@ test(const unsigned int fe_degree,
 
   Poisson::LaplaceOperator<dim, dim, double, LinearAlgebra::distributed::Vector<double>>
     laplace_operator2;
-  laplace_operator2.initialize(matrix_free, constraints);
+  laplace_operator2.initialize(matrix_free);
   laplace_operator2.initialize_dof_vector(tmp);
   laplace_operator2.initialize_dof_vector(output);
   time.restart();

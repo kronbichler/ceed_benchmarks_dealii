@@ -91,7 +91,7 @@ test(const unsigned int fe_degree,
   DoFHandler<dim>      dof_handler(*tria);
   dof_handler.distribute_dofs(fe_q);
 
-  AffineConstraints<double> constraints;
+  AffineConstraints<Number> constraints;
   constraints.close();
   typename MatrixFree<dim, Number, VectorizedArrayType>::AdditionalData mf_data;
 
@@ -109,7 +109,7 @@ test(const unsigned int fe_degree,
   Poisson::
     LaplaceOperator<dim, 1, Number, LinearAlgebra::distributed::Vector<Number>, VectorizedArrayType>
       laplace_operator;
-  laplace_operator.initialize(matrix_free, constraints);
+  laplace_operator.initialize(matrix_free);
 
   Utilities::MPI::MinMaxAvg data = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD);
   if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0 && short_output == false)

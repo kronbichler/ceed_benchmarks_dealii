@@ -57,7 +57,27 @@ typedef dealii::VectorizedArray<double> VectorizedArrayType;
 typedef dealii::VectorizedArray<double, 1> VectorizedArrayType;
 #endif
 
-//#define USE_SHMEM
+#define USE_SHMEM
+#define SHOW_VARIANTS
+
+template <typename OperatorType>
+class LaplaceOperatorMerged
+{
+public:
+  LaplaceOperatorMerged(const OperatorType &op)
+    : op(op)
+  {}
+
+  template <typename VectorType>
+  void
+  vmult(VectorType &dst, const VectorType &src) const
+  {
+    op.vmult_merged(dst, src);
+  }
+
+private:
+  const OperatorType &op;
+};
 
 template <int dim>
 void
@@ -100,8 +120,7 @@ test(const unsigned int fe_degree,
   typename MatrixFree<dim, double, VectorizedArrayType>::AdditionalData mf_data;
 
 #ifdef USE_SHMEM
-  mf_data.communicator_sm                = comm_shmem;
-  mf_data.use_vector_data_exchanger_full = true;
+  mf_data.communicator_sm = comm_shmem;
 #endif
 
   // renumber Dofs to minimize the number of partitions in import indices of
@@ -124,7 +143,7 @@ test(const unsigned int fe_degree,
   Poisson::
     LaplaceOperator<dim, 1, double, LinearAlgebra::distributed::Vector<double>, VectorizedArrayType>
       laplace_operator;
-  laplace_operator.initialize(matrix_free, constraints);
+  laplace_operator.initialize(matrix_free);
 
   LinearAlgebra::distributed::Vector<double> input, output, tmp;
   laplace_operator.initialize_dof_vector(input);
@@ -194,19 +213,18 @@ test(const unsigned int fe_degree,
                 << "s" << std::endl;
     }
 
-  /*
-  SolverCGOptimized<LinearAlgebra::distributed::Vector<double>> solver2(solver_control);
-  double                                                        solver_time2 = 1e10;
+  double solver_time2 = 1e10;
 #ifdef LIKWID_PERFMON
-  LIKWID_MARKER_START("cg_solver_opt");
+  LIKWID_MARKER_START("cg_solver_mer");
 #endif
   for (unsigned int t = 0; t < 2; ++t)
     {
+      LaplaceOperatorMerged laplace_operator_merged(laplace_operator);
       output = 0;
       time.restart();
       try
         {
-          solver2.solve(laplace_operator, output, input, diag_mat);
+          solver.solve(laplace_operator_merged, output, input, diag_mat);
         }
       catch (SolverControl::NoConvergence &e)
         {
@@ -217,7 +235,7 @@ test(const unsigned int fe_degree,
       solver_time2 = std::min(data.max, solver_time2);
     }
 #ifdef LIKWID_PERFMON
-  LIKWID_MARKER_STOP("cg_solver_opt");
+  LIKWID_MARKER_STOP("cg_solver_mer");
 #endif
   if (short_output == false)
     {
@@ -228,7 +246,6 @@ test(const unsigned int fe_degree,
   AssertThrow(std::abs((int)solver_control.last_step() - (int)iterations_basic) < 2,
               ExcMessage("Iteration numbers differ " + std::to_string(solver_control.last_step()) +
                          " vs default solver " + std::to_string(iterations_basic)));
-  */
 
   SolverCGFullMerge<LinearAlgebra::distributed::Vector<double>> solver4(solver_control);
   double                                                        solver_time4 = 1e10;
@@ -366,6 +383,7 @@ test(const unsigned int fe_degree,
               << " | " << std::setw(11) << solver_time / solver_control.last_step() //
               << " | " << std::setw(11)
               << dof_handler.n_dofs() / solver_time4 * solver_control.last_step()    //
+              << " | " << std::setw(11) << solver_time2 / solver_control.last_step() //
               << " | " << std::setw(11) << solver_time4 / solver_control.last_step() //
               << " | " << std::setw(4) << solver_control.last_step()                 //
               << " | " << std::setw(11) << matvec_time                               //
@@ -401,10 +419,10 @@ do_test(const unsigned int fe_degree, const int s_in, const bool compact_output)
       if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
 #ifdef SHOW_VARIANTS
         std::cout
-          << " p |  q | n_element |     n_dofs |     time/it |   dofs/s/it | opt_time/it | itCG | time/matvec | timeMVbasic | timeMVcompu | timeMVmerge | timeMVquad"
+          << " p |  q | n_element |     n_dofs |     time/it |   dofs/s/it | mer_time/it | opt_time/it | itCG | time/matvec | timeMVbasic | timeMVcompu | timeMVmerge | timeMVquad"
 #else
         std::cout
-          << " p |  q | n_element |     n_dofs |     time/it |   dofs/s/it | opt_time/it | itCG | time/matvec"
+          << " p |  q | n_element |     n_dofs |     time/it |   dofs/s/it | mer_time/it | opt_time/it | itCG | time/matvec"
 #endif
           << std::endl;
       while ((2 + Utilities::fixed_power<dim>(fe_degree + 1)) * (1UL << s) <
