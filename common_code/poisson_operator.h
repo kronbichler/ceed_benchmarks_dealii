@@ -7,7 +7,7 @@
 #include <deal.II/distributed/tria.h>
 
 #include <deal.II/lac/la_parallel_block_vector.h>
-#include <deal.II/lac/petsc_parallel_sparse_matrix.h>
+#include <deal.II/lac/petsc_sparse_matrix.h>
 
 #include <deal.II/matrix_free/fe_evaluation.h>
 #include <deal.II/matrix_free/matrix_free.h>
