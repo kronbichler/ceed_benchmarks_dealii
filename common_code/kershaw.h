@@ -24,9 +24,9 @@ step(const double a, const double b, double x)
     return a;
   if (x >= 1)
     return b;
-  // return a + (b-a) * (x);
+  return a + (b-a) * (x);
   // return a + (b-a) * (x*x*(3-2*x));
-  return a + (b - a) * (x * x * x * (x * (6 * x - 15) + 10));
+  //return a + (b - a) * (x * x * x * (x * (6 * x - 15) + 10));
 }
 
 // 3D version of a generalized Kershaw mesh transformation, see D. Kershaw,
