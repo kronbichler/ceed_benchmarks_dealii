@@ -219,6 +219,7 @@ namespace Poisson
     void
     initialize(std::shared_ptr<const MatrixFree<dim, Number, VectorizedArrayType>> data_)
     {
+      compute_time                 = 0.;
       const unsigned int fe_degree = data_->get_dof_handler(0).get_fe().degree;
       fast_read  = !data_->get_dof_handler(0).get_triangulation().has_hanging_nodes();
       this->data = data_;
@@ -796,6 +797,7 @@ namespace Poisson
       const std::function<void(const unsigned int, const unsigned int)> &operation_before_loop,
       const std::function<void(const unsigned int, const unsigned int)> &operation_after_loop) const
     {
+      Timer time;
       this->data->cell_loop(&LaplaceOperator::template local_apply_linear_geo<false>,
                             this,
                             dst,
@@ -803,6 +805,7 @@ namespace Poisson
                             operation_before_loop,
                             operation_after_loop);
       internal::set_constrained_entries(data->get_constrained_dofs(0), src, dst);
+      compute_time += time.wall_time();
     }
 
     /**
@@ -1544,6 +1547,16 @@ namespace Poisson
     {
       AssertThrow(false, ExcNotImplemented());
       return Number();
+    }
+
+    double
+    get_compute_time_and_reset()
+    {
+      const auto   comm = data->get_dof_handler().get_communicator();
+      const double result =
+        Utilities::MPI::sum(compute_time, comm) / Utilities::MPI::n_mpi_processes(comm);
+      compute_time = 0.;
+      return result;
     }
 
 #ifdef DEAL_II_WITH_PETSC
@@ -2735,6 +2748,8 @@ namespace Poisson
     std::vector<unsigned char> all_indices_uniform;
 
     bool fast_read;
+
+    mutable double compute_time;
 
 #ifdef DEAL_II_WITH_PETSC
     mutable PETScWrappers::MPI::SparseMatrix system_matrix;

@@ -58,6 +58,72 @@ const bool         do_coarse_amg  = true;
 const bool         compute_metric = true;
 using MyQuadrature                = QGaussLobatto<1>;
 
+
+
+template <typename T>
+int
+sign(T val)
+{
+  return (T(0) < val) - (val < T(0));
+}
+
+template <int dim>
+class SolutionFunction : public Function<dim>
+{
+  static constexpr unsigned int k = 2;
+
+public:
+  double
+  value(const Point<dim> &p, const unsigned int = 0) const override
+  {
+    double result = 1.;
+    for (unsigned int d = 0; d < dim; ++d)
+      {
+        const double sk = std::sin(2 * k * numbers::PI * p[d]);
+        if (sk != -0.)
+          result *= std::exp(-1. / (sk * sk)) * sign(sk);
+        else
+          result = 0.;
+      }
+    return result;
+  }
+
+  double
+  laplacian(const Point<dim> &p, const unsigned int = 0) const override
+  {
+    std::array<double, 3> val, lapl;
+    for (unsigned int d = 0; d < dim; ++d)
+      {
+        const double sk  = std::sin(2 * k * numbers::PI * p[d]);
+        const double skp = 2 * k * numbers::PI * std::cos(2 * k * numbers::PI * p[d]);
+        const double skpp =
+          -Utilities::fixed_power<2>(2 * k * numbers::PI) * std::sin(2 * k * numbers::PI * p[d]);
+        if (sk != -0.)
+          {
+            val[d]  = std::exp(-1. / (sk * sk)) * sign(sk);
+            lapl[d] = val[d] *
+                      ((4. / (sk * sk * sk * sk * sk * sk) - 6. / (sk * sk * sk * sk)) * skp * skp +
+                       2. / (sk * sk * sk) * skpp);
+          }
+        else
+          val[d] = lapl[d] = 0.;
+      }
+    double result = 0.;
+    for (unsigned int d = 0; d < dim; ++d)
+      {
+        double tmp = lapl[d];
+        for (unsigned int e = 0; e < dim; ++e)
+          if (d != e)
+            tmp *= val[e];
+        result += tmp;
+      }
+    return result;
+  }
+};
+
+
+
+// This provides an alternative implementation of the Laplace operator
 template <int dim, typename number>
 class LaplaceOperator
   : public MatrixFreeOperators::Base<dim, LinearAlgebra::distributed::Vector<number>>
@@ -548,7 +614,8 @@ public:
     data.relaxation_type_up = RelaxationType::Chebyshev;               // symmetricSORJacobi;
     data.relaxation_type_down             = RelaxationType::Chebyshev; // symmetricSORJacobi;
     data.max_iter                         = n_v_cycles;
-    data.aggressive_coarsening_num_levels = 1;
+    data.aggressive_coarsening_num_levels = 0;
+    data.output_details                   = true;
     algebraic_multigrid.initialize(system_matrix, data);
     const IndexSet owned_elements = system_matrix.locally_owned_range_indices();
     VecCreateMPI(system_matrix.get_mpi_communicator(),
@@ -562,9 +629,19 @@ public:
     compute_time = 0;
   }
 
+  double
+  get_compute_time_and_reset()
+  {
+    const auto   comm = MPI_COMM_WORLD;
+    const double result =
+      Utilities::MPI::sum(compute_time, comm) / Utilities::MPI::n_mpi_processes(comm);
+    compute_time = 0.;
+    return result;
+  }
+
   ~MGCoarseSolverAMG()
   {
-    if (system_matrix.m() > 0)
+    if (false && system_matrix.m() > 0)
       {
         PetscErrorCode ierr = VecDestroy(&petsc_dst);
         AssertThrow(ierr == 0, dealii::ExcPETScError(ierr));
@@ -670,6 +747,8 @@ private:
   setup_coarse_solver();
   void
   solve();
+  void
+  compute_error() const;
 
   parallel::distributed::Triangulation<dim> triangulation;
 
@@ -685,9 +764,9 @@ private:
   using SystemMatrixType = Poisson::LaplaceOperator<dim, 1, double>;
   SystemMatrixType system_matrix;
 
-  MGLevelObject<AffineConstraints<float>> level_constraints;
-  MGConstrainedDoFs                       mg_constrained_dofs;
-  using LevelMatrixType = Poisson::LaplaceOperator<dim, 1, float>;
+  MGLevelObject<AffineConstraints<double>> level_constraints;
+  MGConstrainedDoFs                        mg_constrained_dofs;
+  using LevelMatrixType = Poisson::LaplaceOperator<dim, 1, double>;
   using VectorType      = typename LevelMatrixType::VectorType;
   MGLevelObject<LevelMatrixType> mg_matrices;
 
@@ -730,8 +809,8 @@ LaplaceProblem<dim>::setup_grid(const unsigned int n_refinements,
                                 const double       epsy,
                                 const double       epsz)
 {
-  const bool refine_before_deformation = false;
-  GridGenerator::subdivided_hyper_cube(triangulation, 6);
+  const bool refine_before_deformation = true;
+  GridGenerator::subdivided_hyper_cube(triangulation, 5);
 
   const auto transformation_function = [epsy, epsz](const Point<dim> &in_point) {
     Point<3> temp_point;
@@ -782,7 +861,7 @@ LaplaceProblem<dim>::setup_dofs()
   pcout << " Number of DoFs: " << dof_handler.n_dofs() << std::endl;
 
   typename MatrixFree<dim, float>::AdditionalData additional_data;
-  additional_data.tasks_parallel_scheme = MatrixFree<dim, float>::AdditionalData::none;
+  additional_data.tasks_parallel_scheme             = MatrixFree<dim, float>::AdditionalData::none;
   additional_data.overlap_communication_computation = false;
 
   // Renumber DoFs
@@ -791,7 +870,7 @@ LaplaceProblem<dim>::setup_dofs()
       AssertThrow(fe.degree > 1, ExcNotImplemented());
       unsigned int degree = fe.degree;
       p_mg_level_degrees.clear();
-      while (degree > 3)
+      while (degree > 1)
         {
           degree -= 2;
           p_mg_level_degrees.push_back(std::max(1U, degree));
@@ -876,6 +955,55 @@ LaplaceProblem<dim>::setup_matrix_free()
   std::shared_ptr<MatrixFree<dim, double>> system_mf_storage(new MatrixFree<dim, double>());
   system_mf_storage->reinit(
     mapping, dof_handler, constraints, MyQuadrature(fe.degree + 1), additional_data);
+
+  const bool analyze_mesh = false;
+  if (analyze_mesh)
+    {
+      double max_jac = 0., min_jac = std::numeric_limits<double>::max(), avg = 0,
+             min_gll = std::numeric_limits<double>::max(), max_gll = 0;
+      const unsigned int    n_dofs_1d = fe.degree + 1;
+      FEEvaluation<dim, -1> eval(*system_mf_storage);
+      unsigned int          count      = 0;
+      unsigned int          strides[3] = {1, n_dofs_1d, n_dofs_1d * n_dofs_1d};
+      for (unsigned int cell = 0; cell < system_mf_storage->n_cell_batches(); ++cell)
+        {
+          eval.reinit(cell);
+          for (unsigned int q = 0; q < eval.n_q_points; ++q)
+            for (unsigned int d = 0; d < system_mf_storage->n_active_entries_per_cell_batch(cell);
+                 ++d)
+              {
+                const auto jdet = eval.JxW(q) / system_mf_storage->get_mapping_info()
+                                                  .cell_data[0]
+                                                  .descriptor[0]
+                                                  .quadrature_weights[q];
+                max_jac = std::max(jdet[d], max_jac);
+                min_jac = std::min(jdet[d], min_jac);
+                avg += jdet[d];
+                ++count;
+              }
+          for (unsigned int d = 0; d < system_mf_storage->n_active_entries_per_cell_batch(cell);
+               ++d)
+            for (unsigned int e = 0; e < dim; ++e)
+              {
+                min_gll =
+                  std::min(min_gll,
+                           eval.quadrature_point(strides[e]).distance(eval.quadrature_point(0))[d]);
+                min_gll =
+                  std::min(min_gll,
+                           eval.quadrature_point(strides[e] * (n_dofs_1d - 1))
+                             .distance(eval.quadrature_point(strides[e] * (n_dofs_1d - 2)))[d]);
+                max_gll =
+                  std::max(max_gll,
+                           eval.quadrature_point(strides[e] * (n_dofs_1d / 2))
+                             .distance(eval.quadrature_point(strides[e] * (n_dofs_1d / 2 + 1)))[d]);
+              }
+        }
+      avg /= count;
+      std::cout << "Scaled Jacobians: " << min_jac / max_jac << " " << avg / max_jac << " jac "
+                << max_jac << std::endl;
+      std::cout << "Min/max GLL: " << min_gll << " " << max_gll << std::endl;
+    }
+
   system_matrix.initialize(system_mf_storage);
 
   system_matrix.initialize_dof_vector(solution);
@@ -965,11 +1093,23 @@ LaplaceProblem<dim>::assemble_rhs()
 
   system_rhs = 0;
   FEEvaluation<dim, -1> phi(*system_matrix.get_matrix_free());
+  SolutionFunction<dim> exact_solution;
   for (unsigned int cell = 0; cell < system_matrix.get_matrix_free()->n_cell_batches(); ++cell)
     {
       phi.reinit(cell);
       for (unsigned int q = 0; q < phi.n_q_points; ++q)
-        phi.submit_value(make_vectorized_array<double>(1.0), q);
+        {
+          const Point<dim, VectorizedArray<double>> p_vec = phi.quadrature_point(q);
+          VectorizedArray<double>                   rhs;
+          for (unsigned int v = 0; v < VectorizedArray<double>::size(); ++v)
+            {
+              Point<dim> p;
+              for (unsigned int d = 0; d < dim; ++d)
+                p[d] = p_vec[d][v];
+              rhs[v] = -exact_solution.laplacian(p);
+            }
+          phi.submit_value(rhs, q);
+        }
       phi.integrate(EvaluationFlags::values);
       phi.distribute_local_to_global(system_rhs);
     }
@@ -1022,9 +1162,11 @@ LaplaceProblem<dim>::setup_smoother()
   smoother_data.resize(0, mg_matrices.max_level());
   for (unsigned int level = 0; level <= mg_matrices.max_level(); ++level)
     {
+      smoother_data[level].polynomial_type =
+        SmootherType::AdditionalData::PolynomialType::first_kind;
       if (level > 0)
         {
-          smoother_data[level].smoothing_range     = 15.;
+          smoother_data[level].smoothing_range     = 11.;
           smoother_data[level].degree              = 3;
           smoother_data[level].eig_cg_n_iterations = 12;
         }
@@ -1050,7 +1192,7 @@ LaplaceProblem<dim>::setup_coarse_solver()
   if (do_coarse_amg)
     {
       mg_coarse = std::make_unique<MGCoarseSolverAMG<typename LevelMatrixType::value_type>>(
-        mg_matrices[0].get_system_matrix(), 2);
+        mg_matrices[0].get_system_matrix(), 1);
     }
   else
     {
@@ -1059,6 +1201,30 @@ LaplaceProblem<dim>::setup_coarse_solver()
       mg_coarse = std::move(coarse_solver);
     }
 }
+
+
+
+// Wrap multigrid preconditioner classes to measure run time
+template <typename MGType>
+struct MyPreconditioner
+{
+  MyPreconditioner(const MGType &preconditioner)
+    : preconditioner(preconditioner)
+    , compute_time(0.)
+  {}
+
+  template <typename VectorType>
+  void
+  vmult(VectorType &dst, const VectorType &src) const
+  {
+    Timer time;
+    preconditioner.vmult(dst, src);
+    compute_time += time.wall_time();
+  }
+
+  const MGType & preconditioner;
+  mutable double compute_time;
+};
 
 
 template <int dim>
@@ -1070,14 +1236,19 @@ LaplaceProblem<dim>::solve()
   SolverControl solver_control(500, 1e-8 * system_rhs.l2_norm());
   SolverCG<LinearAlgebra::distributed::Vector<double>> cg(solver_control);
   constraints.set_zero(solution);
+  double prec_time = 0.;
 
+  Timer time;
   if (do_p_multigrid)
     {
       Multigrid<VectorType> mg(mg_matrix, *mg_coarse, *mg_transfer_p, mg_smoother, mg_smoother);
       PreconditionMG<dim, VectorType, MGTransferGlobalCoarsening<dim, VectorType>> preconditioner(
         dof_handler, mg, *mg_transfer_p);
+      MyPreconditioner<PreconditionMG<dim, VectorType, MGTransferGlobalCoarsening<dim, VectorType>>>
+        precondition(preconditioner);
 
-      cg.solve(system_matrix, solution, system_rhs, preconditioner);
+      cg.solve(system_matrix, solution, system_rhs, precondition);
+      prec_time = precondition.compute_time;
     }
   else
     {
@@ -1095,10 +1266,64 @@ LaplaceProblem<dim>::solve()
 
       PreconditionMG<dim, VectorType, MGTransferMF<dim, LevelMatrixType>> preconditioner(
         dof_handler, mg, mg_transfer);
+      MyPreconditioner<PreconditionMG<dim, VectorType, MGTransferMF<dim, LevelMatrixType>>>
+        precondition(preconditioner);
 
-      cg.solve(system_matrix, solution, system_rhs, preconditioner);
+      cg.solve(system_matrix, solution, system_rhs, precondition);
+      prec_time = precondition.compute_time;
     }
-  pcout << " Number of CG iterations: " << solver_control.last_step() << std::endl;
+  const double solve_time = time.wall_time();
+  pcout << std::setprecision(4);
+  pcout << "BPS5" << std::endl;
+  pcout << "solve time: " << solve_time << "s" << std::endl;
+  pcout << "  preconditioner " << prec_time << "s" << std::endl;
+  pcout << "    smoother time per level: ";
+  for (unsigned int l = mg_matrices.max_level(); l != mg_matrices.min_level(); --l)
+    {
+      pcout << mg_matrices[l].get_compute_time_and_reset() << "s ";
+    }
+  pcout << std::endl;
+  if (auto coarse =
+        dynamic_cast<MGCoarseSolverAMG<typename LevelMatrixType::value_type> *>(mg_coarse.get()))
+    pcout << "    coarse grid " << coarse->get_compute_time_and_reset() << "s" << std::endl;
+  pcout << "iterations: " << solver_control.last_step() << std::endl;
+  const unsigned int n_ranks = Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD);
+  pcout << "throughput: "
+        << dof_handler.n_dofs() * solver_control.last_step() / solve_time / n_ranks
+        << " (DOF x iter)/s/rank" << std::endl;
+  pcout << "throughput: " << dof_handler.n_dofs() / solve_time / n_ranks << " DOF/s/rank"
+        << std::endl << std::endl;
+}
+
+
+
+template <int dim>
+void
+LaplaceProblem<dim>::compute_error() const
+{
+  FEValues<dim> fe_values(mapping,
+                          fe,
+                          QGauss<dim>(fe.degree + 2),
+                          update_values | update_JxW_values | update_quadrature_points);
+  double        error = 0.;
+  solution.update_ghost_values();
+  std::vector<double>   solution_values(fe_values.n_quadrature_points);
+  SolutionFunction<dim> exact_solution;
+  for (const auto &cell : dof_handler.active_cell_iterators())
+    if (cell->is_locally_owned())
+      {
+        fe_values.reinit(cell);
+        fe_values.get_function_values(solution, solution_values);
+        double local_error = 0.;
+        for (unsigned int q = 0; q < fe_values.n_quadrature_points; ++q)
+          local_error +=
+            Utilities::fixed_power<2>(exact_solution.value(fe_values.quadrature_point(q)) -
+                                      solution_values[q]) *
+            fe_values.JxW(q);
+        error += local_error;
+      }
+  error = Utilities::MPI::sum(error, triangulation.get_communicator());
+  pcout << " L2 error of solution: " << std::sqrt(error) << std::endl;
 }
 
 
@@ -1154,6 +1379,18 @@ LaplaceProblem<dim>::run(const unsigned int n_refinements, const double epsy, co
   timer["solve2"].start();
   solve();
   timer["solve2"].stop();
+  solution = 0.;
+  timer["solve3"].start();
+  solve();
+  timer["solve3"].stop();
+  solution = 0.;
+  timer["solve4"].start();
+  solve();
+  timer["solve4"].stop();
+  solution = 0.;
+  timer["solve5"].start();
+  solve();
+  timer["solve5"].stop();
 
   const unsigned int n_repeat = 50;
   timer["matvec_double"].start();
@@ -1185,11 +1422,14 @@ LaplaceProblem<dim>::run(const unsigned int n_refinements, const double epsy, co
       solution.update_ghost_values();
       data_out.attach_dof_handler(dof_handler);
       data_out.add_data_vector(solution, "solution");
+      LinearAlgebra::distributed::Vector<double> exact(solution);
+      VectorTools::interpolate(mapping, dof_handler, SolutionFunction<dim>(), exact);
+      data_out.add_data_vector(exact, "exact");
       Vector<double> aspect_ratios =
         GridTools::compute_aspect_ratio_of_cells(mapping, triangulation, QGauss<dim>(3));
       data_out.add_data_vector(aspect_ratios, "aspect_ratio");
 
-      data_out.build_patches(mapping);
+      data_out.build_patches(mapping, fe.degree);
 
       DataOutBase::VtkFlags flags;
       flags.compression_level        = DataOutBase::CompressionLevel::best_speed;
@@ -1198,6 +1438,10 @@ LaplaceProblem<dim>::run(const unsigned int n_refinements, const double epsy, co
       data_out.write_vtu_with_pvtu_record("./", "solution", n_refinements, MPI_COMM_WORLD, 1);
     }
   timer["output"].stop();
+
+  timer["compute_error"].start();
+  compute_error();
+  timer["compute_error"].stop();
 
   pcout << std::endl;
   for (const auto &entry : timer)
