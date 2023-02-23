@@ -219,7 +219,7 @@ namespace Poisson
     void
     initialize(std::shared_ptr<const MatrixFree<dim, Number, VectorizedArrayType>> data_)
     {
-      const unsigned int fe_degree     = data_->get_dof_handler(0).get_fe().degree;
+      const unsigned int fe_degree = data_->get_dof_handler(0).get_fe().degree;
       fast_read  = !data_->get_dof_handler(0).get_triangulation().has_hanging_nodes();
       this->data = data_;
       quad_1d    = data->get_shape_info().data[0].quadrature;
@@ -332,10 +332,9 @@ namespace Poisson
           for (unsigned int l = 0; l < data->n_active_entries_per_cell_batch(c); ++l)
             {
               const typename DoFHandler<dim>::cell_iterator cell = data->get_cell_iterator(c, l);
+              const auto v = data->get_mapping_info().mapping->get_vertices(cell);
               if (dim == 2)
                 {
-                  std::array<Tensor<1, dim>, 4> v{
-                    {cell->vertex(0), cell->vertex(1), cell->vertex(2), cell->vertex(3)}};
                   for (unsigned int d = 0; d < dim; ++d)
                     {
                       cell_vertex_coefficients[c][0][d][l] = v[0][d];
@@ -358,14 +357,6 @@ namespace Poisson
                 }
               else if (dim == 3)
                 {
-                  std::array<Tensor<1, dim>, 8> v{{cell->vertex(0),
-                                                   cell->vertex(1),
-                                                   cell->vertex(2),
-                                                   cell->vertex(3),
-                                                   cell->vertex(4),
-                                                   cell->vertex(5),
-                                                   cell->vertex(6),
-                                                   cell->vertex(7)}};
                   for (unsigned int d = 0; d < dim; ++d)
                     {
                       cell_vertex_coefficients[c][0][d][l] = v[0][d];
