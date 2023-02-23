@@ -52,11 +52,12 @@
 
 using namespace dealii;
 
-const unsigned int dimension      = 3;
-const bool         do_p_multigrid = true;
-const bool         do_coarse_amg  = true;
-const bool         compute_metric = true;
-using MyQuadrature                = QGaussLobatto<1>;
+const unsigned int dimension       = 3;
+const bool         do_p_multigrid  = true;
+const bool         do_coarse_amg   = true;
+const bool         compute_metric  = true;
+const bool         run_refinements = true;
+using MyQuadrature                 = QGaussLobatto<1>;
 
 
 
@@ -615,7 +616,7 @@ public:
     data.relaxation_type_down             = RelaxationType::Chebyshev; // symmetricSORJacobi;
     data.max_iter                         = n_v_cycles;
     data.aggressive_coarsening_num_levels = 0;
-    data.output_details                   = true;
+    data.output_details                   = false;
     algebraic_multigrid.initialize(system_matrix, data);
     const IndexSet owned_elements = system_matrix.locally_owned_range_indices();
     VecCreateMPI(system_matrix.get_mpi_communicator(),
@@ -764,9 +765,9 @@ private:
   using SystemMatrixType = Poisson::LaplaceOperator<dim, 1, double>;
   SystemMatrixType system_matrix;
 
-  MGLevelObject<AffineConstraints<double>> level_constraints;
-  MGConstrainedDoFs                        mg_constrained_dofs;
-  using LevelMatrixType = Poisson::LaplaceOperator<dim, 1, double>;
+  MGLevelObject<AffineConstraints<float>> level_constraints;
+  MGConstrainedDoFs                       mg_constrained_dofs;
+  using LevelMatrixType = Poisson::LaplaceOperator<dim, 1, float>;
   using VectorType      = typename LevelMatrixType::VectorType;
   MGLevelObject<LevelMatrixType> mg_matrices;
 
@@ -809,9 +810,6 @@ LaplaceProblem<dim>::setup_grid(const unsigned int n_refinements,
                                 const double       epsy,
                                 const double       epsz)
 {
-  const bool refine_before_deformation = true;
-  GridGenerator::subdivided_hyper_cube(triangulation, 5);
-
   const auto transformation_function = [epsy, epsz](const Point<dim> &in_point) {
     Point<3> temp_point;
     kershaw(epsy,
@@ -828,22 +826,44 @@ LaplaceProblem<dim>::setup_grid(const unsigned int n_refinements,
       out_point[i] = temp_point[i];
     return out_point;
   };
+  const auto transform =
+    [transformation_function](const typename Triangulation<dim>::cell_iterator &,
+                              const Point<dim> &in_point) {
+      return transformation_function(in_point);
+    };
 
-  if (refine_before_deformation)
+  if (run_refinements)
     {
-      triangulation.refine_global(n_refinements);
-      const auto transform =
-        [transformation_function](const typename Triangulation<dim>::cell_iterator &,
-                                  const Point<dim> &in_point) {
-          return transformation_function(in_point);
-        };
+      const unsigned int n_refine  = n_refinements / dim;
+      const unsigned int remainder = n_refinements % dim;
+      Point<dim>         p2;
+      for (unsigned int d = 0; d < dim; ++d)
+        p2[d] = 1;
+
+      std::vector<unsigned int> subdivisions(dim, 1);
+      for (unsigned int d = 0; d < remainder; ++d)
+        subdivisions[d] = 2;
+
+      GridGenerator::subdivided_hyper_rectangle(triangulation, subdivisions, Point<dim>(), p2);
+      triangulation.refine_global(n_refine);
       mapping.initialize(MappingQ1<dim>(), triangulation, transform, false);
     }
   else
     {
-      GridTools::transform(transformation_function, triangulation);
-      triangulation.refine_global(n_refinements);
-      mapping.initialize(MappingQ1<dim>(), triangulation);
+      const bool refine_before_deformation = true;
+      GridGenerator::subdivided_hyper_cube(triangulation, 5);
+
+      if (refine_before_deformation)
+        {
+          triangulation.refine_global(n_refinements);
+          mapping.initialize(MappingQ1<dim>(), triangulation, transform, false);
+        }
+      else
+        {
+          GridTools::transform(transformation_function, triangulation);
+          triangulation.refine_global(n_refinements);
+          mapping.initialize(MappingQ1<dim>(), triangulation);
+        }
     }
 }
 
@@ -1274,7 +1294,7 @@ LaplaceProblem<dim>::solve()
     }
   const double solve_time = time.wall_time();
   pcout << std::setprecision(4);
-  pcout << "BPS5" << std::endl;
+  pcout << "BPS5 p=" << fe.degree << " E=" << triangulation.n_global_active_cells() << std::endl;
   pcout << "solve time: " << solve_time << "s" << std::endl;
   pcout << "  preconditioner " << prec_time << "s" << std::endl;
   pcout << "    smoother time per level: ";
@@ -1292,7 +1312,8 @@ LaplaceProblem<dim>::solve()
         << dof_handler.n_dofs() * solver_control.last_step() / solve_time / n_ranks
         << " (DOF x iter)/s/rank" << std::endl;
   pcout << "throughput: " << dof_handler.n_dofs() / solve_time / n_ranks << " DOF/s/rank"
-        << std::endl << std::endl;
+        << std::endl
+        << std::endl;
 }
 
 
@@ -1480,6 +1501,17 @@ main(int argc, char **argv)
   if (argc > 4)
     epsz = std::atof(argv[4]);
 
-  LaplaceProblem<dimension> problem(degree);
-  problem.run(n_refinements, epsy, epsz);
+  if (run_refinements)
+    {
+      for (unsigned int s = 10; s < 10 + n_refinements; ++s)
+        {
+          LaplaceProblem<dimension> problem(degree);
+          problem.run(s, epsy, epsz);
+        }
+    }
+  else
+    {
+      LaplaceProblem<dimension> problem(degree);
+      problem.run(n_refinements, epsy, epsz);
+    }
 }
