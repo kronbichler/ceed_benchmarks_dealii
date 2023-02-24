@@ -147,6 +147,8 @@ public:
    */
   static constexpr unsigned int n_components = 1;
 
+  using BaseClass = Poisson::LaplaceOperator<dim, 1, Number>;
+
   void
   vmult(VectorType &dst, const VectorType &src) const
   {
@@ -196,8 +198,7 @@ public:
   LinearAlgebra::distributed::Vector<Number>
   compute_inverse_diagonal() const
   {
-    LinearAlgebra::distributed::Vector<Number> diag =
-      this->LaplaceOperator::compute_inverse_diagonal();
+    LinearAlgebra::distributed::Vector<Number> diag = BaseClass::compute_inverse_diagonal();
     diag.update_ghost_values();
     LinearAlgebra::distributed::Vector<Number> dg_diagonal;
     this->data->initialize_dof_vector(dg_diagonal, 1);
