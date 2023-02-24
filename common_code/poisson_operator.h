@@ -121,57 +121,57 @@ namespace Poisson
 
 
   // expand templated operations
-#define EXPAND_OPERATIONS(OPERATION)                                                    \
-  const unsigned int degree        = data->get_dof_handler().get_fe().degree;           \
-  const unsigned int n_q_points_1d = data->get_shape_info().data[0].n_q_points_1d;      \
-                                                                                        \
-  if (degree == 1 && n_q_points_1d == 2)                                                \
-    OPERATION<1, 2>(dst, src, cell_range);                                              \
-  else if (degree == 1 && n_q_points_1d == 3)                                           \
-    OPERATION<1, 3>(dst, src, cell_range);                                              \
-  else if (degree == 2 && n_q_points_1d == 3)                                           \
-    OPERATION<2, 3>(dst, src, cell_range);                                              \
-  else if (degree == 2 && n_q_points_1d == 4)                                           \
-    OPERATION<2, 4>(dst, src, cell_range);                                              \
-  else if (degree == 3 && n_q_points_1d == 4)                                           \
-    OPERATION<3, 4>(dst, src, cell_range);                                              \
-  else if (degree == 3 && n_q_points_1d == 5)                                           \
-    OPERATION<3, 5>(dst, src, cell_range);                                              \
-  else if (degree == 4 && n_q_points_1d == 5)                                           \
-    OPERATION<4, 5>(dst, src, cell_range);                                              \
-  else if (degree == 4 && n_q_points_1d == 6)                                           \
-    OPERATION<4, 6>(dst, src, cell_range);                                              \
-  else if (degree == 5 && n_q_points_1d == 6)                                           \
-    OPERATION<5, 6>(dst, src, cell_range);                                              \
-  else if (degree == 5 && n_q_points_1d == 7)                                           \
-    OPERATION<5, 7>(dst, src, cell_range);                                              \
-  else if (degree == 6 && n_q_points_1d == 7)                                           \
-    OPERATION<6, 7>(dst, src, cell_range);                                              \
-  else if (degree == 6 && n_q_points_1d == 8)                                           \
-    OPERATION<6, 8>(dst, src, cell_range);                                              \
-  else if (degree == 7 && n_q_points_1d == 8)                                           \
-    OPERATION<7, 8>(dst, src, cell_range);                                              \
-  else if (degree == 7 && n_q_points_1d == 9)                                           \
-    OPERATION<7, 9>(dst, src, cell_range);                                              \
-  else if (degree == 8 && n_q_points_1d == 9)                                           \
-    OPERATION<8, 9>(dst, src, cell_range);                                              \
-  else if (degree == 8 && n_q_points_1d == 10)                                          \
-    OPERATION<8, 10>(dst, src, cell_range);                                             \
-  else if (degree == 9 && n_q_points_1d == 10)                                          \
-    OPERATION<9, 10>(dst, src, cell_range);                                             \
-  else if (degree == 9 && n_q_points_1d == 11)                                          \
-    OPERATION<9, 11>(dst, src, cell_range);                                             \
-  else if (degree == 10 && n_q_points_1d == 11)                                         \
-    OPERATION<10, 11>(dst, src, cell_range);                                            \
-  else if (degree == 10 && n_q_points_1d == 12)                                         \
-    OPERATION<10, 12>(dst, src, cell_range);                                            \
-  else if (degree == 11 && n_q_points_1d == 12)                                         \
-    OPERATION<11, 12>(dst, src, cell_range);                                            \
-  else if (degree == 11 && n_q_points_1d == 13)                                         \
-    OPERATION<11, 13>(dst, src, cell_range);                                            \
-  else                                                                                  \
-    AssertThrow(false,                                                                  \
-                ExcNotImplemented("Degree " + std::to_string(degree) + " n_q_points " + \
+#define EXPAND_OPERATIONS(OPERATION)                                                     \
+  const unsigned int degree        = this->data->get_dof_handler().get_fe().degree;      \
+  const unsigned int n_q_points_1d = this->data->get_shape_info().data[0].n_q_points_1d; \
+                                                                                         \
+  if (degree == 1 && n_q_points_1d == 2)                                                 \
+    OPERATION<1, 2>(dst, src, cell_range);                                               \
+  else if (degree == 1 && n_q_points_1d == 3)                                            \
+    OPERATION<1, 3>(dst, src, cell_range);                                               \
+  else if (degree == 2 && n_q_points_1d == 3)                                            \
+    OPERATION<2, 3>(dst, src, cell_range);                                               \
+  else if (degree == 2 && n_q_points_1d == 4)                                            \
+    OPERATION<2, 4>(dst, src, cell_range);                                               \
+  else if (degree == 3 && n_q_points_1d == 4)                                            \
+    OPERATION<3, 4>(dst, src, cell_range);                                               \
+  else if (degree == 3 && n_q_points_1d == 5)                                            \
+    OPERATION<3, 5>(dst, src, cell_range);                                               \
+  else if (degree == 4 && n_q_points_1d == 5)                                            \
+    OPERATION<4, 5>(dst, src, cell_range);                                               \
+  else if (degree == 4 && n_q_points_1d == 6)                                            \
+    OPERATION<4, 6>(dst, src, cell_range);                                               \
+  else if (degree == 5 && n_q_points_1d == 6)                                            \
+    OPERATION<5, 6>(dst, src, cell_range);                                               \
+  else if (degree == 5 && n_q_points_1d == 7)                                            \
+    OPERATION<5, 7>(dst, src, cell_range);                                               \
+  else if (degree == 6 && n_q_points_1d == 7)                                            \
+    OPERATION<6, 7>(dst, src, cell_range);                                               \
+  else if (degree == 6 && n_q_points_1d == 8)                                            \
+    OPERATION<6, 8>(dst, src, cell_range);                                               \
+  else if (degree == 7 && n_q_points_1d == 8)                                            \
+    OPERATION<7, 8>(dst, src, cell_range);                                               \
+  else if (degree == 7 && n_q_points_1d == 9)                                            \
+    OPERATION<7, 9>(dst, src, cell_range);                                               \
+  else if (degree == 8 && n_q_points_1d == 9)                                            \
+    OPERATION<8, 9>(dst, src, cell_range);                                               \
+  else if (degree == 8 && n_q_points_1d == 10)                                           \
+    OPERATION<8, 10>(dst, src, cell_range);                                              \
+  else if (degree == 9 && n_q_points_1d == 10)                                           \
+    OPERATION<9, 10>(dst, src, cell_range);                                              \
+  else if (degree == 9 && n_q_points_1d == 11)                                           \
+    OPERATION<9, 11>(dst, src, cell_range);                                              \
+  else if (degree == 10 && n_q_points_1d == 11)                                          \
+    OPERATION<10, 11>(dst, src, cell_range);                                             \
+  else if (degree == 10 && n_q_points_1d == 12)                                          \
+    OPERATION<10, 12>(dst, src, cell_range);                                             \
+  else if (degree == 11 && n_q_points_1d == 12)                                          \
+    OPERATION<11, 12>(dst, src, cell_range);                                             \
+  else if (degree == 11 && n_q_points_1d == 13)                                          \
+    OPERATION<11, 13>(dst, src, cell_range);                                             \
+  else                                                                                   \
+    AssertThrow(false,                                                                   \
+                ExcNotImplemented("Degree " + std::to_string(degree) + " n_q_points " +  \
                                   std::to_string(n_q_points_1d) + " not implemented"));
 
 
@@ -427,8 +427,8 @@ namespace Poisson
                         compressed_dof_indices[offset + renumber_lex[cc]] =
                           part.global_to_local(dof_indices[cf]);
                       for (unsigned int c = 0; c < n_components; ++c)
-                        AssertThrow(dof_indices[cf + c] == dof_indices[cf] + c,
-                                    ExcMessage("Expected contiguous numbering"));
+                        if (dof_indices[cf + c] != dof_indices[cf] + c)
+                          goto end_indices;
                     }
 
                   for (unsigned int line = 0; line < GeometryInfo<dim>::lines_per_cell; ++line)
@@ -438,9 +438,8 @@ namespace Poisson
                         {
                           for (unsigned int i = 0; i < size; ++i)
                             for (unsigned int c = 0; c < n_components; ++c)
-                              AssertThrow(dof_indices[cf + c * size + i] ==
-                                            dof_indices[cf] + i * n_components + c,
-                                          ExcMessage("Expected contiguous numbering"));
+                              if (dof_indices[cf + c] != dof_indices[cf] + c)
+                                goto end_indices;
                           compressed_dof_indices[offset + renumber_lex[cc]] =
                             part.global_to_local(dof_indices[cf]);
                         }
@@ -458,17 +457,14 @@ namespace Poisson
                               for (unsigned int i0 = 0; i0 < fe_degree - 1; ++i0, ++i)
                                 for (unsigned int c = 0; c < n_components; ++c)
                                   {
-                                    AssertThrow(
-                                      dof_indices[cf + c * size + i0 * (fe_degree - 1) + i1] ==
-                                        dof_indices[cf] + i * n_components + c,
-                                      ExcMessage("Expected contiguous numbering"));
+                                    if (dof_indices[cf + c] != dof_indices[cf] + c)
+                                      goto end_indices;
                                   }
                           else
                             for (unsigned int i = 0; i < size; ++i)
                               for (unsigned int c = 0; c < n_components; ++c)
-                                AssertThrow(dof_indices[cf + c * size + i] ==
-                                              dof_indices[cf] + i * n_components + c,
-                                            ExcMessage("Expected contiguous numbering"));
+                                if (dof_indices[cf + c] != dof_indices[cf] + c)
+                                  goto end_indices;
                           compressed_dof_indices[offset + renumber_lex[cc]] =
                             part.global_to_local(dof_indices[cf]);
                         }
@@ -482,9 +478,8 @@ namespace Poisson
                         {
                           for (unsigned int i = 0; i < size; ++i)
                             for (unsigned int c = 0; c < n_components; ++c)
-                              AssertThrow(dof_indices[cf + c * size + i] ==
-                                            dof_indices[cf] + i * n_components + c,
-                                          ExcMessage("Expected contiguous numbering"));
+                              if (dof_indices[cf + c] != dof_indices[cf] + c)
+                                goto end_indices;
                           compressed_dof_indices[offset + renumber_lex[cc]] =
                             part.global_to_local(dof_indices[cf]);
                         }
@@ -498,6 +493,8 @@ namespace Poisson
                                          std::to_string(cf)));
                 }
             }
+        end_indices:
+
           // insert dummy entries to prevent geometry from degeneration and
           // subsequent division by zero, assuming a Cartesian geometry
           for (unsigned int l = data->n_active_entries_per_cell_batch(c);
@@ -2729,8 +2726,12 @@ namespace Poisson
         }
     }
 
+  protected:
     std::shared_ptr<const MatrixFree<dim, Number, VectorizedArrayType>> data;
 
+    mutable double compute_time;
+
+  private:
     mutable Number accumulated_sum;
 
     Quadrature<1> quad_1d;
@@ -2759,14 +2760,10 @@ namespace Poisson
 
     bool fast_read;
 
-    mutable double compute_time;
-
 #ifdef DEAL_II_WITH_PETSC
     mutable PETScWrappers::MPI::SparseMatrix system_matrix;
 #endif
   };
-
-#undef EXPAND_OPERATIONS
 
 } // namespace Poisson
 

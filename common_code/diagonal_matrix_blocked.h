@@ -48,4 +48,59 @@ public:
   dealii::LinearAlgebra::distributed::Vector<Number> diagonal;
 };
 
+
+namespace internal
+{
+  template <typename Number>
+  MPI_Comm
+  get_communicator(dealii::LinearAlgebra::distributed::Vector<Number> &vec)
+  {
+    return vec.get_partitioner()->get_mpi_communicator();
+  }
+
+  template <typename Number>
+  MPI_Comm
+  get_communicator(dealii::LinearAlgebra::distributed::BlockVector<Number> &vec)
+  {
+    return vec.block(0).get_partitioner()->get_mpi_communicator();
+  }
+
+  template <typename VectorType>
+  unsigned int
+  get_n_blocks(const VectorType &)
+  {
+    return 1;
+  }
+
+  template <typename VectorType>
+  VectorType &
+  get_block(VectorType &vec, const unsigned int)
+  {
+    return vec;
+  }
+
+  template <typename Number>
+  unsigned int
+  get_n_blocks(const dealii::LinearAlgebra::distributed::BlockVector<Number> &vec)
+  {
+    return vec.n_blocks();
+  }
+
+  template <typename Number>
+  const dealii::LinearAlgebra::distributed::Vector<Number> &
+  get_block(const dealii::LinearAlgebra::distributed::BlockVector<Number> &vec,
+            const unsigned int                                             block)
+  {
+    return vec.block(block);
+  }
+
+  template <typename Number>
+  dealii::LinearAlgebra::distributed::Vector<Number> &
+  get_block(dealii::LinearAlgebra::distributed::BlockVector<Number> &vec, const unsigned int block)
+  {
+    return vec.block(block);
+  }
+} // namespace internal
+
+
 #endif
