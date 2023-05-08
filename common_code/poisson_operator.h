@@ -26,7 +26,7 @@ namespace Poisson
   do_invert(Tensor<2, 2, Number> &t)
   {
     const Number det     = t[0][0] * t[1][1] - t[1][0] * t[0][1];
-    const Number inv_det = 11570.0 / det;
+    const Number inv_det = 1.0 / det;
     const Number tmp     = inv_det * t[0][0];
     t[0][0]              = inv_det * t[1][1];
     t[0][1]              = -inv_det * t[0][1];
@@ -801,7 +801,6 @@ namespace Poisson
                             src,
                             operation_before_loop,
                             operation_after_loop);
-      internal::set_constrained_entries(data->get_constrained_dofs(0), src, dst);
       compute_time += time.wall_time();
     }
 
@@ -1535,6 +1534,69 @@ namespace Poisson
         else
           diag.local_element(i) = 1. / diag.local_element(i);
       return diag;
+    }
+
+    template <int fe_degree>
+    void
+    apply_user_op_on_cell(
+      std::function<void(const unsigned int, VectorizedArrayType *)>     user_op,
+      VectorType &                                                       dst,
+      const VectorType &                                                 src,
+      const std::function<void(const unsigned int, const unsigned int)> &operation_before_loop,
+      const std::function<void(const unsigned int, const unsigned int)> &operation_after_loop) const
+    {
+      this->data->template cell_loop<VectorType, VectorType>(
+        [&](const MatrixFree<dim, Number, VectorizedArrayType> &data,
+            VectorType &                                        dst,
+            const VectorType &                                  src,
+            const std::pair<unsigned int, unsigned int> &       cell_range) {
+          FEEvaluation<dim, fe_degree, fe_degree + 1, n_components, Number, VectorizedArrayType>
+                                 phi(data);
+          constexpr unsigned int n_read_components =
+            IsBlockVector<VectorType>::value ? 1 : n_components;
+
+          for (unsigned int cell = cell_range.first; cell < cell_range.second; ++cell)
+            {
+              phi.reinit(cell);
+              if (fe_degree > 2)
+                for (unsigned int bl = 0; bl < ::internal::get_n_blocks(src); ++bl)
+                  read_dof_values_compressed<dim,
+                                             fe_degree,
+                                             fe_degree + 1,
+                                             n_read_components,
+                                             Number>(::internal::get_block(src, bl),
+                                                     compressed_dof_indices,
+                                                     all_indices_uniform,
+                                                     cell,
+                                                     {},
+                                                     true,
+                                                     phi.begin_dof_values());
+              else
+                phi.read_dof_values(src);
+
+              user_op(cell, phi.begin_dof_values());
+
+              if (fe_degree > 2)
+                for (unsigned int bl = 0; bl < ::internal::get_n_blocks(src); ++bl)
+                  distribute_local_to_global_compressed<dim,
+                                                        fe_degree,
+                                                        fe_degree + 1,
+                                                        n_read_components,
+                                                        Number>(::internal::get_block(dst, bl),
+                                                                compressed_dof_indices,
+                                                                all_indices_uniform,
+                                                                cell,
+                                                                {},
+                                                                true,
+                                                                phi.begin_dof_values());
+              else
+                phi.distribute_local_to_global(dst);
+            }
+        },
+        dst,
+        src,
+        operation_before_loop,
+        operation_after_loop);
     }
 
     std::shared_ptr<const MatrixFree<dim, Number, VectorizedArrayType>>

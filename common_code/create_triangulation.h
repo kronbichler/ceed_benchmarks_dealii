@@ -11,17 +11,18 @@ create_triangulation(const unsigned int s, MyManifold<dim> &manifold, const bool
 {
   std::shared_ptr<parallel::TriangulationBase<dim, spacedim>> tria_shared;
 
-  const unsigned int n_refine  = s / 3;
-  const unsigned int remainder = s % 3;
-  Point<dim>         p2;
-  for (unsigned int d = 0; d < remainder; ++d)
-    p2[d] = 2;
-  for (unsigned int d = remainder; d < dim; ++d)
-    p2[d] = 1;
-
+  const unsigned int        n_refine  = s / 12;
+  const unsigned int        remainder = s % 12;
   std::vector<unsigned int> subdivisions(dim, 1);
-  for (unsigned int d = 0; d < remainder; ++d)
-    subdivisions[d] = 2;
+  subdivisions[dim - 1] = 4 + remainder % 4;
+  if (remainder > 3)
+    subdivisions[1] = 2;
+  if (remainder > 7)
+    subdivisions[0] = 2;
+
+  Point<dim> p2;
+  for (unsigned int d = 0; d < dim; ++d)
+    p2[d] = subdivisions[d];
 
   if (use_pft == false)
     {
@@ -46,8 +47,9 @@ create_triangulation(const unsigned int s, MyManifold<dim> &manifold, const bool
       tria_serial.refine_global(n_refine);
 
       {
-        const unsigned int n_procs             = Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD);
-        const unsigned int n_cells_per_process = (tria_serial.n_active_cells() + n_procs) / n_procs;
+        const unsigned int n_procs = Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD);
+        const unsigned int n_cells_per_process =
+          (tria_serial.n_active_cells() + n_procs - 1) / n_procs;
 
         // partition equally the active cells
         for (auto cell : tria_serial.active_cell_iterators())
