@@ -315,10 +315,12 @@ namespace Poisson
           all_indices_uniform.resize(Utilities::pow(3, dim) * data->n_cell_batches(), 1);
         }
 
-      FE_Nothing<dim>                      dummy_fe;
-      FEValues<dim>                        fe_values(dummy_fe,
+      FE_Nothing<dim> dummy_fe;
+      FEValues<dim>   fe_values(*data->get_mapping_info().mapping,
+                              dummy_fe,
                               Quadrature<dim>(quad_1d),
                               update_quadrature_points | update_jacobians | update_JxW_values);
+
       std::vector<types::global_dof_index> dof_indices(
         data->get_dof_handler().get_fe().dofs_per_cell);
 
