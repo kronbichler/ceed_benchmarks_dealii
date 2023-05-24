@@ -7,6 +7,7 @@
 #include <deal.II/base/timer.h>
 #include <deal.II/base/utilities.h>
 
+#include <deal.II/distributed/fully_distributed_tria.h>
 #include <deal.II/distributed/tria.h>
 
 #include <deal.II/dofs/dof_handler.h>
@@ -26,6 +27,8 @@
 #include <deal.II/lac/petsc_precondition.h>
 #include <deal.II/lac/precondition.h>
 #include <deal.II/lac/solver_cg.h>
+#include <deal.II/lac/solver_gmres.h>
+#include <deal.II/lac/tensor_product_matrix.h>
 
 #include <deal.II/matrix_free/fe_evaluation.h>
 #include <deal.II/matrix_free/matrix_free.h>
@@ -40,6 +43,7 @@
 #include <deal.II/multigrid/multigrid.h>
 
 #include <deal.II/numerics/data_out.h>
+#include <deal.II/numerics/tensor_product_matrix_creator.h>
 #include <deal.II/numerics/vector_tools.h>
 
 #include <fstream>
@@ -722,6 +726,329 @@ private:
 
 
 
+namespace Helper
+{
+  template <int dim>
+  std::vector<std::array<double, dim>>
+  compute_harmonic_cell_extent(const Mapping<dim> &       mapping,
+                               const Triangulation<dim> & triangulation,
+                               const Quadrature<dim - 1> &quadrature)
+  {
+    std::vector<std::array<double, dim>> result(triangulation.n_active_cells());
+
+    FE_Nothing<dim>   fe_nothing;
+    FEFaceValues<dim> fe_face_values_0(mapping, fe_nothing, quadrature, update_quadrature_points);
+    FEFaceValues<dim> fe_face_values_1(mapping, fe_nothing, quadrature, update_quadrature_points);
+
+    for (const auto &cell : triangulation.active_cell_iterators())
+      if (cell->is_artificial() == false)
+        {
+          for (unsigned int d = 0; d < dim; ++d)
+            {
+              fe_face_values_0.reinit(cell, 2 * d + 0);
+              fe_face_values_1.reinit(cell, 2 * d + 1);
+
+              double extent = 0.0;
+
+              for (unsigned int q = 0; q < quadrature.size(); ++q)
+                extent += fe_face_values_0.quadrature_point(q).distance(
+                            fe_face_values_1.quadrature_point(q)) *
+                          quadrature.weight(q);
+
+              result[cell->active_cell_index()][d] = extent;
+            }
+        }
+
+    return result;
+  }
+
+  template <int dim>
+  std::vector<dealii::ndarray<double, dim, 3>>
+  compute_harmonic_patch_extent(const Mapping<dim> &       mapping,
+                                const Triangulation<dim> & triangulation,
+                                const Quadrature<dim - 1> &quadrature)
+  {
+    const auto harmonic_cell_extents =
+      compute_harmonic_cell_extent(mapping, triangulation, quadrature);
+    std::vector<double> face_extent(triangulation.n_raw_faces(), 0.0);
+
+    unsigned int n_owned = 0, n_ghost = 0;
+    for (const auto &cell : triangulation.active_cell_iterators())
+      if (cell->is_artificial() == false)
+        {
+          for (unsigned int d = 0; d < dim; ++d)
+            {
+              AssertIndexRange(cell->active_cell_index(), harmonic_cell_extents.size());
+
+              const auto extent = harmonic_cell_extents[cell->active_cell_index()][d];
+
+              const auto add_extent_to_faces = [&](const unsigned int face_no) {
+                const auto index = cell->face(face_no)->index();
+                AssertIndexRange(index, face_extent.size());
+
+                face_extent[index] += extent;
+
+                if (cell->has_periodic_neighbor(face_no) &&
+                    (cell->periodic_neighbor(face_no)->is_artificial() == false))
+                  {
+                    const auto index = cell->periodic_neighbor(face_no)
+                                         ->face(cell->periodic_neighbor_face_no(face_no))
+                                         ->index();
+
+                    face_extent[index] += extent;
+                  }
+              };
+
+              add_extent_to_faces(2 * d + 0);
+              add_extent_to_faces(2 * d + 1);
+            }
+          if (cell->is_locally_owned())
+            ++n_owned;
+          else
+            ++n_ghost;
+        }
+    // std::cout << "Cells on " << Utilities::MPI::this_mpi_process(MPI_COMM_WORLD)
+    //    << " " << triangulation.n_active_cells() << " " << n_owned << " " << n_ghost << " ";
+
+    std::vector<dealii::ndarray<double, dim, 3>> result(triangulation.n_active_cells());
+
+    dealii::ndarray<double, dim, 3> max_extents = {};
+    for (const auto &cell : triangulation.active_cell_iterators())
+      if (!cell->is_artificial())
+        {
+          for (unsigned int d = 0; d < dim; ++d)
+            {
+              const auto   index       = cell->active_cell_index();
+              const double cell_extent = harmonic_cell_extents[index][d];
+
+              result[index][d][0] = face_extent[cell->face(2 * d + 0)->index()] - cell_extent;
+              result[index][d][1] = cell_extent;
+              result[index][d][2] = face_extent[cell->face(2 * d + 1)->index()] - cell_extent;
+            }
+          if (cell->is_locally_owned())
+            for (unsigned int d = 0; d < dim; ++d)
+              for (unsigned int e = 0; e < 3; ++e)
+                max_extents[d][e] =
+                  std::max(max_extents[d][e], result[cell->active_cell_index()][d][e]);
+        }
+    dealii::ndarray<double, dim, 3> min_extents = max_extents;
+    for (const auto &cell : triangulation.active_cell_iterators())
+      if (cell->is_locally_owned())
+        for (unsigned int d = 0; d < dim; ++d)
+          for (unsigned int e = 0; e < 3; ++e)
+            min_extents[d][e] =
+              std::min(min_extents[d][e], result[cell->active_cell_index()][d][e]);
+
+    return result;
+  }
+} // namespace Helper
+
+
+
+template <int dim, typename Number>
+class AdditiveSchwarzPreconditionerBase
+{
+public:
+  virtual ~AdditiveSchwarzPreconditionerBase() = default;
+
+  using VectorType = LinearAlgebra::distributed::Vector<Number>;
+  virtual void
+  vmult(VectorType &                                                       dst,
+        const VectorType &                                                 src,
+        const std::function<void(const unsigned int, const unsigned int)> &operation_before_loop,
+        const std::function<void(const unsigned int, const unsigned int)> &operation_after_loop)
+    const = 0;
+};
+
+
+
+template <int dim, int degree, typename Number>
+class AdditiveSchwarzPreconditioner : public AdditiveSchwarzPreconditionerBase<dim, Number>
+{
+public:
+  using VectorizedArrayType = VectorizedArray<Number>;
+  using VectorType          = LinearAlgebra::distributed::Vector<Number>;
+  AdditiveSchwarzPreconditioner(const Poisson::LaplaceOperator<dim, 1, Number> &poisson)
+    : poisson(poisson)
+  {
+    const auto &matrix_free = *poisson.get_matrix_free();
+    FE_Q<1>     fe_1d(matrix_free.get_dof_handler().get_fe().degree);
+    AssertThrow(degree == fe_1d.degree, ExcInternalError());
+    QGaussLobatto<1> quadrature_1d(fe_1d.degree + 1);
+    const auto       harmonic_patch_extent =
+      Helper::compute_harmonic_patch_extent(*matrix_free.get_mapping_info().mapping,
+                                            matrix_free.get_dof_handler().get_triangulation(),
+                                            QGaussLobatto<dim - 1>(fe_1d.degree + 1));
+
+    tensor_product_matrices.reserve(matrix_free.n_cell_batches());
+
+    VectorType valence;
+    matrix_free.initialize_dof_vector(valence);
+    FEEvaluation<dim, -1, 0, 1, Number> eval(matrix_free);
+    for (unsigned int cell = 0; cell < matrix_free.n_cell_batches(); ++cell)
+      {
+        eval.reinit(cell);
+        for (unsigned int i = 0; i < eval.dofs_per_cell; ++i)
+          eval.begin_dof_values()[i] = 1.0;
+        eval.distribute_local_to_global(valence);
+
+        std::array<Table<2, VectorizedArrayType>, dim> Ms;
+        std::array<Table<2, VectorizedArrayType>, dim> Ks;
+
+        for (unsigned int v = 0; v < matrix_free.n_active_entries_per_cell_batch(cell); ++v)
+          {
+            const auto cell_iterator = matrix_free.get_cell_iterator(cell, v);
+            const auto cell_extents  = harmonic_patch_extent[cell_iterator->active_cell_index()];
+            const auto [Ms_scalar, Ks_scalar] =
+              TensorProductMatrixCreator::create_laplace_tensor_product_matrix<dim, Number>(
+                cell_iterator, {0}, {1}, fe_1d, quadrature_1d, cell_extents, 1);
+
+            for (unsigned int d = 0; d < dim; ++d)
+              {
+                if (Ms[d].size(0) == 0 || Ms[d].size(1) == 0)
+                  {
+                    Ms[d].reinit(Ms_scalar[d].size(0), Ms_scalar[d].size(1));
+                    Ks[d].reinit(Ks_scalar[d].size(0), Ks_scalar[d].size(1));
+                  }
+
+                for (unsigned int i = 0; i < Ms_scalar[d].size(0); ++i)
+                  for (unsigned int j = 0; j < Ms_scalar[d].size(0); ++j)
+                    Ms[d][i][j][v] = Ms_scalar[d][i][j];
+
+                for (unsigned int i = 0; i < Ks_scalar[d].size(0); ++i)
+                  for (unsigned int j = 0; j < Ks_scalar[d].size(0); ++j)
+                    Ks[d][i][j][v] = Ks_scalar[d][i][j];
+              }
+          }
+        tensor_product_matrices.insert(cell, Ms, Ks);
+      }
+    tensor_product_matrices.finalize();
+
+    valence.compress(VectorOperation::add);
+    valence.update_ghost_values();
+    weights.resize(matrix_free.n_cell_batches());
+    for (unsigned int cell = 0; cell < matrix_free.n_cell_batches(); ++cell)
+      {
+        eval.reinit(cell);
+        eval.read_dof_values(valence);
+        for (unsigned int i = 0; i < eval.dofs_per_cell; ++i)
+          for (unsigned int v = 0; v < matrix_free.n_active_entries_per_cell_batch(cell); ++v)
+            if (eval.begin_dof_values()[i][v] != 0.)
+              eval.begin_dof_values()[i][v] = 1. / std::sqrt(eval.begin_dof_values()[i][v]);
+        const bool success =
+          dealii::internal::compute_weights_fe_q_dofs_by_entity<dim, -1, VectorizedArrayType>(
+            eval.begin_dof_values(), 1, degree + 1, weights[cell].data());
+        AssertThrow(success, ExcInternalError());
+      }
+  }
+
+  virtual void
+  vmult(VectorType &                                                       dst,
+        const VectorType &                                                 src,
+        const std::function<void(const unsigned int, const unsigned int)> &operation_before_loop,
+        const std::function<void(const unsigned int, const unsigned int)> &operation_after_loop)
+    const override
+  {
+    AlignedVector<VectorizedArrayType> tmp;
+    poisson.template apply_user_op_on_cell<degree>(
+      [&](const unsigned int cell, VectorizedArrayType *dof_values) {
+        dealii::internal::weight_fe_q_dofs_by_entity<dim, degree + 1>(weights[cell].data(),
+                                                                      1,
+                                                                      degree + 1,
+                                                                      dof_values);
+        tensor_product_matrices.apply_inverse(
+          cell,
+          ArrayView<VectorizedArrayType>(dof_values, Utilities::pow(degree + 1, dim)),
+          ArrayView<const VectorizedArrayType>(dof_values, Utilities::pow(degree + 1, dim)),
+          tmp);
+        dealii::internal::weight_fe_q_dofs_by_entity<dim, degree + 1>(weights[cell].data(),
+                                                                      1,
+                                                                      degree + 1,
+                                                                      dof_values);
+      },
+      dst,
+      src,
+      operation_before_loop,
+      operation_after_loop);
+  }
+
+private:
+  const Poisson::LaplaceOperator<dim, 1, Number> &                       poisson;
+  AlignedVector<std::array<VectorizedArrayType, Utilities::pow(3, dim)>> weights;
+  TensorProductMatrixSymmetricSumCollection<dim, VectorizedArrayType, degree + 1>
+    tensor_product_matrices;
+};
+
+
+
+template <int dim, typename Number>
+class PreconditionAdditiveSchwarz
+{
+public:
+  using VectorType = LinearAlgebra::distributed::Vector<Number>;
+  PreconditionAdditiveSchwarz(const Poisson::LaplaceOperator<dim, 1, Number> &poisson)
+  {
+    const unsigned int degree = poisson.get_matrix_free()->get_dof_handler().get_fe().degree;
+    if (degree == 1)
+      preconditioner = std::make_unique<AdditiveSchwarzPreconditioner<dim, 1, Number>>(poisson);
+    else if (degree == 2)
+      preconditioner = std::make_unique<AdditiveSchwarzPreconditioner<dim, 2, Number>>(poisson);
+    else if (degree == 3)
+      preconditioner = std::make_unique<AdditiveSchwarzPreconditioner<dim, 3, Number>>(poisson);
+    else if (degree == 4)
+      preconditioner = std::make_unique<AdditiveSchwarzPreconditioner<dim, 4, Number>>(poisson);
+    else if (degree == 5)
+      preconditioner = std::make_unique<AdditiveSchwarzPreconditioner<dim, 5, Number>>(poisson);
+    else if (degree == 6)
+      preconditioner = std::make_unique<AdditiveSchwarzPreconditioner<dim, 6, Number>>(poisson);
+    else if (degree == 7)
+      preconditioner = std::make_unique<AdditiveSchwarzPreconditioner<dim, 7, Number>>(poisson);
+    else if (degree == 8)
+      preconditioner = std::make_unique<AdditiveSchwarzPreconditioner<dim, 8, Number>>(poisson);
+    else if (degree == 9)
+      preconditioner = std::make_unique<AdditiveSchwarzPreconditioner<dim, 9, Number>>(poisson);
+    else
+      AssertThrow(false,
+                  ExcNotImplemented("Degree " + std::to_string(degree) + " not implemented"));
+    compute_time = 0;
+  }
+
+  void
+  vmult(
+    VectorType &                                                       dst,
+    const VectorType &                                                 src,
+    const std::function<void(const unsigned int, const unsigned int)> &operation_before_loop,
+    const std::function<void(const unsigned int, const unsigned int)> &operation_after_loop) const
+  {
+    Timer time;
+    preconditioner->vmult(dst, src, operation_before_loop, operation_after_loop);
+    compute_time += time.wall_time();
+  }
+
+  void
+  vmult(VectorType &dst, const VectorType &src) const
+  {
+    dst = 0.;
+    preconditioner->vmult(dst, src, {}, {});
+  }
+
+  double
+  get_compute_time_and_reset()
+  {
+    const auto   comm = MPI_COMM_WORLD;
+    const double result =
+      Utilities::MPI::sum(compute_time, comm) / Utilities::MPI::n_mpi_processes(comm);
+    compute_time = 0.;
+    return result;
+  }
+
+private:
+  std::unique_ptr<AdditiveSchwarzPreconditionerBase<dim, Number>> preconditioner;
+  mutable double                                                  compute_time;
+};
+
+
+
 template <int dim>
 class LaplaceProblem
 {
@@ -760,6 +1087,7 @@ private:
   MGLevelObject<DoFHandler<dim>> level_dof_handlers;
 
   MappingQCache<dim> mapping;
+  // MappingQ<dim> mapping;
 
   AffineConstraints<double> constraints;
   using SystemMatrixType = Poisson::LaplaceOperator<dim, 1, double>;
@@ -779,8 +1107,10 @@ private:
   std::unique_ptr<MGTransferGlobalCoarsening<dim, VectorType>> mg_transfer_p;
   std::unique_ptr<MGCoarseGridBase<VectorType>>                mg_coarse;
 
-  using SmootherType = PreconditionChebyshev<LevelMatrixType, VectorType>;
-  mg::SmootherRelaxation<SmootherType, VectorType> mg_smoother;
+  using SmootherType =
+    PreconditionChebyshev<LevelMatrixType, VectorType, PreconditionAdditiveSchwarz<dim, float>>;
+  mg::SmootherRelaxation<SmootherType, VectorType>     mg_smoother;
+  MGLevelObject<typename SmootherType::AdditionalData> mg_smoother_data;
 
   ConditionalOStream pcout;
 };
@@ -789,13 +1119,7 @@ private:
 
 template <int dim>
 LaplaceProblem<dim>::LaplaceProblem(const unsigned int degree)
-#ifdef DEAL_II_WITH_P4EST
-  : triangulation(MPI_COMM_WORLD,
-                  Triangulation<dim>::limit_level_difference_at_vertices,
-                  parallel::distributed::Triangulation<dim>::construct_multigrid_hierarchy)
-#else
-  : triangulation(Triangulation<dim>::limit_level_difference_at_vertices)
-#endif
+  : triangulation(MPI_COMM_WORLD)
   , fe(degree)
   , dof_handler(triangulation)
   , mapping(1)
@@ -834,18 +1158,54 @@ LaplaceProblem<dim>::setup_grid(const unsigned int n_refinements,
 
   if (run_refinements)
     {
-      const unsigned int n_refine  = n_refinements / dim;
-      const unsigned int remainder = n_refinements % dim;
-      Point<dim>         p2;
-      for (unsigned int d = 0; d < dim; ++d)
-        p2[d] = 1;
+      dealii::Triangulation<dim> tria_serial;
+      if (false)
+        {
+          const unsigned int n_refine  = n_refinements / dim;
+          const unsigned int remainder = n_refinements % dim;
+          Point<dim>         p2;
+          for (unsigned int d = 0; d < dim; ++d)
+            p2[d] = 1;
 
-      std::vector<unsigned int> subdivisions(dim, 1);
-      for (unsigned int d = 0; d < remainder; ++d)
-        subdivisions[d] = 2;
+          std::vector<unsigned int> subdivisions(dim, 1);
+          for (unsigned int d = 0; d < remainder; ++d)
+            subdivisions[d] = 2;
 
-      GridGenerator::subdivided_hyper_rectangle(triangulation, subdivisions, Point<dim>(), p2);
-      triangulation.refine_global(n_refine);
+          GridGenerator::subdivided_hyper_rectangle(tria_serial, subdivisions, Point<dim>(), p2);
+          tria_serial.refine_global(n_refine);
+        }
+      else
+        {
+          const std::vector<unsigned int> refine_by_level{10, 16, 20, 25, 28, 32, 40};
+          unsigned int                    subdivisions = refine_by_level[n_refinements - 10];
+          unsigned int                    n_refine     = 0;
+          while (subdivisions % 2 == 0)
+            {
+              n_refine += 1;
+              subdivisions /= 2;
+            }
+
+          GridGenerator::subdivided_hyper_cube(triangulation, subdivisions);
+          triangulation.refine_global(n_refine);
+        }
+      if (false)
+        {
+          const unsigned int n_procs = Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD);
+          const unsigned int n_cells_per_process =
+            (tria_serial.n_active_cells() + n_procs - 1) / n_procs;
+
+          // partition equally the active cells
+          for (auto cell : tria_serial.active_cell_iterators())
+            cell->set_subdomain_id(cell->active_cell_index() / n_cells_per_process);
+
+          const auto cd =
+            TriangulationDescription::Utilities::create_description_from_triangulation(
+              tria_serial, MPI_COMM_WORLD);
+
+          triangulation.create_triangulation(cd);
+          GridTools::transform(transformation_function, triangulation);
+        }
+
       mapping.initialize(MappingQ1<dim>(), triangulation, transform, false);
     }
   else
@@ -856,13 +1216,13 @@ LaplaceProblem<dim>::setup_grid(const unsigned int n_refinements,
       if (refine_before_deformation)
         {
           triangulation.refine_global(n_refinements);
-          mapping.initialize(MappingQ1<dim>(), triangulation, transform, false);
+          // mapping.initialize(MappingQ1<dim>(), triangulation, transform, false);
         }
       else
         {
           GridTools::transform(transformation_function, triangulation);
           triangulation.refine_global(n_refinements);
-          mapping.initialize(MappingQ1<dim>(), triangulation);
+          // mapping.initialize(MappingQ1<dim>(), triangulation);
         }
     }
 }
@@ -889,17 +1249,22 @@ LaplaceProblem<dim>::setup_dofs()
     {
       AssertThrow(fe.degree > 1, ExcNotImplemented());
       unsigned int degree = fe.degree;
-      p_mg_level_degrees.clear();
-      while (degree > 1)
-        {
-          degree -= 2;
-          p_mg_level_degrees.push_back(std::max(1U, degree));
-        }
-      while (degree > 1)
-        {
-          degree -= 1;
-          p_mg_level_degrees.push_back(degree);
-        }
+      // p_mg_level_degrees.clear();
+      // while (degree > 3)
+      //  {
+      //    degree -= 2;
+      //    p_mg_level_degrees.push_back(std::max(1U, degree));
+      //  }
+      // while (degree > 1)
+      //  {
+      //    degree -= 1;
+      //    p_mg_level_degrees.push_back(degree);
+      //  }
+      if (degree == 7)
+        p_mg_level_degrees = {4, 2, 1};
+      else
+        p_mg_level_degrees = {3, 1};
+
       pcout << " p-multigrid coarsening strategy: " << fe.degree;
       for (const unsigned int i : p_mg_level_degrees)
         pcout << " " << i;
@@ -1134,6 +1499,7 @@ LaplaceProblem<dim>::assemble_rhs()
       phi.distribute_local_to_global(system_rhs);
     }
   system_rhs.compress(VectorOperation::add);
+  pcout << "Norm of rhs: " << system_rhs.l2_norm() << std::endl;
 }
 
 
@@ -1178,29 +1544,30 @@ template <int dim>
 void
 LaplaceProblem<dim>::setup_smoother()
 {
-  MGLevelObject<typename SmootherType::AdditionalData> smoother_data;
-  smoother_data.resize(0, mg_matrices.max_level());
+  mg_smoother_data.resize(0, mg_matrices.max_level());
   for (unsigned int level = 0; level <= mg_matrices.max_level(); ++level)
     {
-      smoother_data[level].polynomial_type =
+      mg_smoother_data[level].polynomial_type =
         SmootherType::AdditionalData::PolynomialType::first_kind;
       if (level > 0)
         {
-          smoother_data[level].smoothing_range     = 11.;
-          smoother_data[level].degree              = 3;
-          smoother_data[level].eig_cg_n_iterations = 12;
+          mg_smoother_data[level].smoothing_range     = 11.;
+          mg_smoother_data[level].degree              = 3;
+          mg_smoother_data[level].eig_cg_n_iterations = 12;
         }
       else if (!do_coarse_amg)
         {
-          smoother_data[0].smoothing_range     = 1e-3;
-          smoother_data[0].degree              = numbers::invalid_unsigned_int;
-          smoother_data[0].eig_cg_n_iterations = mg_matrices[0].m();
+          mg_smoother_data[0].smoothing_range     = 1e-3;
+          mg_smoother_data[0].degree              = numbers::invalid_unsigned_int;
+          mg_smoother_data[0].eig_cg_n_iterations = mg_matrices[0].m();
         }
-      smoother_data[level].preconditioner = std::make_shared<DiagonalMatrix<VectorType>>();
-      smoother_data[level].preconditioner->get_vector() =
-        mg_matrices[level].compute_inverse_diagonal();
+      // mg_smoother_data[level].preconditioner = std::make_shared<DiagonalMatrix<VectorType>>();
+      // mg_smoother_data[level].preconditioner->get_vector() =
+      //  mg_matrices[level].compute_inverse_diagonal();
+      mg_smoother_data[level].preconditioner =
+        std::make_shared<PreconditionAdditiveSchwarz<dim, float>>(mg_matrices[level]);
     }
-  mg_smoother.initialize(mg_matrices, smoother_data);
+  mg_smoother.initialize(mg_matrices, mg_smoother_data);
 }
 
 
@@ -1300,7 +1667,8 @@ LaplaceProblem<dim>::solve()
   pcout << "    smoother time per level: ";
   for (unsigned int l = mg_matrices.max_level(); l != mg_matrices.min_level(); --l)
     {
-      pcout << mg_matrices[l].get_compute_time_and_reset() << "s ";
+      pcout << mg_matrices[l].get_compute_time_and_reset() << "+"
+            << mg_smoother_data[l].preconditioner->get_compute_time_and_reset() << "s ";
     }
   pcout << std::endl;
   if (auto coarse =
@@ -1393,6 +1761,39 @@ LaplaceProblem<dim>::run(const unsigned int n_refinements, const double epsy, co
   setup_coarse_solver();
   timer["setup_coarse"].stop();
 
+  timer["output"].start();
+  if (triangulation.n_global_active_cells() < 10000 &&
+      Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD) < 5)
+    {
+      DataOut<dim> data_out;
+
+      solution.update_ghost_values();
+      data_out.attach_dof_handler(dof_handler);
+      data_out.add_data_vector(solution, "solution");
+      LinearAlgebra::distributed::Vector<double> exact(solution);
+      VectorTools::interpolate(mapping, dof_handler, SolutionFunction<dim>(), exact);
+      data_out.add_data_vector(exact, "exact");
+      Vector<double> aspect_ratios =
+        GridTools::compute_aspect_ratio_of_cells(mapping, triangulation, QGauss<dim>(3));
+      std::cout << solution.get_partitioner()->n_ghost_indices() << " "
+                << solution.get_partitioner()->n_import_indices() << std::endl;
+      // std::cout << "Aspect ratios " << Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) << " ";
+      // aspect_ratios.print(std::cout);
+      data_out.add_data_vector(aspect_ratios, "aspect_ratio");
+      Vector<double> subdomain(triangulation.n_active_cells());
+      subdomain = Utilities::MPI::this_mpi_process(MPI_COMM_WORLD);
+      data_out.add_data_vector(subdomain, "subdomain");
+
+      data_out.build_patches(mapping, 2);
+
+      DataOutBase::VtkFlags flags;
+      flags.compression_level        = DataOutBase::CompressionLevel::best_speed;
+      flags.write_higher_order_cells = true;
+      data_out.set_flags(flags);
+      data_out.write_vtu_with_pvtu_record("./", "solution", n_refinements, MPI_COMM_WORLD, 1);
+    }
+  timer["output"].stop();
+
   timer["solve"].start();
   solve();
   timer["solve"].stop();
@@ -1436,7 +1837,8 @@ LaplaceProblem<dim>::run(const unsigned int n_refinements, const double epsy, co
   timer["matvec_float_coarser"].stop();
 
   timer["output"].start();
-  if (triangulation.n_global_active_cells() < 10000)
+  if (triangulation.n_global_active_cells() < 10000 &&
+      Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD) < 5)
     {
       DataOut<dim> data_out;
 
