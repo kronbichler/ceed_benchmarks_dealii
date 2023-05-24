@@ -321,6 +321,11 @@ namespace Poisson
                               Quadrature<dim>(quad_1d),
                               update_quadrature_points | update_jacobians | update_JxW_values);
 
+      FEValues<dim> fe_values_quad(*data_->get_mapping_info().mapping,
+                                   dummy_fe,
+                                   QGaussLobatto<dim>(3),
+                                   update_quadrature_points);
+
       std::vector<types::global_dof_index> dof_indices(
         data->get_dof_handler().get_fe().dofs_per_cell);
 
@@ -335,6 +340,7 @@ namespace Poisson
           for (unsigned int l = 0; l < data->n_active_entries_per_cell_batch(c); ++l)
             {
               const typename DoFHandler<dim>::cell_iterator cell = data->get_cell_iterator(c, l);
+              fe_values_quad.reinit(cell);
               const auto v = data->get_mapping_info().mapping->get_vertices(cell);
               if (dim == 2)
                 {
@@ -345,17 +351,6 @@ namespace Poisson
                       cell_vertex_coefficients[c][2][d][l] = v[2][d] - v[0][d];
                       cell_vertex_coefficients[c][3][d][l] =
                         v[3][d] - v[2][d] - (v[1][d] - v[0][d]);
-
-                      // for now use only constant and linear term for the
-                      // quadratic approximation
-                      cell_quadratic_coefficients[c][0][d][l] =
-                        cell_vertex_coefficients[c][0][d][l];
-                      cell_quadratic_coefficients[c][1][d][l] =
-                        cell_vertex_coefficients[c][1][d][l];
-                      cell_quadratic_coefficients[c][3][d][l] =
-                        cell_vertex_coefficients[c][2][d][l];
-                      cell_quadratic_coefficients[c][4][d][l] =
-                        cell_vertex_coefficients[c][3][d][l];
                     }
                 }
               else if (dim == 3)
@@ -375,29 +370,44 @@ namespace Poisson
                       cell_vertex_coefficients[c][7][d][l] =
                         (v[7][d] - v[6][d] - (v[5][d] - v[4][d]) -
                          (v[3][d] - v[2][d] - (v[1][d] - v[0][d])));
-
-                      // for now use only constant and linear term for the
-                      // quadratic approximation
-                      cell_quadratic_coefficients[c][0][d][l] =
-                        cell_vertex_coefficients[c][0][d][l];
-                      cell_quadratic_coefficients[c][1][d][l] =
-                        cell_vertex_coefficients[c][1][d][l];
-                      cell_quadratic_coefficients[c][3][d][l] =
-                        cell_vertex_coefficients[c][2][d][l];
-                      cell_quadratic_coefficients[c][4][d][l] =
-                        cell_vertex_coefficients[c][4][d][l];
-                      cell_quadratic_coefficients[c][9][d][l] =
-                        cell_vertex_coefficients[c][3][d][l];
-                      cell_quadratic_coefficients[c][10][d][l] =
-                        cell_vertex_coefficients[c][5][d][l];
-                      cell_quadratic_coefficients[c][12][d][l] =
-                        cell_vertex_coefficients[c][6][d][l];
-                      cell_quadratic_coefficients[c][13][d][l] =
-                        cell_vertex_coefficients[c][7][d][l];
                     }
                 }
               else
                 AssertThrow(false, ExcNotImplemented());
+
+              // compute coefficients for quadratic cell
+              const double           coeff[9] = {1.0, -3.0, 2.0, 0.0, 4.0, -4.0, 0.0, -1.0, 2.0};
+              constexpr unsigned int size_dim = Utilities::pow(3, dim);
+              std::array<Tensor<1, dim>, size_dim> points;
+              for (unsigned int i2 = 0; i2 < (dim > 2 ? 3 : 1); ++i2)
+                {
+                  for (unsigned int i1 = 0; i1 < 3; ++i1)
+                    for (unsigned int i0 = 0, i = 9 * i2 + 3 * i1; i0 < 3; ++i0)
+                      points[i + i0] = coeff[i0] * fe_values_quad.quadrature_point(i) +
+                                       coeff[i0 + 3] * fe_values_quad.quadrature_point(i + 1) +
+                                       coeff[i0 + 6] * fe_values_quad.quadrature_point(i + 2);
+                  for (unsigned int i1 = 0; i1 < 3; ++i1)
+                    {
+                      const unsigned int            i   = 9 * i2 + i1;
+                      std::array<Tensor<1, dim>, 3> tmp = {
+                        {points[i], points[i + 3], points[i + 6]}};
+                      for (unsigned int i0 = 0; i0 < 3; ++i0)
+                        points[i + 3 * i0] =
+                          coeff[i0] * tmp[0] + coeff[i0 + 3] * tmp[1] + coeff[i0 + 6] * tmp[2];
+                    }
+                }
+              if (dim == 3)
+                for (unsigned int i = 0; i < 9; ++i)
+                  {
+                    std::array<Tensor<1, dim>, 3> tmp = {
+                      {points[i], points[i + 9], points[i + 18]}};
+                    for (unsigned int i0 = 0; i0 < 3; ++i0)
+                      points[i + 9 * i0] =
+                        coeff[i0] * tmp[0] + coeff[i0 + 3] * tmp[1] + coeff[i0 + 6] * tmp[2];
+                  }
+              for (unsigned int i = 0; i < points.size(); ++i)
+                for (unsigned int d = 0; d < dim; ++d)
+                  cell_quadratic_coefficients[c][i][d][l] = points[i][d];
 
               // compute coefficients for other methods
               fe_values.reinit(typename Triangulation<dim>::cell_iterator(cell));
@@ -561,8 +571,7 @@ namespace Poisson
     void
     vmult(VectorType &dst, const VectorType &src) const
     {
-      this->data->cell_loop(
-        &LaplaceOperator::template local_apply_linear_geo<false>, this, dst, src, true);
+      this->data->cell_loop(&LaplaceOperator::local_apply_quadratic_geo, this, dst, src, true);
       internal::set_constrained_entries(data->get_constrained_dofs(0), src, dst);
     }
 
@@ -572,8 +581,7 @@ namespace Poisson
     void
     vmult_add(VectorType &dst, const VectorType &src) const
     {
-      this->data->cell_loop(
-        &LaplaceOperator::template local_apply_linear_geo<false>, this, dst, src, false);
+      this->data->cell_loop(&LaplaceOperator::local_apply_quadratic_geo, this, dst, src, false);
       internal::set_constrained_entries(data->get_constrained_dofs(0), src, dst);
     }
 
@@ -585,8 +593,7 @@ namespace Poisson
     vmult_inner_product(VectorType &dst, const VectorType &src) const
     {
       accumulated_sum = 0;
-      this->data->cell_loop(
-        &LaplaceOperator::template local_apply_linear_geo<true>, this, dst, src, true);
+      this->data->cell_loop(&LaplaceOperator::local_apply_quadratic_geo, this, dst, src, true);
       accumulated_sum += internal::set_constrained_entries(data->get_constrained_dofs(0), src, dst);
       return accumulated_sum;
     }
@@ -604,7 +611,7 @@ namespace Poisson
     {
       Tensor<1, 7, VectorizedArray<Number>> sums;
       this->data->cell_loop(
-        &LaplaceOperator::template local_apply_linear_geo<false>,
+        &LaplaceOperator::local_apply_quadratic_geo,
         this,
         h,
         d,
@@ -785,7 +792,8 @@ namespace Poisson
     void
     vmult_quadratic(VectorType &dst, const VectorType &src) const
     {
-      this->data->cell_loop(&LaplaceOperator::local_apply_quadratic_geo, this, dst, src, true);
+      this->data->cell_loop(
+        &LaplaceOperator::template local_apply_linear_geo<false>, this, dst, src, true);
       internal::set_constrained_entries(data->get_constrained_dofs(0), src, dst);
     }
 
@@ -797,7 +805,7 @@ namespace Poisson
       const std::function<void(const unsigned int, const unsigned int)> &operation_after_loop) const
     {
       Timer time;
-      this->data->cell_loop(&LaplaceOperator::template local_apply_linear_geo<false>,
+      this->data->cell_loop(&LaplaceOperator::local_apply_quadratic_geo,
                             this,
                             dst,
                             src,
