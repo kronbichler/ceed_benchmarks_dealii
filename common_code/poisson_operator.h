@@ -308,7 +308,7 @@ namespace Poisson
           std::map<unsigned int, unsigned int> count;
           for (const auto a : distances)
             count[a]++;
-          for (const auto a : count)
+          for (const auto &a : count)
             std::cout << a.first << " " << a.second << "   ";
           std::cout << std::endl;
         }
