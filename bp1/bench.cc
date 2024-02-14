@@ -21,7 +21,7 @@
 #include <deal.II/matrix_free/fe_evaluation.h>
 #include <deal.II/matrix_free/matrix_free.h>
 
-//#define USE_STD_SIMD
+// #define USE_STD_SIMD
 
 #ifdef USE_STD_SIMD
 #  include <experimental/simd>
@@ -56,7 +56,7 @@ typedef dealii::VectorizedArray<double> VectorizedArrayType;
 typedef dealii::VectorizedArray<double, 1> VectorizedArrayType;
 #endif
 
-//#define USE_SHMEM
+// #define USE_SHMEM
 
 template <int dim, int fe_degree, int n_q_points>
 void
@@ -76,7 +76,7 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
   Timer           time;
   MyManifold<dim> manifold;
 
-  const auto tria = create_triangulation(s, manifold, VERSION);
+  const auto tria = create_triangulation(s, manifold, true);
 
   FE_Q<dim>            fe(fe_degree);
   MappingQGeneric<dim> mapping(std::min(fe_degree, 6));
@@ -346,7 +346,7 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
               << " | " << std::setw(11) << dof_handler.n_dofs()                     //
               << " | " << std::setw(11) << solver_time / solver_control.last_step() //
               << " | " << std::setw(11)
-              << dof_handler.n_dofs() / solver_time2 * solver_control.last_step()    //
+              << dof_handler.n_dofs() / solver_time * solver_control.last_step()    //
               << " | " << std::setw(11) << solver_time2 / solver_control.last_step() //
               << " | " << std::setw(11) << solver_time3 / solver_control.last_step() //
               << " | " << std::setw(11) << solver_time4 / solver_control.last_step() //
@@ -362,7 +362,7 @@ template <int dim, int fe_degree, int n_q_points>
 void
 do_test(const int s_in, const bool compact_output)
 {
-  MPI_Comm comm_shmem;
+  MPI_Comm comm_shmem = MPI_COMM_NULL;
 
 #ifdef USE_SHMEM
   MPI_Comm_split_type(MPI_COMM_WORLD,
@@ -381,7 +381,7 @@ do_test(const int s_in, const bool compact_output)
       unsigned int s =
         std::max(3U,
                  static_cast<unsigned int>(std::log2(1024 / fe_degree / fe_degree / fe_degree)));
-      while ((8 + Utilities::fixed_power<dim>(fe_degree + 1)) * (1UL << s) <
+      while ((2 + Utilities::fixed_power<dim>(fe_degree + 1)) * (1UL << (s / 4)) <
              6000000ULL * Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD))
         {
           test<dim, fe_degree, n_q_points>(s, compact_output, comm_shmem);

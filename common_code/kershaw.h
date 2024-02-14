@@ -43,9 +43,9 @@ kershaw(const double epsy,
         const double x,
         const double y,
         const double z,
-        double &     X,
-        double &     Y,
-        double &     Z)
+        double      &X,
+        double      &Y,
+        double      &Z)
 {
   X = x;
 

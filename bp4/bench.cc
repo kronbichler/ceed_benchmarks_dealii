@@ -33,14 +33,14 @@
 
 using namespace dealii;
 
-//#define USE_SHMEM
+// #define USE_SHMEM
 
 template <int dim>
 void
 test(const unsigned int fe_degree,
      const unsigned int s,
      const bool         short_output,
-     const MPI_Comm &   comm_shmem)
+     const MPI_Comm    &comm_shmem)
 {
 #ifndef USE_SHMEM
   (void)comm_shmem;

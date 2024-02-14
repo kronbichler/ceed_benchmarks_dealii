@@ -81,7 +81,7 @@ namespace Mass
      * Matrix-vector multiplication.
      */
     void
-    vmult(LinearAlgebra::distributed::BlockVector<Number> &      dst,
+    vmult(LinearAlgebra::distributed::BlockVector<Number>       &dst,
           const LinearAlgebra::distributed::BlockVector<Number> &src) const
     {
       this->data->cell_loop(&MassOperator::local_apply_cell, this, dst, src, true);
@@ -92,7 +92,7 @@ namespace Mass
      * without communicating yet)
      */
     Number
-    vmult_inner_product(LinearAlgebra::distributed::BlockVector<Number> &      dst,
+    vmult_inner_product(LinearAlgebra::distributed::BlockVector<Number>       &dst,
                         const LinearAlgebra::distributed::BlockVector<Number> &src) const
     {
       accumulated_sum = 0;
@@ -105,7 +105,7 @@ namespace Mass
      * symmetric, it does exactly the same as vmult().
      */
     void
-    Tvmult(LinearAlgebra::distributed::BlockVector<Number> &      dst,
+    Tvmult(LinearAlgebra::distributed::BlockVector<Number>       &dst,
            const LinearAlgebra::distributed::BlockVector<Number> &src) const
     {
       vmult(dst, src);
@@ -117,9 +117,9 @@ namespace Mass
      */
     void
     local_apply_cell(const MatrixFree<dim, value_type, VectorizedArrayType> &data,
-                     LinearAlgebra::distributed::BlockVector<Number> &       dst,
-                     const LinearAlgebra::distributed::BlockVector<Number> & src,
-                     const std::pair<unsigned int, unsigned int> &           cell_range) const
+                     LinearAlgebra::distributed::BlockVector<Number>        &dst,
+                     const LinearAlgebra::distributed::BlockVector<Number>  &src,
+                     const std::pair<unsigned int, unsigned int>            &cell_range) const
     {
       FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number, VectorizedArrayType> phi(
         data);
@@ -127,10 +127,10 @@ namespace Mass
         {
           phi.reinit(cell);
           phi.read_dof_values(src);
-          phi.evaluate(true, false);
+          phi.evaluate(EvaluationFlags::values);
           for (unsigned int q = 0; q < phi.n_q_points; ++q)
             phi.submit_value(phi.get_value(q), q);
-          phi.integrate(true, false);
+          phi.integrate(EvaluationFlags::values);
           phi.distribute_local_to_global(dst);
         }
     }
@@ -141,8 +141,8 @@ namespace Mass
      */
     void
     local_apply_cell_inner_product(const MatrixFree<dim, value_type, VectorizedArrayType> &data,
-                                   LinearAlgebra::distributed::BlockVector<Number> &       dst,
-                                   const LinearAlgebra::distributed::BlockVector<Number> & src,
+                                   LinearAlgebra::distributed::BlockVector<Number>        &dst,
+                                   const LinearAlgebra::distributed::BlockVector<Number>  &src,
                                    const std::pair<unsigned int, unsigned int> &cell_range) const
     {
       FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number, VectorizedArrayType>
@@ -154,10 +154,10 @@ namespace Mass
           phi.reinit(cell);
           phi_read.reinit(cell);
           phi_read.read_dof_values(src);
-          phi.evaluate(true, false);
+          phi.evaluate(EvaluationFlags::values);
           for (unsigned int q = 0; q < phi.n_q_points; ++q)
             phi.submit_value(phi.get_value(q), q);
-          phi.integrate(true, false);
+          phi.integrate(EvaluationFlags::values);
           VectorizedArrayType local_sum = VectorizedArrayType();
           for (unsigned int i = 0; i < Utilities::pow(fe_degree + 1, dim) * n_components; ++i)
             local_sum += phi.begin_dof_values()[i] * phi_read.begin_dof_values()[i];
@@ -208,7 +208,7 @@ namespace Mass
      */
     void
     initialize(std::shared_ptr<const MatrixFree<dim, Number, VectorizedArrayType>> data_,
-               const AffineConstraints<double> &                                   constraints)
+               const AffineConstraints<double>                                    &constraints)
     {
       this->data = data_;
 
@@ -220,8 +220,15 @@ namespace Mass
                                         numbers::invalid_unsigned_int);
           all_indices_uniform.resize(Utilities::pow(3, dim) * data->n_cell_batches(), 1);
         }
+
       std::vector<types::global_dof_index> dof_indices(
         data->get_dof_handler().get_fe().dofs_per_cell);
+      constexpr unsigned int    n_lanes = VectorizedArrayType::size();
+      std::vector<unsigned int> renumber_lex =
+        FETools::hierarchic_to_lexicographic_numbering<dim>(2);
+      for (auto &i : renumber_lex)
+        i *= n_lanes;
+
       for (unsigned int c = 0; c < data->n_cell_batches(); ++c)
         {
           constexpr unsigned int n_lanes = VectorizedArrayType::size();
@@ -231,56 +238,76 @@ namespace Mass
               if (fe_degree > 2)
                 {
                   cell->get_dof_indices(dof_indices);
-                  const unsigned int offset = Utilities::pow(3, dim) * (n_lanes * c) + l;
+                  const unsigned int n_components = cell->get_fe().n_components();
+                  const unsigned int offset       = Utilities::pow(3, dim) * (n_lanes * c) + l;
                   const Utilities::MPI::Partitioner &part =
                     *data->get_dof_info().vector_partitioner;
                   unsigned int cc = 0, cf = 0;
-                  for (; cf < GeometryInfo<dim>::vertices_per_cell; ++cf, cc += n_lanes)
-                    if (!constraints.is_constrained(dof_indices[cf]))
-                      compressed_dof_indices[offset + cc] = part.global_to_local(dof_indices[cf]);
+                  for (unsigned int i = 0; i < GeometryInfo<dim>::vertices_per_cell;
+                       ++i, ++cc, cf += n_components)
+                    {
+                      if (!constraints.is_constrained(dof_indices[cf]))
+                        compressed_dof_indices[offset + renumber_lex[cc]] =
+                          part.global_to_local(dof_indices[cf]);
+                      for (unsigned int c = 0; c < n_components; ++c)
+                        AssertThrow(dof_indices[cf + c] == dof_indices[cf] + c,
+                                    ExcNotImplemented());
+                    }
 
                   for (unsigned int line = 0; line < GeometryInfo<dim>::lines_per_cell; ++line)
                     {
+                      const unsigned int size = fe_degree - 1;
                       if (!constraints.is_constrained(dof_indices[cf]))
                         {
-                          for (unsigned int i = 0; i < fe_degree - 1; ++i)
-                            AssertThrow(dof_indices[cf + i] == dof_indices[cf] + i,
-                                        ExcMessage("Expected contiguous numbering"));
-                          compressed_dof_indices[offset + cc] =
+                          for (unsigned int i = 0; i < size; ++i)
+                            for (unsigned int c = 0; c < n_components; ++c)
+                              AssertThrow(dof_indices[cf + c] == dof_indices[cf] + c,
+                                          ExcNotImplemented());
+                          compressed_dof_indices[offset + renumber_lex[cc]] =
                             part.global_to_local(dof_indices[cf]);
                         }
-                      cc += n_lanes;
-                      cf += fe_degree - 1;
+                      ++cc;
+                      cf += size * n_components;
                     }
                   for (unsigned int quad = 0; quad < GeometryInfo<dim>::quads_per_cell; ++quad)
                     {
+                      const unsigned int size = (fe_degree - 1) * (fe_degree - 1);
                       if (!constraints.is_constrained(dof_indices[cf]))
                         {
-                          for (unsigned int i = 0; i < (fe_degree - 1) * (fe_degree - 1); ++i)
-                            AssertThrow(dof_indices[cf + i] == dof_indices[cf] + i,
-                                        ExcMessage("Expected contiguous numbering"));
-                          compressed_dof_indices[offset + cc] =
+                          // switch order x-z for y faces in 3D to lexicographic layout
+                          if (dim == 3 && (quad == 2 || quad == 3))
+                            for (unsigned int i1 = 0, i = 0; i1 < fe_degree - 1; ++i1)
+                              for (unsigned int i0 = 0; i0 < fe_degree - 1; ++i0, ++i)
+                                for (unsigned int c = 0; c < n_components; ++c)
+                                  AssertThrow(dof_indices[cf + c] == dof_indices[cf] + c,
+                                              ExcNotImplemented());
+                          else
+                            for (unsigned int i = 0; i < size; ++i)
+                              for (unsigned int c = 0; c < n_components; ++c)
+                                AssertThrow(dof_indices[cf + c] == dof_indices[cf] + c,
+                                            ExcNotImplemented());
+                          compressed_dof_indices[offset + renumber_lex[cc]] =
                             part.global_to_local(dof_indices[cf]);
                         }
-                      cc += n_lanes;
-                      cf += (fe_degree - 1) * (fe_degree - 1);
+                      ++cc;
+                      cf += size * n_components;
                     }
                   for (unsigned int hex = 0; hex < GeometryInfo<dim>::hexes_per_cell; ++hex)
                     {
+                      const unsigned int size = (fe_degree - 1) * (fe_degree - 1) * (fe_degree - 1);
                       if (!constraints.is_constrained(dof_indices[cf]))
                         {
-                          for (unsigned int i = 0;
-                               i < (fe_degree - 1) * (fe_degree - 1) * (fe_degree - 1);
-                               ++i)
-                            AssertThrow(dof_indices[cf + i] == dof_indices[cf] + i,
-                                        ExcMessage("Expected contiguous numbering"));
-                          compressed_dof_indices[offset + cc] =
+                          for (unsigned int i = 0; i < size; ++i)
+                            for (unsigned int c = 0; c < n_components; ++c)
+                              AssertThrow(dof_indices[cf + c] == dof_indices[cf] + c,
+                                          ExcNotImplemented());
+                          compressed_dof_indices[offset + renumber_lex[cc]] =
                             part.global_to_local(dof_indices[cf]);
                         }
-                      cc += n_lanes;
-                      cf += (fe_degree - 1) * (fe_degree - 1) * (fe_degree - 1);
+                      ++cc;
+                      cf += size * n_components;
                     }
-                  AssertThrow(cc == n_lanes * Utilities::pow(3, dim),
+                  AssertThrow(cc == Utilities::pow(3, dim),
                               ExcMessage("Expected 3^dim dofs, got " + std::to_string(cc)));
                   AssertThrow(cf == dof_indices.size(),
                               ExcMessage("Expected (fe_degree+1)^dim dofs, got " +
@@ -311,17 +338,29 @@ namespace Mass
      * Matrix-vector multiplication.
      */
     void
-    vmult(LinearAlgebra::distributed::Vector<Number> &      dst,
+    vmult(LinearAlgebra::distributed::Vector<Number>       &dst,
           const LinearAlgebra::distributed::Vector<Number> &src) const
     {
       this->data->cell_loop(&MassOperator::local_apply_cell, this, dst, src, true);
     }
 
-    /**
-     * Matrix-vector multiplication.
-     */
     void
-    vmult_add(LinearAlgebra::distributed::Vector<Number> &      dst,
+    vmult(
+      LinearAlgebra::distributed::Vector<Number>                        &dst,
+      const LinearAlgebra::distributed::Vector<Number>                  &src,
+      const std::function<void(const unsigned int, const unsigned int)> &operation_before_loop,
+      const std::function<void(const unsigned int, const unsigned int)> &operation_after_loop) const
+    {
+      this->data->cell_loop(&MassOperator::local_apply_cell,
+                            this,
+                            dst,
+                            src,
+                            operation_before_loop,
+                            operation_after_loop);
+    }
+
+    void
+    vmult_add(LinearAlgebra::distributed::Vector<Number>       &dst,
               const LinearAlgebra::distributed::Vector<Number> &src) const
     {
       this->data->cell_loop(&MassOperator::local_apply_cell, this, dst, src, false);
@@ -332,7 +371,7 @@ namespace Mass
      * without communicating yet)
      */
     Number
-    vmult_inner_product(LinearAlgebra::distributed::Vector<Number> &      dst,
+    vmult_inner_product(LinearAlgebra::distributed::Vector<Number>       &dst,
                         const LinearAlgebra::distributed::Vector<Number> &src) const
     {
       accumulated_sum = 0;
@@ -341,10 +380,10 @@ namespace Mass
     }
 
     Tensor<1, 7>
-    vmult_with_merged_sums(LinearAlgebra::distributed::Vector<Number> &                      x,
-                           LinearAlgebra::distributed::Vector<Number> &                      g,
-                           LinearAlgebra::distributed::Vector<Number> &                      d,
-                           LinearAlgebra::distributed::Vector<Number> &                      h,
+    vmult_with_merged_sums(LinearAlgebra::distributed::Vector<Number>                       &x,
+                           LinearAlgebra::distributed::Vector<Number>                       &g,
+                           LinearAlgebra::distributed::Vector<Number>                       &d,
+                           LinearAlgebra::distributed::Vector<Number>                       &h,
                            const DiagonalMatrix<LinearAlgebra::distributed::Vector<Number>> &prec,
                            const Number                                                      alpha,
                            const Number                                                      beta,
@@ -398,7 +437,7 @@ namespace Mass
      * symmetric, it does exactly the same as vmult().
      */
     void
-    Tvmult(LinearAlgebra::distributed::Vector<Number> &      dst,
+    Tvmult(LinearAlgebra::distributed::Vector<Number>       &dst,
            const LinearAlgebra::distributed::Vector<Number> &src) const
     {
       vmult(dst, src);
@@ -410,16 +449,16 @@ namespace Mass
      */
     void
     local_apply_cell(const MatrixFree<dim, value_type, VectorizedArrayType> &data,
-                     LinearAlgebra::distributed::Vector<Number> &            dst,
-                     const LinearAlgebra::distributed::Vector<Number> &      src,
-                     const std::pair<unsigned int, unsigned int> &           cell_range) const
+                     LinearAlgebra::distributed::Vector<Number>             &dst,
+                     const LinearAlgebra::distributed::Vector<Number>       &src,
+                     const std::pair<unsigned int, unsigned int>            &cell_range) const
     {
       FEEvaluation<dim, fe_degree, n_q_points_1d, 1, Number, VectorizedArrayType> phi(data);
       for (unsigned int cell = cell_range.first; cell < cell_range.second; ++cell)
         {
           phi.reinit(cell);
           if (fe_degree > 2)
-            read_dof_values_compressed<dim, fe_degree, n_q_points_1d, 1, value_type>(
+            read_dof_values_compressed<dim, fe_degree, fe_degree + 1, 1, value_type>(
               src,
               compressed_dof_indices,
               all_indices_uniform,
@@ -429,12 +468,14 @@ namespace Mass
               phi.begin_dof_values());
           else
             phi.read_dof_values(src);
-          phi.evaluate(true, false);
+
+          phi.evaluate(EvaluationFlags::values);
           for (unsigned int q = 0; q < phi.n_q_points; ++q)
             phi.submit_value(phi.get_value(q), q);
-          phi.integrate(true, false);
+          phi.integrate(EvaluationFlags::values);
+
           if (fe_degree > 2)
-            distribute_local_to_global_compressed<dim, fe_degree, n_q_points_1d, 1, value_type>(
+            distribute_local_to_global_compressed<dim, fe_degree, fe_degree + 1, 1, value_type>(
               dst,
               compressed_dof_indices,
               all_indices_uniform,
@@ -453,8 +494,8 @@ namespace Mass
      */
     void
     local_apply_cell_inner_product(const MatrixFree<dim, value_type, VectorizedArrayType> &data,
-                                   LinearAlgebra::distributed::Vector<Number> &            dst,
-                                   const LinearAlgebra::distributed::Vector<Number> &      src,
+                                   LinearAlgebra::distributed::Vector<Number>             &dst,
+                                   const LinearAlgebra::distributed::Vector<Number>       &src,
                                    const std::pair<unsigned int, unsigned int> &cell_range) const
     {
       FEEvaluation<dim, fe_degree, n_q_points_1d, 1, Number, VectorizedArrayType> phi(data);
@@ -464,10 +505,10 @@ namespace Mass
           phi.reinit(cell);
           phi_read.reinit(cell);
           phi_read.read_dof_values(src);
-          phi.evaluate(phi_read.begin_dof_values(), true, false);
+          phi.evaluate(phi_read.begin_dof_values(), EvaluationFlags::values);
           for (unsigned int q = 0; q < phi.n_q_points; ++q)
             phi.submit_value(phi.get_value(q), q);
-          phi.integrate(true, false);
+          phi.integrate(EvaluationFlags::values);
           VectorizedArrayType local_sum = VectorizedArrayType();
           for (unsigned int i = 0; i < Utilities::pow<unsigned int>(fe_degree + 1, dim); ++i)
             local_sum += phi.begin_dof_values()[i] * phi_read.begin_dof_values()[i];

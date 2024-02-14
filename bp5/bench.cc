@@ -22,7 +22,7 @@
 
 #include <deal.II/numerics/vector_tools.h>
 
-//#define USE_STD_SIMD
+// #define USE_STD_SIMD
 
 #ifdef USE_STD_SIMD
 #  include <experimental/simd>
@@ -84,7 +84,7 @@ void
 test(const unsigned int fe_degree,
      const unsigned int s,
      const bool         short_output,
-     const MPI_Comm &   comm_shmem)
+     const MPI_Comm    &comm_shmem)
 {
 #ifndef USE_SHMEM
   (void)comm_shmem;
@@ -101,7 +101,7 @@ test(const unsigned int fe_degree,
   Timer           time;
   MyManifold<dim> manifold;
 
-  const auto tria = create_triangulation(s, manifold, VERSION);
+  const auto tria = create_triangulation(s, manifold, true);
 
   FE_Q<dim>            fe_q(fe_degree);
   MappingQGeneric<dim> mapping(1); // tri-linear mapping
@@ -175,7 +175,7 @@ test(const unsigned int fe_degree,
   LIKWID_MARKER_START("cg_solver");
 #endif
   double solver_time = 1e10;
-  for (unsigned int t = 0; t < 2; ++t)
+  for (unsigned int t = 0; t < 4; ++t)
     {
       output = 0;
       time.restart();
@@ -425,7 +425,7 @@ do_test(const unsigned int fe_degree, const int s_in, const bool compact_output)
           << " p |  q | n_element |     n_dofs |     time/it |   dofs/s/it | mer_time/it | opt_time/it | itCG | time/matvec"
 #endif
           << std::endl;
-      while ((2 + Utilities::fixed_power<dim>(fe_degree + 1)) * (1UL << s) <
+      while ((2 + Utilities::fixed_power<dim>(fe_degree + 1)) * (1UL << (s / 4)) <
              6000000ULL * Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD))
         {
           test<dim>(fe_degree, s, compact_output, comm_shmem);

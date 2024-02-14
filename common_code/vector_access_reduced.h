@@ -15,8 +15,8 @@ namespace dealii
   template <typename Number, typename X>
   inline DEAL_II_ALWAYS_INLINE void
   vectorized_load_and_transpose(const unsigned int                                  n_entries,
-                                const Number *                                      in,
-                                const unsigned int *                                offsets,
+                                const Number                                       *in,
+                                const unsigned int                                 *offsets,
                                 std::experimental::parallelism_v2::simd<Number, X> *out)
   {
     for (unsigned int i = 0; i < n_entries; ++i)
@@ -29,8 +29,8 @@ namespace dealii
   vectorized_transpose_and_store(const bool         add_into,
                                  const unsigned int n_entries,
                                  const std::experimental::parallelism_v2::simd<Number, X> *in,
-                                 const unsigned int *                                      offsets,
-                                 Number *                                                  out)
+                                 const unsigned int                                       *offsets,
+                                 Number                                                   *out)
   {
     if (add_into)
       for (unsigned int i = 0; i < n_entries; ++i)
@@ -55,18 +55,20 @@ template <int dim,
           typename Number,
           typename VectorizedArrayType>
 void
-read_dof_values_compressed(const dealii::LinearAlgebra::distributed::Vector<Number> &vec,
-                           const std::vector<unsigned int> & compressed_indices,
+read_dof_values_compressed(const dealii::LinearAlgebra::distributed::Vector<Number> &vec_in,
+                           const std::vector<unsigned int>  &compressed_indices,
                            const std::vector<unsigned char> &all_indices_unconstrained,
                            const unsigned int                cell_no,
                            const dealii::AlignedVector<VectorizedArrayType> &shape_values_eo,
                            const bool                                        is_collocation,
-                           VectorizedArrayType *                             dof_values)
+                           VectorizedArrayType                              *dof_values)
 {
+  dealii::LinearAlgebra::distributed::Vector<Number> &vec =
+    const_cast<dealii::LinearAlgebra::distributed::Vector<Number> &>(vec_in);
   AssertIndexRange(cell_no * dealii::Utilities::pow(3, dim) * VectorizedArrayType::size(),
                    compressed_indices.size());
   constexpr unsigned int n_lanes = VectorizedArrayType::size();
-  const unsigned int *   cell_indices =
+  const unsigned int    *cell_indices =
     compressed_indices.data() + cell_no * n_lanes * dealii::Utilities::pow(3, dim);
   const unsigned char *cell_unconstrained =
     all_indices_unconstrained.data() + cell_no * dealii::Utilities::pow(3, dim);
@@ -84,8 +86,12 @@ read_dof_values_compressed(const dealii::LinearAlgebra::distributed::Vector<Numb
         {
           const unsigned int *indices = cell_indices + 9 * n_lanes * compressed_i2;
           // first line
-          reader.process_dof_gather(
-            indices, vec, offset_i2, dof_values[0], std::integral_constant<bool, true>());
+          reader.process_dof_gather(indices,
+                                    vec,
+                                    offset_i2,
+                                    vec.begin() + offset_i2,
+                                    dof_values[0],
+                                    std::integral_constant<bool, true>());
           indices += n_lanes;
           constexpr unsigned int n_regular = (fe_degree - 1) * n_components / 4 * 4;
           dealii::vectorized_load_and_transpose(n_regular,
@@ -97,11 +103,16 @@ read_dof_values_compressed(const dealii::LinearAlgebra::distributed::Vector<Numb
             reader.process_dof_gather(indices,
                                       vec,
                                       offset_i2 * (fe_degree - 1) * n_components + i0,
+                                      vec.begin() + offset_i2 * (fe_degree - 1) * n_components + i0,
                                       dof_values[1 + i0],
                                       std::integral_constant<bool, true>());
           indices += n_lanes;
-          reader.process_dof_gather(
-            indices, vec, offset_i2, dof_values[fe_degree], std::integral_constant<bool, true>());
+          reader.process_dof_gather(indices,
+                                    vec,
+                                    offset_i2,
+                                    vec.begin() + offset_i2,
+                                    dof_values[fe_degree],
+                                    std::integral_constant<bool, true>());
           indices += n_lanes;
 
           // inner part
@@ -114,6 +125,7 @@ read_dof_values_compressed(const dealii::LinearAlgebra::distributed::Vector<Numb
             reader.process_dof_gather(indices,
                                       vec,
                                       offset_i2 * (fe_degree - 1) + i0,
+                                      vec.begin() + offset_i2 * (fe_degree - 1) + i0,
                                       dof_values[(fe_degree + 1) * (i0 + 1)],
                                       std::integral_constant<bool, true>());
           indices += n_lanes;
@@ -129,6 +141,8 @@ read_dof_values_compressed(const dealii::LinearAlgebra::distributed::Vector<Numb
             reader.process_dof_gather(indices,
                                       vec,
                                       offset_i2 * (fe_degree - 1) * (fe_degree - 1) + i0,
+                                      vec.begin() + offset_i2 * (fe_degree - 1) * (fe_degree - 1) +
+                                        i0,
                                       tmp[i0],
                                       std::integral_constant<bool, true>());
           for (unsigned int i1 = 0; i1 < fe_degree - 1; ++i1)
@@ -144,14 +158,19 @@ read_dof_values_compressed(const dealii::LinearAlgebra::distributed::Vector<Numb
             reader.process_dof_gather(indices,
                                       vec,
                                       offset_i2 * (fe_degree - 1) + i0,
+                                      vec.begin() + offset_i2 * (fe_degree - 1) + i0,
                                       dof_values[(fe_degree + 1) * (i0 + 1) + fe_degree],
                                       std::integral_constant<bool, true>());
           indices += n_lanes;
 
           // last line
           constexpr unsigned int i = fe_degree * (fe_degree + 1);
-          reader.process_dof_gather(
-            indices, vec, offset_i2, dof_values[i], std::integral_constant<bool, true>());
+          reader.process_dof_gather(indices,
+                                    vec,
+                                    offset_i2,
+                                    vec.begin() + offset_i2,
+                                    dof_values[i],
+                                    std::integral_constant<bool, true>());
           indices += n_lanes;
           dealii::vectorized_load_and_transpose(n_regular,
                                                 vec.begin() +
@@ -162,12 +181,14 @@ read_dof_values_compressed(const dealii::LinearAlgebra::distributed::Vector<Numb
             reader.process_dof_gather(indices,
                                       vec,
                                       offset_i2 * (fe_degree - 1) * n_components + i0,
+                                      vec.begin() + offset_i2 * (fe_degree - 1) * n_components + i0,
                                       dof_values[i + 1 + i0],
                                       std::integral_constant<bool, true>());
           indices += n_lanes;
           reader.process_dof_gather(indices,
                                     vec,
                                     offset_i2,
+                                    vec.begin() + offset_i2,
                                     dof_values[i + fe_degree],
                                     std::integral_constant<bool, true>());
           indices += n_lanes;
@@ -190,6 +211,7 @@ read_dof_values_compressed(const dealii::LinearAlgebra::distributed::Vector<Numb
                 reader.process_dof_gather(indices,
                                           vec,
                                           offset * n_components + c,
+                                          vec.begin() + offset * n_components + c,
                                           dof_values[i + c * dofs_per_comp],
                                           std::integral_constant<bool, true>());
             else
@@ -213,6 +235,8 @@ read_dof_values_compressed(const dealii::LinearAlgebra::distributed::Vector<Numb
                   reader.process_dof_gather(indices,
                                             vec,
                                             offset * (fe_degree - 1) * n_components + i0,
+                                            vec.begin() + offset * (fe_degree - 1) * n_components +
+                                              i0,
                                             tmp[i0],
                                             std::integral_constant<bool, true>());
                 for (unsigned int i0 = 0; i0 < fe_degree - 1; ++i0, ++i)
@@ -237,6 +261,7 @@ read_dof_values_compressed(const dealii::LinearAlgebra::distributed::Vector<Numb
                 reader.process_dof_gather(indices,
                                           vec,
                                           offset * n_components + c,
+                                          vec.begin() + offset * n_components + c,
                                           dof_values[i + c * dofs_per_comp],
                                           std::integral_constant<bool, true>());
             else
@@ -263,12 +288,10 @@ read_dof_values_compressed(const dealii::LinearAlgebra::distributed::Vector<Numb
             dealii::internal::EvaluatorQuantity::value,
             2,
             fe_degree + 1,
-            n_q_points_1d,
-            VectorizedArrayType,
-            VectorizedArrayType>::do_forward(1,
-                                             shape_values_eo,
-                                             dof_values + c * dofs_per_comp,
-                                             dof_values + c * dofs_per_comp);
+            n_q_points_1d>::do_forward(1,
+                                       shape_values_eo,
+                                       dof_values + c * dofs_per_comp,
+                                       dof_values + c * dofs_per_comp);
 
       if (i2 == 0 || i2 == fe_degree - 1)
         {
@@ -293,17 +316,17 @@ template <int dim,
 void
 distribute_local_to_global_compressed(
   dealii::LinearAlgebra::distributed::Vector<Number> &vec,
-  const std::vector<unsigned int> &                   compressed_indices,
-  const std::vector<unsigned char> &                  all_indices_unconstrained,
+  const std::vector<unsigned int>                    &compressed_indices,
+  const std::vector<unsigned char>                   &all_indices_unconstrained,
   const unsigned int                                  cell_no,
-  const dealii::AlignedVector<VectorizedArrayType> &  shape_values_eo,
+  const dealii::AlignedVector<VectorizedArrayType>   &shape_values_eo,
   const bool                                          is_collocation,
-  VectorizedArrayType *                               dof_values)
+  VectorizedArrayType                                *dof_values)
 {
   AssertIndexRange(cell_no * dealii::Utilities::pow(3, dim) * VectorizedArrayType::size(),
                    compressed_indices.size());
   constexpr unsigned int n_lanes = VectorizedArrayType::size();
-  const unsigned int *   cell_indices =
+  const unsigned int    *cell_indices =
     compressed_indices.data() + cell_no * n_lanes * dealii::Utilities::pow(3, dim);
   const unsigned char *cell_unconstrained =
     all_indices_unconstrained.data() + cell_no * dealii::Utilities::pow(3, dim);
@@ -320,13 +343,11 @@ distribute_local_to_global_compressed(
             dealii::internal::EvaluatorQuantity::value,
             2,
             fe_degree + 1,
-            n_q_points_1d,
-            VectorizedArrayType,
-            VectorizedArrayType>::do_backward(1,
-                                              shape_values_eo,
-                                              false,
-                                              dof_values + c * dofs_per_comp,
-                                              dof_values + c * dofs_per_comp);
+            n_q_points_1d>::do_backward(1,
+                                        shape_values_eo,
+                                        false,
+                                        dof_values + c * dofs_per_comp,
+                                        dof_values + c * dofs_per_comp);
       bool all_unconstrained = true;
       for (unsigned int i = 0; i < 9; ++i)
         if (cell_unconstrained[9 * compressed_i2 + i] == 0)
@@ -335,8 +356,12 @@ distribute_local_to_global_compressed(
         {
           const unsigned int *indices = cell_indices + 9 * n_lanes * compressed_i2;
           // first line
-          distributor.process_dof_gather(
-            indices, vec, offset_i2, dof_values[0], std::integral_constant<bool, true>());
+          distributor.process_dof_gather(indices,
+                                         vec,
+                                         offset_i2,
+                                         vec.begin() + offset_i2,
+                                         dof_values[0],
+                                         std::integral_constant<bool, true>());
           indices += n_lanes;
           constexpr unsigned int n_regular = (fe_degree - 1) * n_components / 4 * 4;
           dealii::vectorized_transpose_and_store(true,
@@ -349,11 +374,17 @@ distribute_local_to_global_compressed(
             distributor.process_dof_gather(indices,
                                            vec,
                                            offset_i2 * (fe_degree - 1) * n_components + i0,
+                                           vec.begin() +
+                                             offset_i2 * (fe_degree - 1) * n_components + i0,
                                            dof_values[1 + i0],
                                            std::integral_constant<bool, true>());
           indices += n_lanes;
-          distributor.process_dof_gather(
-            indices, vec, offset_i2, dof_values[fe_degree], std::integral_constant<bool, true>());
+          distributor.process_dof_gather(indices,
+                                         vec,
+                                         offset_i2,
+                                         vec.begin() + offset_i2,
+                                         dof_values[fe_degree],
+                                         std::integral_constant<bool, true>());
           indices += n_lanes;
 
           // inner part
@@ -370,6 +401,7 @@ distribute_local_to_global_compressed(
             distributor.process_dof_gather(indices,
                                            vec,
                                            offset_i2 * (fe_degree - 1) + i0,
+                                           vec.begin() + offset_i2 * (fe_degree - 1) + i0,
                                            dof_values[(fe_degree + 1) * (i0 + 1)],
                                            std::integral_constant<bool, true>());
           indices += n_lanes;
@@ -389,6 +421,8 @@ distribute_local_to_global_compressed(
             distributor.process_dof_gather(indices,
                                            vec,
                                            offset_i2 * (fe_degree - 1) * (fe_degree - 1) + i0,
+                                           vec.begin() +
+                                             offset_i2 * (fe_degree - 1) * (fe_degree - 1) + i0,
                                            tmp[i0],
                                            std::integral_constant<bool, true>());
           indices += n_lanes;
@@ -405,14 +439,19 @@ distribute_local_to_global_compressed(
             distributor.process_dof_gather(indices,
                                            vec,
                                            offset_i2 * (fe_degree - 1) + i0,
+                                           vec.begin() + offset_i2 * (fe_degree - 1) + i0,
                                            dof_values[(fe_degree + 1) * (i0 + 1) + fe_degree],
                                            std::integral_constant<bool, true>());
           indices += n_lanes;
 
           // last line
           constexpr unsigned int i = fe_degree * (fe_degree + 1);
-          distributor.process_dof_gather(
-            indices, vec, offset_i2, dof_values[i], std::integral_constant<bool, true>());
+          distributor.process_dof_gather(indices,
+                                         vec,
+                                         offset_i2,
+                                         vec.begin() + offset_i2,
+                                         dof_values[i],
+                                         std::integral_constant<bool, true>());
           indices += n_lanes;
           dealii::vectorized_transpose_and_store(true,
                                                  n_regular,
@@ -424,12 +463,15 @@ distribute_local_to_global_compressed(
             distributor.process_dof_gather(indices,
                                            vec,
                                            offset_i2 * (fe_degree - 1) * n_components + i0,
+                                           vec.begin() +
+                                             offset_i2 * (fe_degree - 1) * n_components + i0,
                                            dof_values[i + 1 + i0],
                                            std::integral_constant<bool, true>());
           indices += n_lanes;
           distributor.process_dof_gather(indices,
                                          vec,
                                          offset_i2,
+                                         vec.begin() + offset_i2,
                                          dof_values[i + fe_degree],
                                          std::integral_constant<bool, true>());
           indices += n_lanes;
@@ -452,6 +494,7 @@ distribute_local_to_global_compressed(
                 distributor.process_dof_gather(indices,
                                                vec,
                                                offset * n_components + c,
+                                               vec.begin() + offset * n_components + c,
                                                dof_values[i + c * dofs_per_comp],
                                                std::integral_constant<bool, true>());
             else
@@ -482,6 +525,8 @@ distribute_local_to_global_compressed(
                   distributor.process_dof_gather(indices,
                                                  vec,
                                                  offset * (fe_degree - 1) * n_components + i0,
+                                                 vec.begin() +
+                                                   offset * (fe_degree - 1) * n_components + i0,
                                                  tmp[i0],
                                                  std::integral_constant<bool, true>());
               }
@@ -501,6 +546,7 @@ distribute_local_to_global_compressed(
                 distributor.process_dof_gather(indices,
                                                vec,
                                                offset * n_components + c,
+                                               vec.begin() + offset * n_components + c,
                                                dof_values[i + c * dofs_per_comp],
                                                std::integral_constant<bool, true>());
             else

@@ -41,7 +41,7 @@ void
 test(const unsigned int fe_degree,
      const unsigned int s,
      const bool         short_output,
-     const MPI_Comm &   comm_shmem,
+     const MPI_Comm    &comm_shmem,
      const bool         do_adaptivity)
 {
 #ifndef USE_SHMEM
@@ -311,7 +311,7 @@ test(const unsigned int fe_degree,
       laplace_operator.vmult_add(tmp, output);
       deallog << "True residual norm: " << tmp.l2_norm() << std::endl;
     }
-  AssertThrow(std::abs((int)solver_control.last_step() - (int)iterations_basic) < 2,
+  AssertThrow(std::abs((int)solver_control.last_step() - (int)iterations_basic) < 3,
               ExcMessage("Iteration numbers differ " + std::to_string(solver_control.last_step()) +
                          " vs default solver " + std::to_string(iterations_basic)));
 

@@ -568,7 +568,7 @@ LaplaceOperator<dim, number>::get_system_matrix() const
 
 
 template <int dim, typename MatrixType>
-class MGTransferMF : public MGTransferMatrixFree<dim, typename MatrixType::value_type>
+class MGTransferManual : public MGTransferMatrixFree<dim, typename MatrixType::value_type>
 {
 public:
   void
@@ -807,6 +807,8 @@ namespace Helper
           else
             ++n_ghost;
         }
+    (void)n_owned;
+    (void)n_ghost;
     // std::cout << "Cells on " << Utilities::MPI::this_mpi_process(MPI_COMM_WORLD)
     //    << " " << triangulation.n_active_cells() << " " << n_owned << " " << n_ghost << " ";
 
@@ -876,9 +878,9 @@ public:
     AssertThrow(degree == fe_1d.degree, ExcInternalError());
     QGaussLobatto<1> quadrature_1d(fe_1d.degree + 1);
     const auto       harmonic_patch_extent =
-      Helper::compute_harmonic_patch_extent(*matrix_free.get_mapping_info().mapping,
-                                            matrix_free.get_dof_handler().get_triangulation(),
-                                            QGaussLobatto<dim - 1>(fe_1d.degree + 1));
+      Helper::compute_harmonic_patch_extent<dim>(*matrix_free.get_mapping_info().mapping,
+                                                 matrix_free.get_dof_handler().get_triangulation(),
+                                                 QGaussLobatto<dim - 1>(fe_1d.degree + 1));
 
     tensor_product_matrices.reserve(matrix_free.n_cell_batches());
 
@@ -959,8 +961,7 @@ public:
         tensor_product_matrices.apply_inverse(
           cell,
           ArrayView<VectorizedArrayType>(dof_values, Utilities::pow(degree + 1, dim)),
-          ArrayView<const VectorizedArrayType>(dof_values, Utilities::pow(degree + 1, dim)),
-          tmp);
+          ArrayView<const VectorizedArrayType>(dof_values, Utilities::pow(degree + 1, dim)));
         dealii::internal::weight_fe_q_dofs_by_entity<dim, degree + 1>(weights[cell].data(),
                                                                       1,
                                                                       degree + 1,
@@ -1102,7 +1103,7 @@ private:
   LinearAlgebra::distributed::Vector<double> solution;
   LinearAlgebra::distributed::Vector<double> system_rhs;
 
-  MGTransferMF<dim, LevelMatrixType>                           mg_transfer;
+  MGTransferManual<dim, LevelMatrixType>                           mg_transfer;
   MGLevelObject<MGTwoLevelTransfer<dim, VectorType>>           mg_transfers_p;
   std::unique_ptr<MGTransferGlobalCoarsening<dim, VectorType>> mg_transfer_p;
   std::unique_ptr<MGCoarseGridBase<VectorType>>                mg_coarse;
@@ -1651,9 +1652,9 @@ LaplaceProblem<dim>::solve()
       mg.set_edge_matrices(mg_interface, mg_interface);
       */
 
-      PreconditionMG<dim, VectorType, MGTransferMF<dim, LevelMatrixType>> preconditioner(
+      PreconditionMG<dim, VectorType, MGTransferManual<dim, LevelMatrixType>> preconditioner(
         dof_handler, mg, mg_transfer);
-      MyPreconditioner<PreconditionMG<dim, VectorType, MGTransferMF<dim, LevelMatrixType>>>
+      MyPreconditioner<PreconditionMG<dim, VectorType, MGTransferManual<dim, LevelMatrixType>>>
         precondition(preconditioner);
 
       cg.solve(system_matrix, solution, system_rhs, precondition);

@@ -17,13 +17,13 @@ public:
   {}
 
   virtual std::unique_ptr<dealii::Manifold<dim>>
-  clone() const
+  clone() const override
   {
     return std::make_unique<MyManifold<dim>>();
   }
 
   virtual dealii::Point<dim>
-  push_forward(const dealii::Point<dim> &p) const
+  push_forward(const dealii::Point<dim> &p) const override
   {
     double sinval = factor;
     for (unsigned int d = 0; d < dim; ++d)
@@ -35,7 +35,7 @@ public:
   }
 
   virtual dealii::Point<dim>
-  pull_back(const dealii::Point<dim> &p) const
+  pull_back(const dealii::Point<dim> &p) const override
   {
     dealii::Point<dim> x = p;
     dealii::Point<dim> one;

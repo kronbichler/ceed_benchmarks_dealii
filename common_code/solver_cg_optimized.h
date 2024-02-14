@@ -11,9 +11,9 @@
 
 template <int n_components, typename Number, typename PreconditionerType>
 dealii::Tensor<1, 2>
-cg_update1(dealii::LinearAlgebra::distributed::Vector<Number> &      r,
+cg_update1(dealii::LinearAlgebra::distributed::Vector<Number>       &r,
            const dealii::LinearAlgebra::distributed::Vector<Number> &h,
-           const PreconditionerType &                                preconditioner,
+           const PreconditionerType                                 &preconditioner,
            const Number                                              alpha)
 {
   const dealii::LinearAlgebra::distributed::Vector<Number> &prec = preconditioner.get_vector();
@@ -57,9 +57,9 @@ cg_update1(dealii::LinearAlgebra::distributed::Vector<Number> &      r,
 
 template <int n_components, typename Number>
 dealii::Tensor<1, 2>
-cg_update1(dealii::LinearAlgebra::distributed::BlockVector<Number> &      r,
+cg_update1(dealii::LinearAlgebra::distributed::BlockVector<Number>       &r,
            const dealii::LinearAlgebra::distributed::BlockVector<Number> &h,
-           const DiagonalMatrixBlocked<n_components, Number> &            preconditioner,
+           const DiagonalMatrixBlocked<n_components, Number>             &preconditioner,
            const Number                                                   alpha)
 {
   const dealii::LinearAlgebra::distributed::Vector<Number> &prec = preconditioner.diagonal;
@@ -108,10 +108,10 @@ cg_update1(dealii::LinearAlgebra::distributed::BlockVector<Number> &      r,
 
 template <int n_components, typename Number, typename PreconditionerType>
 void
-cg_update2(dealii::LinearAlgebra::distributed::Vector<Number> &      x,
+cg_update2(dealii::LinearAlgebra::distributed::Vector<Number>       &x,
            const dealii::LinearAlgebra::distributed::Vector<Number> &r,
-           dealii::LinearAlgebra::distributed::Vector<Number> &      p,
-           const PreconditionerType &                                preconditioner,
+           dealii::LinearAlgebra::distributed::Vector<Number>       &p,
+           const PreconditionerType                                 &preconditioner,
            const Number                                              alpha,
            const Number                                              beta)
 {
@@ -148,10 +148,10 @@ cg_update2(dealii::LinearAlgebra::distributed::Vector<Number> &      x,
 
 template <int n_components, typename Number>
 void
-cg_update2(dealii::LinearAlgebra::distributed::BlockVector<Number> &      x,
+cg_update2(dealii::LinearAlgebra::distributed::BlockVector<Number>       &x,
            const dealii::LinearAlgebra::distributed::BlockVector<Number> &r,
-           dealii::LinearAlgebra::distributed::BlockVector<Number> &      p,
-           const DiagonalMatrixBlocked<n_components, Number> &            preconditioner,
+           dealii::LinearAlgebra::distributed::BlockVector<Number>       &p,
+           const DiagonalMatrixBlocked<n_components, Number>             &preconditioner,
            const Number                                                   alpha,
            const Number                                                   beta)
 {
@@ -217,9 +217,9 @@ public:
    */
   template <typename MatrixType, typename PreconditionerType>
   void
-  solve(const MatrixType &        A,
-        VectorType &              x,
-        const VectorType &        b,
+  solve(const MatrixType         &A,
+        VectorType               &x,
+        const VectorType         &b,
         const PreconditionerType &preconditioner)
   {
     dealii::SolverControl::State conv = dealii::SolverControl::iterate;
@@ -309,8 +309,8 @@ template <int n_components, typename Number>
 dealii::Tensor<1, 7>
 cg_update3(
   const Number                                                                      sum_hd,
-  const dealii::LinearAlgebra::distributed::Vector<Number> &                        r,
-  const dealii::LinearAlgebra::distributed::Vector<Number> &                        h,
+  const dealii::LinearAlgebra::distributed::Vector<Number>                         &r,
+  const dealii::LinearAlgebra::distributed::Vector<Number>                         &h,
   const dealii::DiagonalMatrix<dealii::LinearAlgebra::distributed::Vector<Number>> &preconditioner)
 {
   static_assert(n_components == 1, "Only single component support");
@@ -369,10 +369,10 @@ template <int n_components, typename Number>
 void
 do_cg_update3b(const unsigned int                                     start,
                const unsigned int                                     end,
-               const Number *                                         r,
-               const Number *                                         d,
-               const Number *                                         h,
-               const Number *                                         prec,
+               const Number                                          *r,
+               const Number                                          *d,
+               const Number                                          *h,
+               const Number                                          *prec,
                dealii::Tensor<1, 7, dealii::VectorizedArray<Number>> &sums)
 {
   const dealii::VectorizedArray<Number> *arr_r =
@@ -421,9 +421,9 @@ do_cg_update3b(const unsigned int                                     start,
 template <int n_components, typename Number>
 dealii::Tensor<1, 7>
 cg_update3b(
-  const dealii::LinearAlgebra::distributed::Vector<Number> &                        r,
-  const dealii::LinearAlgebra::distributed::Vector<Number> &                        d,
-  const dealii::LinearAlgebra::distributed::Vector<Number> &                        h,
+  const dealii::LinearAlgebra::distributed::Vector<Number>                         &r,
+  const dealii::LinearAlgebra::distributed::Vector<Number>                         &d,
+  const dealii::LinearAlgebra::distributed::Vector<Number>                         &h,
   const dealii::DiagonalMatrix<dealii::LinearAlgebra::distributed::Vector<Number>> &preconditioner)
 {
   static_assert(n_components == 1, "Only single component support");
@@ -456,11 +456,11 @@ template <int n_components, typename Number, bool do_update_h>
 void
 do_cg_update4(const unsigned int start,
               const unsigned int end,
-              Number *           h,
-              Number *           x,
-              Number *           r,
-              Number *           p,
-              const Number *     prec,
+              Number            *h,
+              Number            *x,
+              Number            *r,
+              Number            *p,
+              const Number      *prec,
               const Number       alpha,
               const Number       beta)
 {
@@ -527,11 +527,11 @@ template <int n_components, typename Number, bool do_update_h>
 void
 do_cg_update4b(const unsigned int start,
                const unsigned int end,
-               Number *           h,
-               Number *           x,
-               Number *           r,
-               Number *           p,
-               const Number *     prec,
+               Number            *h,
+               Number            *x,
+               Number            *r,
+               Number            *p,
+               const Number      *prec,
                const Number       alpha,
                const Number       beta,
                const Number       alpha_old,
@@ -626,10 +626,10 @@ do_cg_update4b(const unsigned int start,
 template <int n_components, typename Number>
 void
 cg_update4(
-  dealii::LinearAlgebra::distributed::Vector<Number> &                              h,
-  dealii::LinearAlgebra::distributed::Vector<Number> &                              x,
-  dealii::LinearAlgebra::distributed::Vector<Number> &                              r,
-  dealii::LinearAlgebra::distributed::Vector<Number> &                              p,
+  dealii::LinearAlgebra::distributed::Vector<Number>                               &h,
+  dealii::LinearAlgebra::distributed::Vector<Number>                               &x,
+  dealii::LinearAlgebra::distributed::Vector<Number>                               &r,
+  dealii::LinearAlgebra::distributed::Vector<Number>                               &p,
   const dealii::DiagonalMatrix<dealii::LinearAlgebra::distributed::Vector<Number>> &preconditioner,
   const Number                                                                      alpha,
   const Number                                                                      beta)
@@ -675,9 +675,9 @@ public:
    */
   template <typename MatrixType, typename PreconditionerType>
   void
-  solve(const MatrixType &        A,
-        VectorType &              x,
-        const VectorType &        b,
+  solve(const MatrixType         &A,
+        VectorType               &x,
+        const VectorType         &b,
         const PreconditionerType &preconditioner)
   {
     dealii::SolverControl::State conv = dealii::SolverControl::iterate;
@@ -790,9 +790,9 @@ public:
    */
   template <typename MatrixType, typename PreconditionerType>
   void
-  solve(const MatrixType &        A,
-        VectorType &              x,
-        const VectorType &        b,
+  solve(const MatrixType         &A,
+        VectorType               &x,
+        const VectorType         &b,
         const PreconditionerType &preconditioner)
   {
     dealii::SolverControl::State conv = dealii::SolverControl::iterate;

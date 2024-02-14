@@ -11,7 +11,7 @@ class DiagonalMatrixBlocked
 {
 public:
   void
-  vmult(dealii::LinearAlgebra::distributed::BlockVector<Number> &      dst,
+  vmult(dealii::LinearAlgebra::distributed::BlockVector<Number>       &dst,
         const dealii::LinearAlgebra::distributed::BlockVector<Number> &src) const
   {
     AssertThrow(dst.n_blocks() == dim, dealii::ExcNotImplemented());
@@ -24,7 +24,7 @@ public:
   }
 
   void
-  vmult(dealii::LinearAlgebra::distributed::Vector<Number> &      dst,
+  vmult(dealii::LinearAlgebra::distributed::Vector<Number>       &dst,
         const dealii::LinearAlgebra::distributed::Vector<Number> &src) const
   {
     AssertThrow(dst.size() == dim * diagonal.size(),

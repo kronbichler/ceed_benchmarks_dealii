@@ -62,9 +62,9 @@ public:
    */
   template <typename MatrixType, typename PreconditionerType>
   std::vector<double>
-  solve(const MatrixType &        A,
-        VectorType &              x,
-        const VectorType &        b,
+  solve(const MatrixType         &A,
+        VectorType               &x,
+        const VectorType         &b,
         const PreconditionerType &preconditioner)
   {
     dealii::SolverControl::State conv = dealii::SolverControl::iterate;
@@ -201,7 +201,7 @@ void
 test(const unsigned int fe_degree,
      const unsigned int s,
      const bool         short_output,
-     const MPI_Comm &   comm_shmem)
+     const MPI_Comm    &comm_shmem)
 {
 #ifndef USE_SHMEM
   (void)comm_shmem;

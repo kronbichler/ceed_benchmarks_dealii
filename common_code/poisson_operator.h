@@ -6,11 +6,15 @@
 
 #include <deal.II/distributed/tria.h>
 
+#include <deal.II/dofs/dof_tools.h>
+
 #include <deal.II/lac/la_parallel_block_vector.h>
 #include <deal.II/lac/petsc_sparse_matrix.h>
 
 #include <deal.II/matrix_free/fe_evaluation.h>
 #include <deal.II/matrix_free/matrix_free.h>
+
+#include <deal.II/multigrid/mg_tools.h>
 
 #include <deal.II/numerics/vector_tools.h>
 
@@ -67,7 +71,7 @@ namespace Poisson
   {
     template <typename MFType, typename Number>
     void
-    do_initialize_vector(const std::shared_ptr<const MFType> &       data,
+    do_initialize_vector(const std::shared_ptr<const MFType>        &data,
                          LinearAlgebra::distributed::Vector<Number> &vec)
     {
       data->initialize_dof_vector(vec);
@@ -75,7 +79,7 @@ namespace Poisson
 
     template <typename MFType, typename Number>
     void
-    do_initialize_vector(const std::shared_ptr<const MFType> &            data,
+    do_initialize_vector(const std::shared_ptr<const MFType>             &data,
                          LinearAlgebra::distributed::BlockVector<Number> &vec)
     {
       for (unsigned int bl = 0; bl < vec.n_blocks(); ++bl)
@@ -85,9 +89,9 @@ namespace Poisson
 
     template <typename Number>
     Number
-    set_constrained_entries(const std::vector<unsigned int> &                 constrained_entries,
+    set_constrained_entries(const std::vector<unsigned int>                  &constrained_entries,
                             const LinearAlgebra::distributed::Vector<Number> &src,
-                            LinearAlgebra::distributed::Vector<Number> &      dst)
+                            LinearAlgebra::distributed::Vector<Number>       &dst)
     {
       Number sum = 0;
       for (unsigned int i = 0; i < constrained_entries.size(); ++i)
@@ -103,7 +107,7 @@ namespace Poisson
     Number
     set_constrained_entries(const std::vector<unsigned int> &constrained_entries,
                             const LinearAlgebra::distributed::BlockVector<Number> &src,
-                            LinearAlgebra::distributed::BlockVector<Number> &      dst)
+                            LinearAlgebra::distributed::BlockVector<Number>       &dst)
     {
       Number sum = 0;
       for (unsigned int bl = 0; bl < dst.n_blocks(); ++bl)
@@ -186,6 +190,8 @@ namespace Poisson
             typename VectorizedArrayType = VectorizedArray<Number>>
   class LaplaceOperator : public Subscriptor
   {
+    using EvaluatorQuantity = dealii::internal::EvaluatorQuantity;
+
   public:
     /**
      * Number typedef.
@@ -238,8 +244,8 @@ namespace Poisson
 
       if (false && Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
         {
-          const auto &              di = data->get_dof_info(0);
-          const auto &              ti = data->get_task_info();
+          const auto               &di = data->get_dof_info(0);
+          const auto               &ti = data->get_task_info();
           std::vector<unsigned int> distances(di.vector_partitioner->locally_owned_size() / 64 + 1,
                                               numbers::invalid_unsigned_int);
           for (unsigned int id =
@@ -315,14 +321,13 @@ namespace Poisson
           all_indices_uniform.resize(Utilities::pow(3, dim) * data->n_cell_batches(), 1);
         }
 
-      FE_Nothing<dim> dummy_fe;
-      FEValues<dim>   fe_values(*data->get_mapping_info().mapping,
-                              dummy_fe,
+      FEValues<dim> fe_values(*data->get_mapping_info().mapping,
+                              data->get_dof_handler().get_fe(),
                               Quadrature<dim>(quad_1d),
                               update_quadrature_points | update_jacobians | update_JxW_values);
 
       FEValues<dim> fe_values_quad(*data_->get_mapping_info().mapping,
-                                   dummy_fe,
+                                   data->get_dof_handler().get_fe(),
                                    QGaussLobatto<dim>(3),
                                    update_quadrature_points);
 
@@ -509,9 +514,7 @@ namespace Poisson
 
           // insert dummy entries to prevent geometry from degeneration and
           // subsequent division by zero, assuming a Cartesian geometry
-          for (unsigned int l = data->n_active_entries_per_cell_batch(c);
-               l < VectorizedArrayType::size();
-               ++l)
+          for (unsigned int l = data->n_active_entries_per_cell_batch(c); l < n_lanes; ++l)
             {
               for (unsigned int d = 0; d < dim; ++d)
                 cell_vertex_coefficients[c][d + 1][d][l] = 1.;
@@ -525,11 +528,9 @@ namespace Poisson
           if (fe_degree > 2)
             {
               for (unsigned int i = 0; i < Utilities::pow<unsigned int>(3, dim); ++i)
-                for (unsigned int v = 0; v < VectorizedArrayType::size(); ++v)
-                  if (compressed_dof_indices[Utilities::pow<unsigned int>(3, dim) *
-                                               (VectorizedArrayType::size() * c) +
-                                             i * VectorizedArrayType::size() + v] ==
-                      numbers::invalid_unsigned_int)
+                for (unsigned int v = 0; v < n_lanes; ++v)
+                  if (compressed_dof_indices[Utilities::pow<unsigned int>(3, dim) * (n_lanes * c) +
+                                             i * n_lanes + v] == numbers::invalid_unsigned_int)
                     all_indices_uniform[Utilities::pow(3, dim) * c + i] = 0;
             }
         }
@@ -599,10 +600,10 @@ namespace Poisson
     }
 
     Tensor<1, 7>
-    vmult_with_merged_sums(VectorType &                                                      x,
-                           VectorType &                                                      g,
-                           VectorType &                                                      d,
-                           VectorType &                                                      h,
+    vmult_with_merged_sums(VectorType                                                       &x,
+                           VectorType                                                       &g,
+                           VectorType                                                       &d,
+                           VectorType                                                       &h,
                            const DiagonalMatrix<LinearAlgebra::distributed::Vector<Number>> &prec,
                            const Number                                                      alpha,
                            const Number                                                      beta,
@@ -655,10 +656,10 @@ namespace Poisson
     }
 
     Tensor<1, 7>
-    vmult_with_merged_sums(VectorType &                              x,
-                           VectorType &                              g,
-                           VectorType &                              d,
-                           VectorType &                              h,
+    vmult_with_merged_sums(VectorType                               &x,
+                           VectorType                               &g,
+                           VectorType                               &d,
+                           VectorType                               &h,
                            const DiagonalMatrixBlocked<dim, Number> &prec,
                            const Number                              alpha,
                            const Number                              beta,
@@ -799,8 +800,8 @@ namespace Poisson
 
     void
     vmult(
-      VectorType &                                                       dst,
-      const VectorType &                                                 src,
+      VectorType                                                        &dst,
+      const VectorType                                                  &src,
       const std::function<void(const unsigned int, const unsigned int)> &operation_before_loop,
       const std::function<void(const unsigned int, const unsigned int)> &operation_after_loop) const
     {
@@ -825,7 +826,7 @@ namespace Poisson
     }
 
     void
-    apply_local(AlignedVector<VectorizedArrayType> &      dst,
+    apply_local(AlignedVector<VectorizedArrayType>       &dst,
                 const AlignedVector<VectorizedArrayType> &src) const
     {
       const std::pair<unsigned int, unsigned int> cell_range(0, data->n_cell_batches());
@@ -834,7 +835,7 @@ namespace Poisson
 
     template <int fe_degree, int n_q_points_1d>
     void
-    apply_local_impl(AlignedVector<VectorizedArrayType> &      dst,
+    apply_local_impl(AlignedVector<VectorizedArrayType>       &dst,
                      const AlignedVector<VectorizedArrayType> &src,
                      const std::pair<unsigned int, unsigned int> &) const
     {
@@ -848,17 +849,17 @@ namespace Poisson
       for (unsigned int cell = 0; cell < data->n_cell_batches(); ++cell)
         {
           const VectorizedArrayType *src_ptr = src.data() + cell * n_q_points * n_components;
-          VectorizedArrayType *      dst_ptr = dst.data() + cell * n_q_points * n_components;
+          VectorizedArrayType       *dst_ptr = dst.data() + cell * n_q_points * n_components;
           apply_local_cell<n_q_points_1d>(phi, cell, src_ptr, dst_ptr);
         }
     }
 
     template <int n_q_points_1d, typename EvalType>
     void
-    apply_local_cell(EvalType &                 phi,
+    apply_local_cell(EvalType                  &phi,
                      const unsigned int         cell,
                      const VectorizedArrayType *src_ptr,
-                     VectorizedArrayType *      dst_ptr) const
+                     VectorizedArrayType       *dst_ptr) const
     {
       constexpr unsigned int n_q_points    = Utilities::pow(n_q_points_1d, dim);
       constexpr unsigned int n_q_points_2d = Utilities::pow(n_q_points_1d, 2);
@@ -874,7 +875,7 @@ namespace Poisson
       if (dim > 2)
         {
           for (unsigned int c = 0; c < n_components; ++c)
-            Eval::template apply<2, true, false, 1>(
+            Eval::template apply<2, true, false, false, EvaluatorQuantity::gradient>(
               phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
               src_ptr + c * n_q_points,
               phi_grads + (2 * n_components * n_q_points_2d) + c * n_q_points);
@@ -889,11 +890,11 @@ namespace Poisson
                                                                  VectorizedArrayType>;
           for (unsigned int c = 0; c < n_components; ++c)
             {
-              Eval2::template apply<1, true, false, 1>(
+              Eval2::template apply<1, true, false, false, EvaluatorQuantity::gradient>(
                 phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                 src_ptr + c * n_q_points + qz * n_q_points_2d,
                 phi_grads + (2 * c + 1) * n_q_points_2d);
-              Eval2::template apply<0, true, false, 1>(
+              Eval2::template apply<0, true, false, false, EvaluatorQuantity::gradient>(
                 phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                 src_ptr + c * n_q_points + qz * n_q_points_2d,
                 phi_grads + 2 * c * n_q_points_2d);
@@ -921,11 +922,11 @@ namespace Poisson
               }
           for (unsigned int c = 0; c < n_components; ++c)
             {
-              Eval2::template apply<0, false, false, 1>(
+              Eval2::template apply<0, false, false, false, EvaluatorQuantity::gradient>(
                 phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                 phi_grads + 2 * c * n_q_points_2d,
                 dst_ptr + c * n_q_points + qz * n_q_points_2d);
-              Eval2::template apply<1, false, true, 1>(
+              Eval2::template apply<1, false, true, false, EvaluatorQuantity::gradient>(
                 phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                 phi_grads + (2 * c + 1) * n_q_points_2d,
                 dst_ptr + c * n_q_points + qz * n_q_points_2d);
@@ -933,7 +934,7 @@ namespace Poisson
         }
       for (unsigned int c = 0; c < n_components; ++c)
         {
-          Eval::template apply<2, false, true, 1>(
+          Eval::template apply<2, false, true, false, EvaluatorQuantity::gradient>(
             phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
             phi_grads + (2 * n_components * n_q_points_2d) + c * n_q_points,
             dst_ptr + c * n_q_points);
@@ -941,7 +942,7 @@ namespace Poisson
     }
 
     void
-    apply_basic(AlignedVector<VectorizedArrayType> &      dst,
+    apply_basic(AlignedVector<VectorizedArrayType>       &dst,
                 const AlignedVector<VectorizedArrayType> &src) const
     {
       const std::pair<unsigned int, unsigned int> cell_range(0, data->n_cell_batches());
@@ -950,7 +951,7 @@ namespace Poisson
 
     template <int fe_degree, int n_q_points_1d>
     void
-    apply_basic_impl(AlignedVector<VectorizedArrayType> &      dst,
+    apply_basic_impl(AlignedVector<VectorizedArrayType>       &dst,
                      const AlignedVector<VectorizedArrayType> &src,
                      const std::pair<unsigned int, unsigned int> &) const
     {
@@ -973,12 +974,12 @@ namespace Poisson
         {
           phi.reinit(cell);
           const VectorizedArrayType *src_ptr   = src.data() + cell * n_q_points * n_components;
-          VectorizedArrayType *      dst_ptr   = dst.data() + cell * n_q_points * n_components;
-          VectorizedArrayType *      phi_grads = phi.begin_gradients();
+          VectorizedArrayType       *dst_ptr   = dst.data() + cell * n_q_points * n_components;
+          VectorizedArrayType       *phi_grads = phi.begin_gradients();
           if (dim > 2)
             {
               for (unsigned int c = 0; c < n_components; ++c)
-                Eval::template apply<2, true, false, 1>(
+                Eval::template apply<2, true, false, false, EvaluatorQuantity::gradient>(
                   phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                   src_ptr + c * n_q_points,
                   phi_grads + (2 * n_components * n_q_points_2d) + c * n_q_points);
@@ -994,11 +995,11 @@ namespace Poisson
                                                          VectorizedArrayType>;
               for (unsigned int c = 0; c < n_components; ++c)
                 {
-                  Eval2::template apply<1, true, false, 1>(
+                  Eval2::template apply<1, true, false, false, EvaluatorQuantity::gradient>(
                     phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                     src_ptr + c * n_q_points + qz * n_q_points_2d,
                     phi_grads + (2 * c + 1) * n_q_points_2d);
-                  Eval2::template apply<0, true, false, 1>(
+                  Eval2::template apply<0, true, false, false, EvaluatorQuantity::gradient>(
                     phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                     src_ptr + c * n_q_points + qz * n_q_points_2d,
                     phi_grads + 2 * c * n_q_points_2d);
@@ -1030,11 +1031,11 @@ namespace Poisson
                   }
               for (unsigned int c = 0; c < n_components; ++c)
                 {
-                  Eval2::template apply<0, false, false, 1>(
+                  Eval2::template apply<0, false, false, false, EvaluatorQuantity::gradient>(
                     phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                     phi_grads + 2 * c * n_q_points_2d,
                     dst_ptr + c * n_q_points + qz * n_q_points_2d);
-                  Eval2::template apply<1, false, true, 1>(
+                  Eval2::template apply<1, false, true, false, EvaluatorQuantity::gradient>(
                     phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                     phi_grads + (2 * c + 1) * n_q_points_2d,
                     dst_ptr + c * n_q_points + qz * n_q_points_2d);
@@ -1042,7 +1043,7 @@ namespace Poisson
             }
           for (unsigned int c = 0; c < n_components; ++c)
             {
-              Eval::template apply<2, false, true, 1>(
+              Eval::template apply<2, false, true, false, EvaluatorQuantity::gradient>(
                 phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                 phi_grads + (2 * n_components * n_q_points_2d) + c * n_q_points,
                 dst_ptr + c * n_q_points);
@@ -1051,7 +1052,7 @@ namespace Poisson
     }
 
     void
-    apply_q(AlignedVector<VectorizedArrayType> &      dst,
+    apply_q(AlignedVector<VectorizedArrayType>       &dst,
             const AlignedVector<VectorizedArrayType> &src) const
     {
       const std::pair<unsigned int, unsigned int> cell_range(0, data->n_cell_batches());
@@ -1060,7 +1061,7 @@ namespace Poisson
 
     template <int fe_degree, int n_q_points_1d>
     void
-    apply_q_impl(AlignedVector<VectorizedArrayType> &      dst,
+    apply_q_impl(AlignedVector<VectorizedArrayType>       &dst,
                  const AlignedVector<VectorizedArrayType> &src,
                  const std::pair<unsigned int, unsigned int> &) const
     {
@@ -1084,12 +1085,12 @@ namespace Poisson
         {
           phi.reinit(cell);
           const VectorizedArrayType *src_ptr   = src.data() + cell * n_q_points * n_components;
-          VectorizedArrayType *      dst_ptr   = dst.data() + cell * n_q_points * n_components;
-          VectorizedArrayType *      phi_grads = phi.begin_gradients();
+          VectorizedArrayType       *dst_ptr   = dst.data() + cell * n_q_points * n_components;
+          VectorizedArrayType       *phi_grads = phi.begin_gradients();
           if (dim > 2)
             {
               for (unsigned int c = 0; c < n_components; ++c)
-                Eval::template apply<2, true, false, 1>(
+                Eval::template apply<2, true, false, false, EvaluatorQuantity::gradient>(
                   phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                   src_ptr + c * n_q_points,
                   phi_grads + (2 * n_components * n_q_points_2d) + c * n_q_points);
@@ -1101,7 +1102,7 @@ namespace Poisson
                                                          n_q_points_1d,
                                                          VectorizedArrayType,
                                                          VectorizedArrayType>::
-                  template apply<2, true, false, 1>(
+                  template apply<2, true, false, false, EvaluatorQuantity::gradient>(
                     data->get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                     quadrature_points.begin() + (cell * dim + d) * n_q_points,
                     jacobians_z + d * n_q_points);
@@ -1117,18 +1118,18 @@ namespace Poisson
                                                          VectorizedArrayType>;
               VectorizedArrayType jacobians_y[dim * n_q_points_2d];
               for (unsigned int d = 0; d < dim; ++d)
-                Eval2::template apply<1, true, false, 1>(
+                Eval2::template apply<1, true, false, false, EvaluatorQuantity::gradient>(
                   data->get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                   quadrature_points.begin() + (cell * dim + d) * n_q_points + qz * n_q_points_2d,
                   jacobians_y + d * n_q_points_2d);
 
               for (unsigned int c = 0; c < n_components; ++c)
                 {
-                  Eval2::template apply<1, true, false, 1>(
+                  Eval2::template apply<1, true, false, false, EvaluatorQuantity::gradient>(
                     phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                     src_ptr + c * n_q_points + qz * n_q_points_2d,
                     phi_grads + (2 * c + 1) * n_q_points_2d);
-                  Eval2::template apply<0, true, false, 1>(
+                  Eval2::template apply<0, true, false, false, EvaluatorQuantity::gradient>(
                     phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                     src_ptr + c * n_q_points + qz * n_q_points_2d,
                     phi_grads + 2 * c * n_q_points_2d);
@@ -1144,7 +1145,7 @@ namespace Poisson
                                                              n_q_points_1d,
                                                              VectorizedArrayType,
                                                              VectorizedArrayType>::
-                      template apply<0, true, false, 1>(
+                      template apply<0, true, false, false, EvaluatorQuantity::gradient>(
                         phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                         quadrature_points.begin() + (cell * dim + d) * n_q_points +
                           qz * n_q_points_2d + qy * n_q_points_1d,
@@ -1194,11 +1195,11 @@ namespace Poisson
                 }
               for (unsigned int c = 0; c < n_components; ++c)
                 {
-                  Eval2::template apply<0, false, false, 1>(
+                  Eval2::template apply<0, false, false, false, EvaluatorQuantity::gradient>(
                     phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                     phi_grads + 2 * c * n_q_points_2d,
                     dst_ptr + c * n_q_points + qz * n_q_points_2d);
-                  Eval2::template apply<1, false, true, 1>(
+                  Eval2::template apply<1, false, true, false, EvaluatorQuantity::gradient>(
                     phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                     phi_grads + (2 * c + 1) * n_q_points_2d,
                     dst_ptr + c * n_q_points + qz * n_q_points_2d);
@@ -1206,7 +1207,7 @@ namespace Poisson
             }
           for (unsigned int c = 0; c < n_components; ++c)
             {
-              Eval::template apply<2, false, true, 1>(
+              Eval::template apply<2, false, true, false, EvaluatorQuantity::gradient>(
                 phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                 phi_grads + (2 * n_components * n_q_points_2d) + c * n_q_points,
                 dst_ptr + c * n_q_points);
@@ -1215,7 +1216,7 @@ namespace Poisson
     }
 
     void
-    apply_q1(AlignedVector<VectorizedArrayType> &      dst,
+    apply_q1(AlignedVector<VectorizedArrayType>       &dst,
              const AlignedVector<VectorizedArrayType> &src) const
     {
       const std::pair<unsigned int, unsigned int> cell_range(0, data->n_cell_batches());
@@ -1224,7 +1225,7 @@ namespace Poisson
 
     template <int fe_degree, int n_q_points_1d>
     void
-    apply_q1_impl(AlignedVector<VectorizedArrayType> &      dst,
+    apply_q1_impl(AlignedVector<VectorizedArrayType>       &dst,
                   const AlignedVector<VectorizedArrayType> &src,
                   const std::pair<unsigned int, unsigned int> &) const
     {
@@ -1247,12 +1248,12 @@ namespace Poisson
         {
           phi.reinit(cell);
           const VectorizedArrayType *src_ptr   = src.data() + cell * n_q_points * n_components;
-          VectorizedArrayType *      dst_ptr   = dst.data() + cell * n_q_points * n_components;
-          VectorizedArrayType *      phi_grads = phi.begin_gradients();
+          VectorizedArrayType       *dst_ptr   = dst.data() + cell * n_q_points * n_components;
+          VectorizedArrayType       *phi_grads = phi.begin_gradients();
           if (dim > 2)
             {
               for (unsigned int c = 0; c < n_components; ++c)
-                Eval::template apply<2, true, false, 1>(
+                Eval::template apply<2, true, false, false, EvaluatorQuantity::gradient>(
                   phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                   src_ptr + c * n_q_points,
                   phi_grads + (2 * n_components * n_q_points_2d) + c * n_q_points);
@@ -1272,11 +1273,11 @@ namespace Poisson
                                                          VectorizedArrayType>;
               for (unsigned int c = 0; c < n_components; ++c)
                 {
-                  Eval2::template apply<1, true, false, 1>(
+                  Eval2::template apply<1, true, false, false, EvaluatorQuantity::gradient>(
                     phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                     src_ptr + c * n_q_points + qz * n_q_points_2d,
                     phi_grads + (2 * c + 1) * n_q_points_2d);
-                  Eval2::template apply<0, true, false, 1>(
+                  Eval2::template apply<0, true, false, false, EvaluatorQuantity::gradient>(
                     phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                     src_ptr + c * n_q_points + qz * n_q_points_2d,
                     phi_grads + 2 * c * n_q_points_2d);
@@ -1340,11 +1341,11 @@ namespace Poisson
 
               for (unsigned int c = 0; c < n_components; ++c)
                 {
-                  Eval2::template apply<0, false, false, 1>(
+                  Eval2::template apply<0, false, false, false, EvaluatorQuantity::gradient>(
                     phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                     phi_grads + 2 * c * n_q_points_2d,
                     dst_ptr + c * n_q_points + qz * n_q_points_2d);
-                  Eval2::template apply<1, false, true, 1>(
+                  Eval2::template apply<1, false, true, false, EvaluatorQuantity::gradient>(
                     phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                     phi_grads + (2 * c + 1) * n_q_points_2d,
                     dst_ptr + c * n_q_points + qz * n_q_points_2d);
@@ -1352,7 +1353,7 @@ namespace Poisson
             }
           for (unsigned int c = 0; c < n_components; ++c)
             {
-              Eval::template apply<2, false, true, 1>(
+              Eval::template apply<2, false, true, false, EvaluatorQuantity::gradient>(
                 phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                 phi_grads + (2 * n_components * n_q_points_2d) + c * n_q_points,
                 dst_ptr + c * n_q_points);
@@ -1361,7 +1362,7 @@ namespace Poisson
     }
 
     void
-    apply_q2(AlignedVector<VectorizedArrayType> &      dst,
+    apply_q2(AlignedVector<VectorizedArrayType>       &dst,
              const AlignedVector<VectorizedArrayType> &src) const
     {
       const std::pair<unsigned int, unsigned int> cell_range(0, data->n_cell_batches());
@@ -1370,7 +1371,7 @@ namespace Poisson
 
     template <int fe_degree, int n_q_points_1d>
     void
-    apply_q2_impl(AlignedVector<VectorizedArrayType> &      dst,
+    apply_q2_impl(AlignedVector<VectorizedArrayType>       &dst,
                   const AlignedVector<VectorizedArrayType> &src,
                   const std::pair<unsigned int, unsigned int> &) const
     {
@@ -1397,12 +1398,12 @@ namespace Poisson
         {
           phi.reinit(cell);
           const VectorizedArrayType *src_ptr   = src.data() + cell * n_q_points * n_components;
-          VectorizedArrayType *      dst_ptr   = dst.data() + cell * n_q_points * n_components;
-          VectorizedArrayType *      phi_grads = phi.begin_gradients();
+          VectorizedArrayType       *dst_ptr   = dst.data() + cell * n_q_points * n_components;
+          VectorizedArrayType       *phi_grads = phi.begin_gradients();
           if (dim > 2)
             {
               for (unsigned int c = 0; c < n_components; ++c)
-                Eval::template apply<2, true, false, 1>(
+                Eval::template apply<2, true, false, false, EvaluatorQuantity::gradient>(
                   phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                   src_ptr + c * n_q_points,
                   phi_grads + (2 * n_components * n_q_points_2d) + c * n_q_points);
@@ -1421,11 +1422,11 @@ namespace Poisson
                                                          VectorizedArrayType>;
               for (unsigned int c = 0; c < n_components; ++c)
                 {
-                  Eval2::template apply<1, true, false, 1>(
+                  Eval2::template apply<1, true, false, false, EvaluatorQuantity::gradient>(
                     phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                     src_ptr + c * n_q_points + qz * n_q_points_2d,
                     phi_grads + (2 * c + 1) * n_q_points_2d);
-                  Eval2::template apply<0, true, false, 1>(
+                  Eval2::template apply<0, true, false, false, EvaluatorQuantity::gradient>(
                     phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                     src_ptr + c * n_q_points + qz * n_q_points_2d,
                     phi_grads + 2 * c * n_q_points_2d);
@@ -1490,11 +1491,11 @@ namespace Poisson
                 }
               for (unsigned int c = 0; c < n_components; ++c)
                 {
-                  Eval2::template apply<0, false, false, 1>(
+                  Eval2::template apply<0, false, false, false, EvaluatorQuantity::gradient>(
                     phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                     phi_grads + 2 * c * n_q_points_2d,
                     dst_ptr + c * n_q_points + qz * n_q_points_2d);
-                  Eval2::template apply<1, false, true, 1>(
+                  Eval2::template apply<1, false, true, false, EvaluatorQuantity::gradient>(
                     phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                     phi_grads + (2 * c + 1) * n_q_points_2d,
                     dst_ptr + c * n_q_points + qz * n_q_points_2d);
@@ -1502,7 +1503,7 @@ namespace Poisson
             }
           for (unsigned int c = 0; c < n_components; ++c)
             {
-              Eval::template apply<2, false, true, 1>(
+              Eval::template apply<2, false, true, false, EvaluatorQuantity::gradient>(
                 phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                 phi_grads + (2 * n_components * n_q_points_2d) + c * n_q_points,
                 dst_ptr + c * n_q_points);
@@ -1550,16 +1551,16 @@ namespace Poisson
     void
     apply_user_op_on_cell(
       std::function<void(const unsigned int, VectorizedArrayType *)>     user_op,
-      VectorType &                                                       dst,
-      const VectorType &                                                 src,
+      VectorType                                                        &dst,
+      const VectorType                                                  &src,
       const std::function<void(const unsigned int, const unsigned int)> &operation_before_loop,
       const std::function<void(const unsigned int, const unsigned int)> &operation_after_loop) const
     {
       this->data->template cell_loop<VectorType, VectorType>(
         [&](const MatrixFree<dim, Number, VectorizedArrayType> &data,
-            VectorType &                                        dst,
-            const VectorType &                                  src,
-            const std::pair<unsigned int, unsigned int> &       cell_range) {
+            VectorType                                         &dst,
+            const VectorType                                   &src,
+            const std::pair<unsigned int, unsigned int>        &cell_range) {
           FEEvaluation<dim, fe_degree, fe_degree + 1, n_components, Number, VectorizedArrayType>
                                  phi(data);
           constexpr unsigned int n_read_components =
@@ -1646,7 +1647,7 @@ namespace Poisson
       if (system_matrix.m() == 0 && system_matrix.n() == 0)
         {
           // Set up sparsity pattern of system matrix.
-          const auto &                     dof_handler = this->data->get_dof_handler();
+          const auto                      &dof_handler = this->data->get_dof_handler();
           const AffineConstraints<Number> &constraints = this->data->get_affine_constraints();
 
           IndexSet           relevant_dofs;
@@ -1696,8 +1697,8 @@ namespace Poisson
 
     void
     local_apply_basic(const MatrixFree<dim, value_type, VectorizedArrayType> &,
-                      VectorType &                                 dst,
-                      const VectorType &                           src,
+                      VectorType                                  &dst,
+                      const VectorType                            &src,
                       const std::pair<unsigned int, unsigned int> &cell_range) const
     {
       EXPAND_OPERATIONS(local_apply_basic_impl);
@@ -1705,8 +1706,8 @@ namespace Poisson
 
     template <int fe_degree, int n_q_points_1d>
     void
-    local_apply_basic_impl(VectorType &                                 dst,
-                           const VectorType &                           src,
+    local_apply_basic_impl(VectorType                                  &dst,
+                           const VectorType                            &src,
                            const std::pair<unsigned int, unsigned int> &cell_range) const
     {
       const auto &data = *this->data;
@@ -1766,11 +1767,11 @@ namespace Poisson
                                                              n_q_points_1d,
                                                              VectorizedArrayType,
                                                              VectorizedArrayType>::
-                      template apply<2, true, false, 0>(
+                      template apply<2, true, false, false, EvaluatorQuantity::value>(
                         phi.get_shape_info().data[0].shape_values_eo.begin(),
                         phi.begin_values() + c * n_q_points,
                         phi.begin_values() + c * n_q_points);
-                  Eval::template apply<2, true, false, 1>(
+                  Eval::template apply<2, true, false, false, EvaluatorQuantity::gradient>(
                     phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                     phi.begin_values() + c * n_q_points,
                     phi_grads + (2 * n_components * n_q_points_2d) + c * n_q_points);
@@ -1786,11 +1787,11 @@ namespace Poisson
                                                              VectorizedArrayType>;
                   for (unsigned int c = 0; c < n_components; ++c)
                     {
-                      Eval2::template apply<1, true, false, 1>(
+                      Eval2::template apply<1, true, false, false, EvaluatorQuantity::gradient>(
                         phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                         phi.begin_values() + c * n_q_points + qz * n_q_points_2d,
                         phi_grads + (2 * c + 1) * n_q_points_2d);
-                      Eval2::template apply<0, true, false, 1>(
+                      Eval2::template apply<0, true, false, false, EvaluatorQuantity::gradient>(
                         phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                         phi.begin_values() + c * n_q_points + qz * n_q_points_2d,
                         phi_grads + 2 * c * n_q_points_2d);
@@ -1879,11 +1880,11 @@ namespace Poisson
                     }
                   for (unsigned int c = 0; c < n_components; ++c)
                     {
-                      Eval2::template apply<0, false, false, 1>(
+                      Eval2::template apply<0, false, false, false, EvaluatorQuantity::gradient>(
                         phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                         phi_grads + 2 * c * n_q_points_2d,
                         phi.begin_values() + c * n_q_points + qz * n_q_points_2d);
-                      Eval2::template apply<1, false, true, 1>(
+                      Eval2::template apply<1, false, true, false, EvaluatorQuantity::gradient>(
                         phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                         phi_grads + (2 * c + 1) * n_q_points_2d,
                         phi.begin_values() + c * n_q_points + qz * n_q_points_2d);
@@ -1891,7 +1892,7 @@ namespace Poisson
                 }
               for (unsigned int c = 0; c < n_components; ++c)
                 {
-                  Eval::template apply<2, false, true, 1>(
+                  Eval::template apply<2, false, true, false, EvaluatorQuantity::gradient>(
                     phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                     phi_grads + (2 * n_components * n_q_points_2d) + c * n_q_points,
                     phi.begin_values() + c * n_q_points);
@@ -1904,7 +1905,7 @@ namespace Poisson
                                                              n_q_points_1d,
                                                              VectorizedArrayType,
                                                              VectorizedArrayType>::
-                      template apply<2, false, false, 0>(
+                      template apply<2, false, false, false, EvaluatorQuantity::value>(
                         phi.get_shape_info().data[0].shape_values_eo.begin(),
                         phi.begin_values() + c * n_q_points,
                         phi.begin_values() + c * n_q_points);
@@ -1934,8 +1935,8 @@ namespace Poisson
     template <bool do_sum>
     void
     local_apply_linear_geo(const MatrixFree<dim, value_type, VectorizedArrayType> &,
-                           VectorType &                                 dst,
-                           const VectorType &                           src,
+                           VectorType                                  &dst,
+                           const VectorType                            &src,
                            const std::pair<unsigned int, unsigned int> &cell_range) const
     {
       static_assert(do_sum == false, "Embedded summation not implemented");
@@ -1944,8 +1945,8 @@ namespace Poisson
 
     template <int fe_degree, int n_q_points_1d>
     void
-    local_apply_linear_geo_impl(VectorType &                                 dst,
-                                const VectorType &                           src,
+    local_apply_linear_geo_impl(VectorType                                  &dst,
+                                const VectorType                            &src,
                                 const std::pair<unsigned int, unsigned int> &cell_range) const
     {
       constexpr bool         do_sum = false;
@@ -1993,11 +1994,11 @@ namespace Poisson
             {
               for (unsigned int c = 0; c < n_components; ++c)
                 {
-                  Eval::template apply<1, true, false, 1>(
+                  Eval::template apply<1, true, false, false, EvaluatorQuantity::gradient>(
                     phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                     phi.begin_values() + c * n_q_points,
                     phi_grads + n_q_points + 2 * c * n_q_points);
-                  Eval::template apply<0, true, false, 1>(
+                  Eval::template apply<0, true, false, false, EvaluatorQuantity::gradient>(
                     phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                     phi.begin_values(),
                     phi_grads + 2 * c * n_q_points);
@@ -2037,11 +2038,11 @@ namespace Poisson
                 }
               for (unsigned int c = 0; c < n_components; ++c)
                 {
-                  Eval::template apply<0, false, false, 1>(
+                  Eval::template apply<0, false, false, false, EvaluatorQuantity::gradient>(
                     phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                     phi_grads + 2 * c * n_q_points,
                     phi.begin_values());
-                  Eval::template apply<1, false, true, 1>(
+                  Eval::template apply<1, false, true, false, EvaluatorQuantity::gradient>(
                     phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                     phi_grads + n_q_points + 2 * c * n_q_points,
                     phi.begin_values() + c * n_q_points);
@@ -2061,11 +2062,11 @@ namespace Poisson
                                                              n_q_points_1d,
                                                              VectorizedArrayType,
                                                              VectorizedArrayType>::
-                      template apply<2, true, false, 0>(
+                      template apply<2, true, false, false, EvaluatorQuantity::value>(
                         phi.get_shape_info().data[0].shape_values_eo.begin(),
                         phi.begin_values() + c * n_q_points,
                         phi.begin_values() + c * n_q_points);
-                  Eval::template apply<2, true, false, 1>(
+                  Eval::template apply<2, true, false, false, EvaluatorQuantity::gradient>(
                     phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                     phi.begin_values() + c * n_q_points,
                     phi_grads + (2 * n_components * n_q_points_2d) + c * n_q_points);
@@ -2081,11 +2082,11 @@ namespace Poisson
                                                              VectorizedArrayType>;
                   for (unsigned int c = 0; c < n_components; ++c)
                     {
-                      Eval2::template apply<1, true, false, 1>(
+                      Eval2::template apply<1, true, false, false, EvaluatorQuantity::gradient>(
                         phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                         phi.begin_values() + c * n_q_points + qz * n_q_points_2d,
                         phi_grads + (2 * c + 1) * n_q_points_2d);
-                      Eval2::template apply<0, true, false, 1>(
+                      Eval2::template apply<0, true, false, false, EvaluatorQuantity::gradient>(
                         phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                         phi.begin_values() + c * n_q_points + qz * n_q_points_2d,
                         phi_grads + 2 * c * n_q_points_2d);
@@ -2147,11 +2148,11 @@ namespace Poisson
                     }
                   for (unsigned int c = 0; c < n_components; ++c)
                     {
-                      Eval2::template apply<0, false, false, 1>(
+                      Eval2::template apply<0, false, false, false, EvaluatorQuantity::gradient>(
                         phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                         phi_grads + 2 * c * n_q_points_2d,
                         phi.begin_values() + c * n_q_points + qz * n_q_points_2d);
-                      Eval2::template apply<1, false, true, 1>(
+                      Eval2::template apply<1, false, true, false, EvaluatorQuantity::gradient>(
                         phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                         phi_grads + (2 * c + 1) * n_q_points_2d,
                         phi.begin_values() + c * n_q_points + qz * n_q_points_2d);
@@ -2159,7 +2160,7 @@ namespace Poisson
                 }
               for (unsigned int c = 0; c < n_components; ++c)
                 {
-                  Eval::template apply<2, false, true, 1>(
+                  Eval::template apply<2, false, true, false, EvaluatorQuantity::gradient>(
                     phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                     phi_grads + (2 * n_components * n_q_points_2d) + c * n_q_points,
                     phi.begin_values() + c * n_q_points);
@@ -2172,7 +2173,7 @@ namespace Poisson
                                                              n_q_points_1d,
                                                              VectorizedArrayType,
                                                              VectorizedArrayType>::
-                      template apply<2, false, false, 0>(
+                      template apply<2, false, false, false, EvaluatorQuantity::value>(
                         phi.get_shape_info().data[0].shape_values_eo.begin(),
                         phi.begin_values() + c * n_q_points,
                         phi.begin_values() + c * n_q_points);
@@ -2221,8 +2222,8 @@ namespace Poisson
 
     void
     local_apply_quadratic_geo(const MatrixFree<dim, value_type, VectorizedArrayType> &,
-                              VectorType &                                 dst,
-                              const VectorType &                           src,
+                              VectorType                                  &dst,
+                              const VectorType                            &src,
                               const std::pair<unsigned int, unsigned int> &cell_range) const
     {
       EXPAND_OPERATIONS(local_apply_quadratic_geo_impl);
@@ -2230,8 +2231,8 @@ namespace Poisson
 
     template <int fe_degree, int n_q_points_1d>
     void
-    local_apply_quadratic_geo_impl(VectorType &                                 dst,
-                                   const VectorType &                           src,
+    local_apply_quadratic_geo_impl(VectorType                                  &dst,
+                                   const VectorType                            &src,
                                    const std::pair<unsigned int, unsigned int> &cell_range) const
     {
       const auto &data = *this->data;
@@ -2274,17 +2275,17 @@ namespace Poisson
               phi.read_dof_values(src);
               phi.evaluate(EvaluationFlags::values);
             }
-          const auto &         v         = cell_quadratic_coefficients[cell];
+          const auto          &v         = cell_quadratic_coefficients[cell];
           VectorizedArrayType *phi_grads = phi.begin_gradients();
           if (dim == 2)
             {
               for (unsigned int c = 0; c < n_components; ++c)
                 {
-                  Eval::template apply<1, true, false, 1>(
+                  Eval::template apply<1, true, false, false, EvaluatorQuantity::gradient>(
                     phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                     phi.begin_values() + c * n_q_points,
                     phi_grads + n_q_points + 2 * c * n_q_points);
-                  Eval::template apply<0, true, false, 1>(
+                  Eval::template apply<0, true, false, false, EvaluatorQuantity::gradient>(
                     phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                     phi.begin_values(),
                     phi_grads + 2 * c * n_q_points);
@@ -2328,11 +2329,11 @@ namespace Poisson
                 }
               for (unsigned int c = 0; c < n_components; ++c)
                 {
-                  Eval::template apply<0, false, false, 1>(
+                  Eval::template apply<0, false, false, false, EvaluatorQuantity::gradient>(
                     phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                     phi_grads + 2 * c * n_q_points,
                     phi.begin_values());
-                  Eval::template apply<1, false, true, 1>(
+                  Eval::template apply<1, false, true, false, EvaluatorQuantity::gradient>(
                     phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                     phi_grads + n_q_points + 2 * c * n_q_points,
                     phi.begin_values() + c * n_q_points);
@@ -2352,11 +2353,11 @@ namespace Poisson
                                                              n_q_points_1d,
                                                              VectorizedArrayType,
                                                              VectorizedArrayType>::
-                      template apply<2, true, false, 0>(
+                      template apply<2, true, false, false, EvaluatorQuantity::value>(
                         phi.get_shape_info().data[0].shape_values_eo.begin(),
                         phi.begin_values() + c * n_q_points,
                         phi.begin_values() + c * n_q_points);
-                  Eval::template apply<2, true, false, 1>(
+                  Eval::template apply<2, true, false, false, EvaluatorQuantity::gradient>(
                     phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                     phi.begin_values() + c * n_q_points,
                     phi_grads + (2 * n_components * n_q_points_2d) + c * n_q_points);
@@ -2372,11 +2373,11 @@ namespace Poisson
                                                              VectorizedArrayType>;
                   for (unsigned int c = 0; c < n_components; ++c)
                     {
-                      Eval2::template apply<1, true, false, 1>(
+                      Eval2::template apply<1, true, false, false, EvaluatorQuantity::gradient>(
                         phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                         phi.begin_values() + c * n_q_points + qz * n_q_points_2d,
                         phi_grads + (2 * c + 1) * n_q_points_2d);
-                      Eval2::template apply<0, true, false, 1>(
+                      Eval2::template apply<0, true, false, false, EvaluatorQuantity::gradient>(
                         phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                         phi.begin_values() + c * n_q_points + qz * n_q_points_2d,
                         phi_grads + 2 * c * n_q_points_2d);
@@ -2440,11 +2441,11 @@ namespace Poisson
                     }
                   for (unsigned int c = 0; c < n_components; ++c)
                     {
-                      Eval2::template apply<0, false, false, 1>(
+                      Eval2::template apply<0, false, false, false, EvaluatorQuantity::gradient>(
                         phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                         phi_grads + 2 * c * n_q_points_2d,
                         phi.begin_values() + c * n_q_points + qz * n_q_points_2d);
-                      Eval2::template apply<1, false, true, 1>(
+                      Eval2::template apply<1, false, true, false, EvaluatorQuantity::gradient>(
                         phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                         phi_grads + (2 * c + 1) * n_q_points_2d,
                         phi.begin_values() + c * n_q_points + qz * n_q_points_2d);
@@ -2452,7 +2453,7 @@ namespace Poisson
                 }
               for (unsigned int c = 0; c < n_components; ++c)
                 {
-                  Eval::template apply<2, false, true, 1>(
+                  Eval::template apply<2, false, true, false, EvaluatorQuantity::gradient>(
                     phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                     phi_grads + (2 * n_components * n_q_points_2d) + c * n_q_points,
                     phi.begin_values() + c * n_q_points);
@@ -2465,7 +2466,7 @@ namespace Poisson
                                                              n_q_points_1d,
                                                              VectorizedArrayType,
                                                              VectorizedArrayType>::
-                      template apply<2, false, false, 0>(
+                      template apply<2, false, false, false, EvaluatorQuantity::value>(
                         phi.get_shape_info().data[0].shape_values_eo.begin(),
                         phi.begin_values() + c * n_q_points,
                         phi.begin_values() + c * n_q_points);
@@ -2494,8 +2495,8 @@ namespace Poisson
 
     void
     local_apply_merged(const MatrixFree<dim, value_type, VectorizedArrayType> &,
-                       VectorType &                                 dst,
-                       const VectorType &                           src,
+                       VectorType                                  &dst,
+                       const VectorType                            &src,
                        const std::pair<unsigned int, unsigned int> &cell_range) const
     {
       EXPAND_OPERATIONS(local_apply_merged_impl);
@@ -2503,8 +2504,8 @@ namespace Poisson
 
     template <int fe_degree, int n_q_points_1d>
     void
-    local_apply_merged_impl(VectorType &                                 dst,
-                            const VectorType &                           src,
+    local_apply_merged_impl(VectorType                                  &dst,
+                            const VectorType                            &src,
                             const std::pair<unsigned int, unsigned int> &cell_range) const
     {
       constexpr unsigned int n_read_components =
@@ -2566,13 +2567,13 @@ namespace Poisson
                                                                n_q_points_1d,
                                                                VectorizedArrayType,
                                                                VectorizedArrayType>::
-                        template apply<2, true, false, 0>(
+                        template apply<2, true, false, false, EvaluatorQuantity::value>(
                           phi.get_shape_info().data[0].shape_values_eo.begin(),
                           phi.begin_values() + c * n_q_points,
                           phi.begin_values() + c * n_q_points);
                     }
 
-                  Eval::template apply<2, true, false, 1>(
+                  Eval::template apply<2, true, false, false, EvaluatorQuantity::gradient>(
                     phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                     phi.begin_values() + c * n_q_points,
                     phi_grads + (2 * n_components * n_q_points_2d) + c * n_q_points);
@@ -2588,11 +2589,11 @@ namespace Poisson
                                                              VectorizedArrayType>;
                   for (unsigned int c = 0; c < n_components; ++c)
                     {
-                      Eval2::template apply<1, true, false, 1>(
+                      Eval2::template apply<1, true, false, false, EvaluatorQuantity::gradient>(
                         phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                         phi.begin_values() + c * n_q_points + qz * n_q_points_2d,
                         phi_grads + (2 * c + 1) * n_q_points_2d);
-                      Eval2::template apply<0, true, false, 1>(
+                      Eval2::template apply<0, true, false, false, EvaluatorQuantity::gradient>(
                         phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                         phi.begin_values() + c * n_q_points + qz * n_q_points_2d,
                         phi_grads + 2 * c * n_q_points_2d);
@@ -2620,11 +2621,11 @@ namespace Poisson
                       }
                   for (unsigned int c = 0; c < n_components; ++c)
                     {
-                      Eval2::template apply<0, false, false, 1>(
+                      Eval2::template apply<0, false, false, false, EvaluatorQuantity::gradient>(
                         phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                         phi_grads + 2 * c * n_q_points_2d,
                         phi.begin_values() + c * n_q_points + qz * n_q_points_2d);
-                      Eval2::template apply<1, false, true, 1>(
+                      Eval2::template apply<1, false, true, false, EvaluatorQuantity::gradient>(
                         phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                         phi_grads + (2 * c + 1) * n_q_points_2d,
                         phi.begin_values() + c * n_q_points + qz * n_q_points_2d);
@@ -2632,7 +2633,7 @@ namespace Poisson
                 }
               for (unsigned int c = 0; c < n_components; ++c)
                 {
-                  Eval::template apply<2, false, true, 1>(
+                  Eval::template apply<2, false, true, false, EvaluatorQuantity::gradient>(
                     phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                     phi_grads + (2 * n_components * n_q_points_2d) + c * n_q_points,
                     phi.begin_values() + c * n_q_points);
@@ -2645,7 +2646,7 @@ namespace Poisson
                                                              n_q_points_1d,
                                                              VectorizedArrayType,
                                                              VectorizedArrayType>::
-                      template apply<2, false, false, 0>(
+                      template apply<2, false, false, false, EvaluatorQuantity::value>(
                         phi.get_shape_info().data[0].shape_values_eo.begin(),
                         phi.begin_values() + c * n_q_points,
                         phi.begin_values() + c * n_q_points);
@@ -2674,8 +2675,8 @@ namespace Poisson
 
     void
     local_apply_construct_q(const MatrixFree<dim, value_type, VectorizedArrayType> &,
-                            VectorType &                                 dst,
-                            const VectorType &                           src,
+                            VectorType                                  &dst,
+                            const VectorType                            &src,
                             const std::pair<unsigned int, unsigned int> &cell_range) const
     {
       EXPAND_OPERATIONS(local_apply_construct_q_impl);
@@ -2683,8 +2684,8 @@ namespace Poisson
 
     template <int fe_degree, int n_q_points_1d>
     void
-    local_apply_construct_q_impl(VectorType &                                 dst,
-                                 const VectorType &                           src,
+    local_apply_construct_q_impl(VectorType                                  &dst,
+                                 const VectorType                            &src,
                                  const std::pair<unsigned int, unsigned int> &cell_range) const
     {
       const auto &data = *this->data;
@@ -2717,7 +2718,7 @@ namespace Poisson
                                                        n_q_points_1d,
                                                        VectorizedArrayType,
                                                        VectorizedArrayType>::
-                template apply<2, true, false, 1>(
+                template apply<2, true, false, false, EvaluatorQuantity::gradient>(
                   data.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                   quadrature_points.begin() + (cell * dim + d) * n_q_points,
                   jacobians_z + d * n_q_points);
@@ -2732,7 +2733,7 @@ namespace Poisson
                                                          n_q_points_1d,
                                                          VectorizedArrayType,
                                                          VectorizedArrayType>::
-                  template apply<1, true, false, 1>(
+                  template apply<1, true, false, false, EvaluatorQuantity::gradient>(
                     data.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                     quadrature_points.begin() + (cell * dim + d) * n_q_points + q2 * n_q_points_2d,
                     jacobians_y + d * n_q_points_2d);
@@ -2746,7 +2747,7 @@ namespace Poisson
                                                              n_q_points_1d,
                                                              VectorizedArrayType,
                                                              VectorizedArrayType>::
-                      template apply<0, true, false, 1>(
+                      template apply<0, true, false, false, EvaluatorQuantity::gradient>(
                         data.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                         quadrature_points.begin() + (cell * dim + d) * n_q_points +
                           q2 * n_q_points_2d + q1 * n_q_points_1d,

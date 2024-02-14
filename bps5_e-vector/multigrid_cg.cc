@@ -1017,10 +1017,10 @@ LaplaceProblem<dim>::run(const unsigned int n_refinements, const double epsy, co
       DataOut<dim> data_out;
 
       solution.update_ghost_values();
-      data_out.attach_dof_handler(dof_handler);
+      data_out.attach_dof_handler(dof_handler_dg);
       data_out.add_data_vector(solution, "solution");
       LinearAlgebra::distributed::Vector<double> exact(solution);
-      VectorTools::interpolate(mapping, dof_handler, SolutionFunction<dim>(), exact);
+      VectorTools::interpolate(mapping, dof_handler_dg, SolutionFunction<dim>(), exact);
       data_out.add_data_vector(exact, "exact");
       Vector<double> aspect_ratios =
         GridTools::compute_aspect_ratio_of_cells(mapping, triangulation, QGauss<dim>(3));
