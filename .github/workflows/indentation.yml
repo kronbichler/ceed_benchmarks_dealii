@@ -21,7 +21,7 @@ jobs:
         source: '.'
         exclude: ''
         extensions: 'h,cc'
-        clangFormatVersion: 6
+        clangFormatVersion: 16
         inplace: true
     - run: |
         git diff
