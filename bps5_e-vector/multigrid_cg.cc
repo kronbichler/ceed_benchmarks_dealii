@@ -226,7 +226,7 @@ private:
   template <int fe_degree, int n_q_points_1d>
   void
   local_apply_evector(VectorType &,
-                      const VectorType &                           src,
+                      const VectorType                            &src,
                       const std::pair<unsigned int, unsigned int> &cell_range) const
   {
     if (!continuous_vector.get_partitioner()->is_compatible(
@@ -836,7 +836,7 @@ struct MyPreconditioner
     compute_time += time.wall_time();
   }
 
-  const MGType & preconditioner;
+  const MGType  &preconditioner;
   mutable double compute_time;
 };
 

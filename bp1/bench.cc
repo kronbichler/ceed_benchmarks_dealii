@@ -346,7 +346,7 @@ test(const unsigned int s, const bool short_output, const MPI_Comm &comm_shmem)
               << " | " << std::setw(11) << dof_handler.n_dofs()                     //
               << " | " << std::setw(11) << solver_time / solver_control.last_step() //
               << " | " << std::setw(11)
-              << dof_handler.n_dofs() / solver_time * solver_control.last_step()    //
+              << dof_handler.n_dofs() / solver_time * solver_control.last_step()     //
               << " | " << std::setw(11) << solver_time2 / solver_control.last_step() //
               << " | " << std::setw(11) << solver_time3 / solver_control.last_step() //
               << " | " << std::setw(11) << solver_time4 / solver_control.last_step() //

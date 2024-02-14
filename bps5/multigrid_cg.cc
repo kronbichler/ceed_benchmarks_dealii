@@ -148,7 +148,7 @@ public:
 
   void
   initialize(std::shared_ptr<const MatrixFree<dim, number>> data,
-             const MGConstrainedDoFs &                      mg_constrained_dofs,
+             const MGConstrainedDoFs                       &mg_constrained_dofs,
              const unsigned int                             level)
   {
     this->MatrixFreeOperators::Base<dim, VectorType>::initialize(data, mg_constrained_dofs, level);
@@ -160,8 +160,8 @@ public:
 
   void
   vmult(
-    VectorType &                                                       dst,
-    const VectorType &                                                 src,
+    VectorType                                                        &dst,
+    const VectorType                                                  &src,
     const std::function<void(const unsigned int, const unsigned int)> &operation_before_loop,
     const std::function<void(const unsigned int, const unsigned int)> &operation_after_loop) const;
 
@@ -209,9 +209,9 @@ private:
   apply_add(VectorType &dst, const VectorType &src) const override;
 
   void
-  local_apply(const MatrixFree<dim, number> &              data,
-              VectorType &                                 dst,
-              const VectorType &                           src,
+  local_apply(const MatrixFree<dim, number>               &data,
+              VectorType                                  &dst,
+              const VectorType                            &src,
               const std::pair<unsigned int, unsigned int> &cell_range) const;
 
   void
@@ -226,9 +226,9 @@ private:
   }
 
   void
-  local_compute_diagonal(const MatrixFree<dim, number> &              data,
-                         VectorType &                                 dst,
-                         const unsigned int &                         dummy,
+  local_compute_diagonal(const MatrixFree<dim, number>               &data,
+                         VectorType                                  &dst,
+                         const unsigned int                          &dummy,
                          const std::pair<unsigned int, unsigned int> &cell_range) const;
 
   void
@@ -297,9 +297,9 @@ namespace
 template <int dim, typename number>
 void
 LaplaceOperator<dim, number>::local_apply(
-  const MatrixFree<dim, number> &              data,
-  VectorType &                                 dst,
-  const VectorType &                           src,
+  const MatrixFree<dim, number>               &data,
+  VectorType                                  &dst,
+  const VectorType                            &src,
   const std::pair<unsigned int, unsigned int> &cell_range) const
 {
   FEEvaluation<dim, -1, 0, 1, number> phi(data);
@@ -315,7 +315,7 @@ LaplaceOperator<dim, number>::local_apply(
             cell_vertex_coefficients[cell];
           const unsigned int       n_q_points_1d = phi.get_shape_info().data[0].n_q_points_1d;
           const unsigned int       n_q_points    = phi.n_q_points;
-          const Quadrature<1> &    quad_1d       = phi.get_shape_info().data[0].quadrature;
+          const Quadrature<1>     &quad_1d       = phi.get_shape_info().data[0].quadrature;
           VectorizedArray<number> *phi_grads     = phi.begin_gradients();
           for (unsigned int q = 0, qz = 0; qz < n_q_points_1d; ++qz)
             {
@@ -396,8 +396,8 @@ LaplaceOperator<dim, number>::vmult(VectorType &dst, const VectorType &src) cons
 template <int dim, typename number>
 void
 LaplaceOperator<dim, number>::vmult(
-  VectorType &                                                       dst,
-  const VectorType &                                                 src,
+  VectorType                                                        &dst,
+  const VectorType                                                  &src,
   const std::function<void(const unsigned int, const unsigned int)> &operation_before_loop,
   const std::function<void(const unsigned int, const unsigned int)> &operation_after_loop) const
 {
@@ -495,7 +495,7 @@ template <int dim, typename number>
 void
 LaplaceOperator<dim, number>::local_compute_diagonal(
   const MatrixFree<dim, number> &data,
-  VectorType &                   dst,
+  VectorType                    &dst,
   const unsigned int &,
   const std::pair<unsigned int, unsigned int> &cell_range) const
 {
@@ -534,7 +534,7 @@ LaplaceOperator<dim, number>::get_system_matrix() const
   if (system_matrix.m() == 0 && system_matrix.n() == 0)
     {
       // Set up sparsity pattern of system matrix.
-      const auto &                     dof_handler = this->data->get_dof_handler();
+      const auto                      &dof_handler = this->data->get_dof_handler();
       const AffineConstraints<number> &constraints = this->data->get_affine_constraints();
 
       IndexSet           relevant_dofs;
@@ -582,9 +582,9 @@ public:
   template <class InVector, int spacedim>
   void
   copy_to_mg(
-    const DoFHandler<dim, spacedim> &                                                   mg_dof,
+    const DoFHandler<dim, spacedim>                                                    &mg_dof,
     MGLevelObject<LinearAlgebra::distributed::Vector<typename MatrixType::value_type>> &dst,
-    const InVector &                                                                    src) const
+    const InVector                                                                     &src) const
   {
     for (unsigned int level = dst.min_level(); level <= dst.max_level(); ++level)
       (*laplace_operator)[level].initialize_dof_vector(dst[level]);
@@ -730,8 +730,8 @@ namespace Helper
 {
   template <int dim>
   std::vector<std::array<double, dim>>
-  compute_harmonic_cell_extent(const Mapping<dim> &       mapping,
-                               const Triangulation<dim> & triangulation,
+  compute_harmonic_cell_extent(const Mapping<dim>        &mapping,
+                               const Triangulation<dim>  &triangulation,
                                const Quadrature<dim - 1> &quadrature)
   {
     std::vector<std::array<double, dim>> result(triangulation.n_active_cells());
@@ -764,8 +764,8 @@ namespace Helper
 
   template <int dim>
   std::vector<dealii::ndarray<double, dim, 3>>
-  compute_harmonic_patch_extent(const Mapping<dim> &       mapping,
-                                const Triangulation<dim> & triangulation,
+  compute_harmonic_patch_extent(const Mapping<dim>        &mapping,
+                                const Triangulation<dim>  &triangulation,
                                 const Quadrature<dim - 1> &quadrature)
   {
     const auto harmonic_cell_extents =
@@ -855,8 +855,8 @@ public:
 
   using VectorType = LinearAlgebra::distributed::Vector<Number>;
   virtual void
-  vmult(VectorType &                                                       dst,
-        const VectorType &                                                 src,
+  vmult(VectorType                                                        &dst,
+        const VectorType                                                  &src,
         const std::function<void(const unsigned int, const unsigned int)> &operation_before_loop,
         const std::function<void(const unsigned int, const unsigned int)> &operation_after_loop)
     const = 0;
@@ -945,8 +945,8 @@ public:
   }
 
   virtual void
-  vmult(VectorType &                                                       dst,
-        const VectorType &                                                 src,
+  vmult(VectorType                                                        &dst,
+        const VectorType                                                  &src,
         const std::function<void(const unsigned int, const unsigned int)> &operation_before_loop,
         const std::function<void(const unsigned int, const unsigned int)> &operation_after_loop)
     const override
@@ -974,7 +974,7 @@ public:
   }
 
 private:
-  const Poisson::LaplaceOperator<dim, 1, Number> &                       poisson;
+  const Poisson::LaplaceOperator<dim, 1, Number>                        &poisson;
   AlignedVector<std::array<VectorizedArrayType, Utilities::pow(3, dim)>> weights;
   TensorProductMatrixSymmetricSumCollection<dim, VectorizedArrayType, degree + 1>
     tensor_product_matrices;
@@ -1016,8 +1016,8 @@ public:
 
   void
   vmult(
-    VectorType &                                                       dst,
-    const VectorType &                                                 src,
+    VectorType                                                        &dst,
+    const VectorType                                                  &src,
     const std::function<void(const unsigned int, const unsigned int)> &operation_before_loop,
     const std::function<void(const unsigned int, const unsigned int)> &operation_after_loop) const
   {
@@ -1103,7 +1103,7 @@ private:
   LinearAlgebra::distributed::Vector<double> solution;
   LinearAlgebra::distributed::Vector<double> system_rhs;
 
-  MGTransferManual<dim, LevelMatrixType>                           mg_transfer;
+  MGTransferManual<dim, LevelMatrixType>                       mg_transfer;
   MGLevelObject<MGTwoLevelTransfer<dim, VectorType>>           mg_transfers_p;
   std::unique_ptr<MGTransferGlobalCoarsening<dim, VectorType>> mg_transfer_p;
   std::unique_ptr<MGCoarseGridBase<VectorType>>                mg_coarse;
@@ -1610,7 +1610,7 @@ struct MyPreconditioner
     compute_time += time.wall_time();
   }
 
-  const MGType & preconditioner;
+  const MGType  &preconditioner;
   mutable double compute_time;
 };
 
