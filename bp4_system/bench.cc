@@ -11,7 +11,7 @@
 #include <deal.II/grid/grid_generator.h>
 #include <deal.II/grid/grid_tools.h>
 
-#include <deal.II/lac/la_parallel_block_vector.h>
+#include <deal.II/lac/la_parallel_vector.h>
 #include <deal.II/lac/precondition.h>
 #include <deal.II/lac/solver_cg.h>
 #include <deal.II/lac/solver_control.h>
@@ -20,6 +20,7 @@
 #include <deal.II/matrix_free/matrix_free.h>
 #include <deal.II/matrix_free/operators.h>
 
+#include <deal.II/numerics/data_out.h>
 #include <deal.II/numerics/vector_tools.h>
 
 #ifdef LIKWID_PERFMON
@@ -33,21 +34,22 @@
 
 using namespace dealii;
 
-// #define USE_SHMEM
+#define USE_SHMEM
 
 template <int dim>
 void
 test(const unsigned int fe_degree,
      const unsigned int s,
      const bool         short_output,
-     const MPI_Comm    &comm_shmem)
+     const MPI_Comm    &comm_shmem,
+     const bool         do_adaptivity)
 {
 #ifndef USE_SHMEM
   (void)comm_shmem;
 #endif
 
   warmup_code();
-  const unsigned int n_q_points = fe_degree + 1;
+  const unsigned int n_q_points = fe_degree + 2;
 
   if (short_output == true)
     deallog.depth_console(0);
@@ -74,8 +76,43 @@ test(const unsigned int fe_degree,
   tria.set_all_manifold_ids(1);
   tria.set_manifold(1, manifold);
   tria.refine_global(n_refine);
+  if (do_adaptivity)
+    {
+      for (auto cell : tria.active_cell_iterators())
+        if (cell->is_locally_owned())
+          {
+            Point<dim> center = cell->center();
+            for (unsigned int d = 0; d < dim; ++d)
+              center[d] = (center[d] - std::floor(center[d])) - 0.5;
+            if (center.norm() < 0.275)
+              cell->set_refine_flag();
+          }
+      tria.execute_coarsening_and_refinement();
 
-  FE_Q<dim>            fe_q(fe_degree);
+      for (auto cell : tria.active_cell_iterators())
+        if (cell->is_locally_owned())
+          {
+            Point<dim> center = cell->center();
+            for (unsigned int d = 0; d < dim; ++d)
+              center[d] = (center[d] - std::floor(center[d])) - 0.5;
+            if (0.15 <= center.norm() && center.norm() <= 0.215)
+              cell->set_refine_flag();
+          }
+      tria.execute_coarsening_and_refinement();
+      for (auto cell : tria.active_cell_iterators())
+        if (cell->is_locally_owned())
+          {
+            Point<dim> center = cell->center();
+            for (unsigned int d = 0; d < dim; ++d)
+              center[d] = (center[d] - std::floor(center[d])) - 0.5;
+            if (0.1675 <= center.norm() && center.norm() <= 0.195)
+              cell->set_refine_flag();
+          }
+      tria.execute_coarsening_and_refinement();
+    }
+
+  FE_Q<dim>            fe_scalar(fe_degree);
+  FESystem<dim>        fe_q(fe_scalar, dim);
   MappingQGeneric<dim> mapping(1); // tri-linear mapping
   DoFHandler<dim>      dof_handler(tria);
   dof_handler.distribute_dofs(fe_q);
@@ -85,13 +122,13 @@ test(const unsigned int fe_degree,
   DoFTools::extract_locally_relevant_dofs(dof_handler, relevant_dofs);
   constraints.reinit(relevant_dofs);
   VectorTools::interpolate_boundary_values(
-    mapping, dof_handler, 0, Functions::ZeroFunction<dim>(), constraints);
+    mapping, dof_handler, 0, Functions::ZeroFunction<dim>(dim), constraints);
   constraints.close();
   typename MatrixFree<dim, double>::AdditionalData mf_data;
 
 #ifdef USE_SHMEM
-  mf_data.communicator_sm                = comm_shmem;
-  mf_data.use_vector_data_exchanger_full = true;
+  mf_data.communicator_sm = comm_shmem;
+  // mf_data.use_vector_data_exchanger_full = true;
 #endif
 
   // renumber Dofs to minimize the number of partitions in import indices of
@@ -102,34 +139,39 @@ test(const unsigned int fe_degree,
   constraints.clear();
   constraints.reinit(relevant_dofs);
   VectorTools::interpolate_boundary_values(
-    mapping, dof_handler, 0, Functions::ZeroFunction<dim>(), constraints);
+    mapping, dof_handler, 0, Functions::ZeroFunction<dim>(dim), constraints);
   constraints.close();
 
+  DataOut<dim> data_out;
+  data_out.attach_dof_handler(dof_handler);
+  Vector<double> subdomain(tria.n_active_cells());
+  subdomain = (double)Utilities::MPI::this_mpi_process(MPI_COMM_WORLD);
+  data_out.add_data_vector(subdomain, "subdomain");
+  data_out.build_patches();
+  data_out.write_vtu_in_parallel("grid.vtu", MPI_COMM_WORLD);
+
   std::shared_ptr<MatrixFree<dim, double>> matrix_free(new MatrixFree<dim, double>());
-  matrix_free->reinit(mapping,
-                      dof_handler,
-                      constraints,
-                      QGaussLobatto<1>(n_q_points),
-                      typename MatrixFree<dim, double>::AdditionalData());
 
-  Poisson::LaplaceOperator<dim, dim, double, LinearAlgebra::distributed::BlockVector<double>>
-    laplace_operator;
-  laplace_operator.initialize(matrix_free);
-
-  LinearAlgebra::distributed::BlockVector<double> input, output, tmp;
-  input.reinit(dim);
-  laplace_operator.initialize_dof_vector(input);
-  output.reinit(dim);
-  laplace_operator.initialize_dof_vector(output);
-  tmp.reinit(dim);
-  laplace_operator.initialize_dof_vector(tmp);
-  for (unsigned int d = 0; d < dim; ++d)
-    for (unsigned int i = 0; i < input.block(0).locally_owned_size(); ++i)
-      if (!constraints.is_constrained(input.block(0).get_partitioner()->local_to_global(i)))
-        input.block(d).local_element(i) = (i + d) % 8;
-
+  // create preconditioner based on the diagonal of the GLL quadrature with
+  // fe_degree+1 points
   DiagonalMatrixBlocked<dim, double> diag_mat;
-  diag_mat.diagonal = laplace_operator.compute_inverse_diagonal();
+  {
+    matrix_free->reinit(
+      mapping, dof_handler, constraints, QGaussLobatto<1>(fe_degree + 1), mf_data);
+
+    Poisson::LaplaceOperator<dim, dim, double, LinearAlgebra::distributed::Vector<double>>
+      laplace_operator;
+    laplace_operator.initialize(matrix_free);
+
+    const auto vector = laplace_operator.compute_inverse_diagonal();
+    IndexSet   reduced(vector.size() / dim);
+    reduced.add_range(vector.get_partitioner()->local_range().first / dim,
+                      vector.get_partitioner()->local_range().second / dim);
+    reduced.compress();
+    diag_mat.diagonal.reinit(reduced, vector.get_mpi_communicator());
+    for (unsigned int i = 0; i < reduced.n_elements(); ++i)
+      diag_mat.diagonal.local_element(i) = vector.local_element(i * dim);
+  }
   if (short_output == false)
     {
       const double diag_norm = diag_mat.diagonal.l2_norm();
@@ -137,14 +179,29 @@ test(const unsigned int fe_degree,
         std::cout << "Norm of diagonal for preconditioner: " << diag_norm << std::endl;
     }
 
+  // now go back to the actual operator with n_q_points points
+  matrix_free->reinit(mapping, dof_handler, constraints, QGauss<1>(n_q_points), mf_data);
+
+  Poisson::LaplaceOperator<dim, dim, double, LinearAlgebra::distributed::Vector<double>>
+    laplace_operator;
+  laplace_operator.initialize(matrix_free);
+
+  LinearAlgebra::distributed::Vector<double> input, output, tmp;
+  laplace_operator.initialize_dof_vector(input);
+  laplace_operator.initialize_dof_vector(output);
+  laplace_operator.initialize_dof_vector(tmp);
+  for (unsigned int i = 0; i < input.locally_owned_size(); ++i)
+    if (!constraints.is_constrained(input.get_partitioner()->local_to_global(i)))
+      input.local_element(i) = i % 8;
+
   Utilities::MPI::MinMaxAvg data = Utilities::MPI::min_max_avg(time.wall_time(), MPI_COMM_WORLD);
   if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0 && short_output == false)
     std::cout << "Setup time:         " << data.min << " (p" << data.min_index << ") " << data.avg
               << " " << data.max << " (p" << data.max_index << ")"
               << "s" << std::endl;
 
-  ReductionControl                                          solver_control(100, 1e-15, 1e-8);
-  SolverCG<LinearAlgebra::distributed::BlockVector<double>> solver(solver_control);
+  ReductionControl                                     solver_control(100, 1e-15, 1e-8);
+  SolverCG<LinearAlgebra::distributed::Vector<double>> solver(solver_control);
 
 #ifdef LIKWID_PERFMON
   LIKWID_MARKER_START("cg_solver");
@@ -189,8 +246,8 @@ test(const unsigned int fe_degree,
     }
 
   /*
-  SolverCGOptimized<LinearAlgebra::distributed::BlockVector<double>> solver2(solver_control);
-  double                                                             solver_time2 = 1e10;
+  SolverCGOptimized<LinearAlgebra::distributed::Vector<double>> solver2(solver_control);
+  double                                                        solver_time2 = 1e10;
 #ifdef LIKWID_PERFMON
   LIKWID_MARKER_START("cg_solver_opt");
 #endif
@@ -224,8 +281,8 @@ test(const unsigned int fe_degree,
                          " vs default solver " + std::to_string(iterations_basic)));
   */
 
-  SolverCGFullMerge<LinearAlgebra::distributed::BlockVector<double>> solver4(solver_control);
-  double                                                             solver_time4 = 1e10;
+  SolverCGFullMerge<LinearAlgebra::distributed::Vector<double>> solver4(solver_control);
+  double                                                        solver_time4 = 1e10;
 #ifdef LIKWID_PERFMON
   LIKWID_MARKER_START("cg_solver_optm");
 #endif
@@ -254,7 +311,7 @@ test(const unsigned int fe_degree,
       laplace_operator.vmult_add(tmp, output);
       deallog << "True residual norm: " << tmp.l2_norm() << std::endl;
     }
-  AssertThrow(std::abs((int)solver_control.last_step() - (int)iterations_basic) < 2,
+  AssertThrow(std::abs((int)solver_control.last_step() - (int)iterations_basic) < 3,
               ExcMessage("Iteration numbers differ " + std::to_string(solver_control.last_step()) +
                          " vs default solver " + std::to_string(iterations_basic)));
 
@@ -355,13 +412,13 @@ test(const unsigned int fe_degree,
   if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0 && short_output == true)
     std::cout << std::setw(2) << fe_degree << " | " << std::setw(2) << n_q_points   //
               << " |" << std::setw(10) << tria.n_global_active_cells()              //
-              << " |" << std::setw(11) << dim * dof_handler.n_dofs()                //
+              << " |" << std::setw(11) << dof_handler.n_dofs()                      //
               << " | " << std::setw(11) << solver_time / solver_control.last_step() //
               << " | " << std::setw(11)
-              << dim * dof_handler.n_dofs() / solver_time4 * solver_control.last_step() //
-              << " | " << std::setw(11) << solver_time4 / solver_control.last_step()    //
-              << " | " << std::setw(4) << solver_control.last_step()                    //
-              << " | " << std::setw(11) << matvec_time                                  //
+              << dof_handler.n_dofs() / solver_time4 * solver_control.last_step()    //
+              << " | " << std::setw(11) << solver_time4 / solver_control.last_step() //
+              << " | " << std::setw(4) << solver_control.last_step()                 //
+              << " | " << std::setw(11) << matvec_time                               //
 #ifdef SHOW_VARIANTS
               << " | " << std::setw(11) << t2 //
               << " | " << std::setw(11) << t3 //
@@ -374,7 +431,10 @@ test(const unsigned int fe_degree,
 
 template <int dim>
 void
-do_test(const unsigned int fe_degree, const int s_in, const bool compact_output)
+do_test(const unsigned int fe_degree,
+        const int          s_in,
+        const bool         compact_output,
+        const bool         do_adaptivity)
 {
   MPI_Comm comm_shmem = MPI_COMM_SELF;
 
@@ -405,14 +465,14 @@ do_test(const unsigned int fe_degree, const int s_in, const bool compact_output)
       while (Utilities::fixed_power<dim>(fe_degree + 1) * (1UL << s) * dim <
              6000000ULL * Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD))
         {
-          test<dim>(fe_degree, s, compact_output, comm_shmem);
+          test<dim>(fe_degree, s, compact_output, comm_shmem, do_adaptivity);
           ++s;
         }
       if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
         std::cout << std::endl << std::endl;
     }
   else
-    test<dim>(fe_degree, s_in, compact_output, comm_shmem);
+    test<dim>(fe_degree, s_in, compact_output, comm_shmem, do_adaptivity);
 
 #ifdef USE_SHMEM
   MPI_Comm_free(&comm_shmem);
@@ -433,14 +493,17 @@ main(int argc, char **argv)
   unsigned int degree         = 1;
   unsigned int s              = -1;
   bool         compact_output = true;
+  bool         do_adaptivity  = false;
   if (argc > 1)
     degree = std::atoi(argv[1]);
   if (argc > 2)
     s = std::atoi(argv[2]);
   if (argc > 3)
     compact_output = std::atoi(argv[3]);
+  if (argc > 4)
+    do_adaptivity = std::atoi(argv[4]);
 
-  do_test<3>(degree, s, compact_output);
+  do_test<3>(degree, s, compact_output, do_adaptivity);
 
 #ifdef LIKWID_PERFMON
   LIKWID_MARKER_CLOSE;
