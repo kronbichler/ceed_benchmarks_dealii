@@ -240,7 +240,7 @@ namespace Poisson
 
       coefficients_eo.resize(data_->get_shape_info().data[0].shape_gradients_collocation_eo.size());
       for (unsigned int i = 0; i < coefficients_eo.size(); ++i)
-        coefficients_eo[i] = data_->get_shape_info().data[0].shape_gradients_collocation_eo[i][0];
+        coefficients_eo[i] = data_->get_shape_info().data[0].shape_gradients_collocation_eo[i];
 
       if (false && Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
         {
@@ -870,7 +870,7 @@ namespace Poisson
                                                             n_q_points_1d,
                                                             n_q_points_1d,
                                                             VectorizedArrayType,
-                                                            VectorizedArrayType>;
+                                                            Number>;
       VectorizedArrayType *phi_grads = phi.begin_gradients();
       if (dim > 2)
         {
@@ -887,7 +887,7 @@ namespace Poisson
                                                                  n_q_points_1d,
                                                                  n_q_points_1d,
                                                                  VectorizedArrayType,
-                                                                 VectorizedArrayType>;
+                                                                 Number>;
           for (unsigned int c = 0; c < n_components; ++c)
             {
               Eval2::template apply<1, true, false, false, EvaluatorQuantity::gradient>(
@@ -965,7 +965,7 @@ namespace Poisson
                                                             n_q_points_1d,
                                                             n_q_points_1d,
                                                             VectorizedArrayType,
-                                                            VectorizedArrayType>;
+                                                            Number>;
 
       FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number, VectorizedArrayType> phi(
         *data);
@@ -992,7 +992,7 @@ namespace Poisson
                                                          n_q_points_1d,
                                                          n_q_points_1d,
                                                          VectorizedArrayType,
-                                                         VectorizedArrayType>;
+                                                         Number>;
               for (unsigned int c = 0; c < n_components; ++c)
                 {
                   Eval2::template apply<1, true, false, false, EvaluatorQuantity::gradient>(
@@ -1075,7 +1075,7 @@ namespace Poisson
                                                             n_q_points_1d,
                                                             n_q_points_1d,
                                                             VectorizedArrayType,
-                                                            VectorizedArrayType>;
+                                                            Number>;
 
       FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number, VectorizedArrayType> phi(
         *data);
@@ -1101,7 +1101,7 @@ namespace Poisson
                                                          n_q_points_1d,
                                                          n_q_points_1d,
                                                          VectorizedArrayType,
-                                                         VectorizedArrayType>::
+                                                         Number>::
                   template apply<2, true, false, false, EvaluatorQuantity::gradient>(
                     data->get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                     quadrature_points.begin() + (cell * dim + d) * n_q_points,
@@ -1115,7 +1115,7 @@ namespace Poisson
                                                          n_q_points_1d,
                                                          n_q_points_1d,
                                                          VectorizedArrayType,
-                                                         VectorizedArrayType>;
+                                                         Number>;
               VectorizedArrayType jacobians_y[dim * n_q_points_2d];
               for (unsigned int d = 0; d < dim; ++d)
                 Eval2::template apply<1, true, false, false, EvaluatorQuantity::gradient>(
@@ -1144,7 +1144,7 @@ namespace Poisson
                                                              n_q_points_1d,
                                                              n_q_points_1d,
                                                              VectorizedArrayType,
-                                                             VectorizedArrayType>::
+                                                             Number>::
                       template apply<0, true, false, false, EvaluatorQuantity::gradient>(
                         phi.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                         quadrature_points.begin() + (cell * dim + d) * n_q_points +
@@ -1239,7 +1239,7 @@ namespace Poisson
                                                             n_q_points_1d,
                                                             n_q_points_1d,
                                                             VectorizedArrayType,
-                                                            VectorizedArrayType>;
+                                                            Number>;
 
       FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number, VectorizedArrayType> phi(
         *data);
@@ -1270,7 +1270,7 @@ namespace Poisson
                                                          n_q_points_1d,
                                                          n_q_points_1d,
                                                          VectorizedArrayType,
-                                                         VectorizedArrayType>;
+                                                         Number>;
               for (unsigned int c = 0; c < n_components; ++c)
                 {
                   Eval2::template apply<1, true, false, false, EvaluatorQuantity::gradient>(
@@ -1385,7 +1385,7 @@ namespace Poisson
                                                             n_q_points_1d,
                                                             n_q_points_1d,
                                                             VectorizedArrayType,
-                                                            VectorizedArrayType>;
+                                                            Number>;
 
       FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number, VectorizedArrayType> phi(
         *data);
@@ -1419,7 +1419,7 @@ namespace Poisson
                                                          n_q_points_1d,
                                                          n_q_points_1d,
                                                          VectorizedArrayType,
-                                                         VectorizedArrayType>;
+                                                         Number>;
               for (unsigned int c = 0; c < n_components; ++c)
                 {
                   Eval2::template apply<1, true, false, false, EvaluatorQuantity::gradient>(
@@ -1723,7 +1723,7 @@ namespace Poisson
                                                             n_q_points_1d,
                                                             n_q_points_1d,
                                                             VectorizedArrayType,
-                                                            VectorizedArrayType>;
+                                                            Number>;
 
       for (unsigned int cell = cell_range.first; cell < cell_range.second; ++cell)
         {
@@ -1766,7 +1766,7 @@ namespace Poisson
                                                              fe_degree + 1,
                                                              n_q_points_1d,
                                                              VectorizedArrayType,
-                                                             VectorizedArrayType>::
+                                                             Number>::
                       template apply<2, true, false, false, EvaluatorQuantity::value>(
                         phi.get_shape_info().data[0].shape_values_eo.begin(),
                         phi.begin_values() + c * n_q_points,
@@ -1784,7 +1784,7 @@ namespace Poisson
                                                              n_q_points_1d,
                                                              n_q_points_1d,
                                                              VectorizedArrayType,
-                                                             VectorizedArrayType>;
+                                                             Number>;
                   for (unsigned int c = 0; c < n_components; ++c)
                     {
                       Eval2::template apply<1, true, false, false, EvaluatorQuantity::gradient>(
@@ -1904,7 +1904,7 @@ namespace Poisson
                                                              fe_degree + 1,
                                                              n_q_points_1d,
                                                              VectorizedArrayType,
-                                                             VectorizedArrayType>::
+                                                             Number>::
                       template apply<2, false, false, false, EvaluatorQuantity::value>(
                         phi.get_shape_info().data[0].shape_values_eo.begin(),
                         phi.begin_values() + c * n_q_points,
@@ -1961,7 +1961,7 @@ namespace Poisson
                                                             n_q_points_1d,
                                                             n_q_points_1d,
                                                             VectorizedArrayType,
-                                                            VectorizedArrayType>;
+                                                            Number>;
 
       for (unsigned int cell = cell_range.first; cell < cell_range.second; ++cell)
         {
@@ -2061,7 +2061,7 @@ namespace Poisson
                                                              fe_degree + 1,
                                                              n_q_points_1d,
                                                              VectorizedArrayType,
-                                                             VectorizedArrayType>::
+                                                             Number>::
                       template apply<2, true, false, false, EvaluatorQuantity::value>(
                         phi.get_shape_info().data[0].shape_values_eo.begin(),
                         phi.begin_values() + c * n_q_points,
@@ -2079,7 +2079,7 @@ namespace Poisson
                                                              n_q_points_1d,
                                                              n_q_points_1d,
                                                              VectorizedArrayType,
-                                                             VectorizedArrayType>;
+                                                             Number>;
                   for (unsigned int c = 0; c < n_components; ++c)
                     {
                       Eval2::template apply<1, true, false, false, EvaluatorQuantity::gradient>(
@@ -2172,7 +2172,7 @@ namespace Poisson
                                                              fe_degree + 1,
                                                              n_q_points_1d,
                                                              VectorizedArrayType,
-                                                             VectorizedArrayType>::
+                                                             Number>::
                       template apply<2, false, false, false, EvaluatorQuantity::value>(
                         phi.get_shape_info().data[0].shape_values_eo.begin(),
                         phi.begin_values() + c * n_q_points,
@@ -2250,7 +2250,7 @@ namespace Poisson
                                                             n_q_points_1d,
                                                             n_q_points_1d,
                                                             VectorizedArrayType,
-                                                            VectorizedArrayType>;
+                                                            Number>;
 
       for (unsigned int cell = cell_range.first; cell < cell_range.second; ++cell)
         {
@@ -2352,7 +2352,7 @@ namespace Poisson
                                                              fe_degree + 1,
                                                              n_q_points_1d,
                                                              VectorizedArrayType,
-                                                             VectorizedArrayType>::
+                                                             Number>::
                       template apply<2, true, false, false, EvaluatorQuantity::value>(
                         phi.get_shape_info().data[0].shape_values_eo.begin(),
                         phi.begin_values() + c * n_q_points,
@@ -2370,7 +2370,7 @@ namespace Poisson
                                                              n_q_points_1d,
                                                              n_q_points_1d,
                                                              VectorizedArrayType,
-                                                             VectorizedArrayType>;
+                                                             Number>;
                   for (unsigned int c = 0; c < n_components; ++c)
                     {
                       Eval2::template apply<1, true, false, false, EvaluatorQuantity::gradient>(
@@ -2465,7 +2465,7 @@ namespace Poisson
                                                              fe_degree + 1,
                                                              n_q_points_1d,
                                                              VectorizedArrayType,
-                                                             VectorizedArrayType>::
+                                                             Number>::
                       template apply<2, false, false, false, EvaluatorQuantity::value>(
                         phi.get_shape_info().data[0].shape_values_eo.begin(),
                         phi.begin_values() + c * n_q_points,
@@ -2519,7 +2519,7 @@ namespace Poisson
                                                             n_q_points_1d,
                                                             n_q_points_1d,
                                                             VectorizedArrayType,
-                                                            VectorizedArrayType>;
+                                                            Number>;
 
       FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number, VectorizedArrayType> phi(
         data);
@@ -2566,7 +2566,7 @@ namespace Poisson
                                                                fe_degree + 1,
                                                                n_q_points_1d,
                                                                VectorizedArrayType,
-                                                               VectorizedArrayType>::
+                                                               Number>::
                         template apply<2, true, false, false, EvaluatorQuantity::value>(
                           phi.get_shape_info().data[0].shape_values_eo.begin(),
                           phi.begin_values() + c * n_q_points,
@@ -2586,7 +2586,7 @@ namespace Poisson
                                                              n_q_points_1d,
                                                              n_q_points_1d,
                                                              VectorizedArrayType,
-                                                             VectorizedArrayType>;
+                                                             Number>;
                   for (unsigned int c = 0; c < n_components; ++c)
                     {
                       Eval2::template apply<1, true, false, false, EvaluatorQuantity::gradient>(
@@ -2645,7 +2645,7 @@ namespace Poisson
                                                              fe_degree + 1,
                                                              n_q_points_1d,
                                                              VectorizedArrayType,
-                                                             VectorizedArrayType>::
+                                                             Number>::
                       template apply<2, false, false, false, EvaluatorQuantity::value>(
                         phi.get_shape_info().data[0].shape_values_eo.begin(),
                         phi.begin_values() + c * n_q_points,
@@ -2717,7 +2717,7 @@ namespace Poisson
                                                        n_q_points_1d,
                                                        n_q_points_1d,
                                                        VectorizedArrayType,
-                                                       VectorizedArrayType>::
+                                                       Number>::
                 template apply<2, true, false, false, EvaluatorQuantity::gradient>(
                   data.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                   quadrature_points.begin() + (cell * dim + d) * n_q_points,
@@ -2732,7 +2732,7 @@ namespace Poisson
                                                          n_q_points_1d,
                                                          n_q_points_1d,
                                                          VectorizedArrayType,
-                                                         VectorizedArrayType>::
+                                                         Number>::
                   template apply<1, true, false, false, EvaluatorQuantity::gradient>(
                     data.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                     quadrature_points.begin() + (cell * dim + d) * n_q_points + q2 * n_q_points_2d,
@@ -2746,7 +2746,7 @@ namespace Poisson
                                                              n_q_points_1d,
                                                              n_q_points_1d,
                                                              VectorizedArrayType,
-                                                             VectorizedArrayType>::
+                                                             Number>::
                       template apply<0, true, false, false, EvaluatorQuantity::gradient>(
                         data.get_shape_info().data[0].shape_gradients_collocation_eo.begin(),
                         quadrature_points.begin() + (cell * dim + d) * n_q_points +

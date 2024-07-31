@@ -201,8 +201,10 @@ public:
     return diag;
   }
 
+#ifdef DEAL_II_WITH_PETSC
   const PETScWrappers::MPI::SparseMatrix &
   get_system_matrix() const;
+#endif
 
 private:
   virtual void
@@ -234,7 +236,10 @@ private:
   void
   compute_vertex_coefficients();
 
+#ifdef DEAL_II_WITH_PETSC
   mutable PETScWrappers::MPI::SparseMatrix system_matrix;
+#endif
+
   AlignedVector<
     std::array<Tensor<1, dim, VectorizedArray<number>>, GeometryInfo<dim>::vertices_per_cell>>
     cell_vertex_coefficients;
@@ -526,6 +531,8 @@ LaplaceOperator<dim, number>::local_compute_diagonal(
 
 
 
+#ifdef DEAL_II_WITH_PETSC
+
 template <int dim, typename number>
 const PETScWrappers::MPI::SparseMatrix &
 LaplaceOperator<dim, number>::get_system_matrix() const
@@ -566,6 +573,8 @@ LaplaceOperator<dim, number>::get_system_matrix() const
   return this->system_matrix;
 }
 
+#endif
+
 
 template <int dim, typename MatrixType>
 class MGTransferManual : public MGTransferMatrixFree<dim, typename MatrixType::value_type>
@@ -599,6 +608,8 @@ private:
 };
 
 
+
+#ifdef DEAL_II_WITH_PETSC
 
 template <typename number>
 class MGCoarseSolverAMG : public MGCoarseGridBase<LinearAlgebra::distributed::Vector<number>>
@@ -723,6 +734,8 @@ private:
   mutable VectorTypePETSc                 petsc_dst;
   mutable double                          compute_time;
 };
+
+#endif
 
 
 
@@ -1579,8 +1592,12 @@ LaplaceProblem<dim>::setup_coarse_solver()
 {
   if (do_coarse_amg)
     {
+#ifdef DEAL_II_WITH_PETSC
       mg_coarse = std::make_unique<MGCoarseSolverAMG<typename LevelMatrixType::value_type>>(
         mg_matrices[0].get_system_matrix(), 1);
+#else
+      AssertThrow(false, ExcMessage("Can use AMG solver without PETSc"));
+#endif
     }
   else
     {
@@ -1672,9 +1689,11 @@ LaplaceProblem<dim>::solve()
             << mg_smoother_data[l].preconditioner->get_compute_time_and_reset() << "s ";
     }
   pcout << std::endl;
+#ifdef DEAL_II_WITH_PETSC
   if (auto coarse =
         dynamic_cast<MGCoarseSolverAMG<typename LevelMatrixType::value_type> *>(mg_coarse.get()))
     pcout << "    coarse grid " << coarse->get_compute_time_and_reset() << "s" << std::endl;
+#endif
   pcout << "iterations: " << solver_control.last_step() << std::endl;
   const unsigned int n_ranks = Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD);
   pcout << "throughput: "

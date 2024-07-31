@@ -56,12 +56,12 @@ template <int dim,
           typename VectorizedArrayType>
 void
 read_dof_values_compressed(const dealii::LinearAlgebra::distributed::Vector<Number> &vec_in,
-                           const std::vector<unsigned int>  &compressed_indices,
-                           const std::vector<unsigned char> &all_indices_unconstrained,
-                           const unsigned int                cell_no,
-                           const dealii::AlignedVector<VectorizedArrayType> &shape_values_eo,
-                           const bool                                        is_collocation,
-                           VectorizedArrayType                              *dof_values)
+                           const std::vector<unsigned int>     &compressed_indices,
+                           const std::vector<unsigned char>    &all_indices_unconstrained,
+                           const unsigned int                   cell_no,
+                           const dealii::AlignedVector<Number> &shape_values_eo,
+                           const bool                           is_collocation,
+                           VectorizedArrayType                 *dof_values)
 {
   dealii::LinearAlgebra::distributed::Vector<Number> &vec =
     const_cast<dealii::LinearAlgebra::distributed::Vector<Number> &>(vec_in);
@@ -314,14 +314,13 @@ template <int dim,
           typename Number,
           typename VectorizedArrayType>
 void
-distribute_local_to_global_compressed(
-  dealii::LinearAlgebra::distributed::Vector<Number> &vec,
-  const std::vector<unsigned int>                    &compressed_indices,
-  const std::vector<unsigned char>                   &all_indices_unconstrained,
-  const unsigned int                                  cell_no,
-  const dealii::AlignedVector<VectorizedArrayType>   &shape_values_eo,
-  const bool                                          is_collocation,
-  VectorizedArrayType                                *dof_values)
+distribute_local_to_global_compressed(dealii::LinearAlgebra::distributed::Vector<Number> &vec,
+                                      const std::vector<unsigned int>  &compressed_indices,
+                                      const std::vector<unsigned char> &all_indices_unconstrained,
+                                      const unsigned int                cell_no,
+                                      const dealii::AlignedVector<Number> &shape_values_eo,
+                                      const bool                           is_collocation,
+                                      VectorizedArrayType                 *dof_values)
 {
   AssertIndexRange(cell_no * dealii::Utilities::pow(3, dim) * VectorizedArrayType::size(),
                    compressed_indices.size());

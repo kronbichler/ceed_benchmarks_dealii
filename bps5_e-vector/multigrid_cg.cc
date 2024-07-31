@@ -252,6 +252,7 @@ private:
 
 
 
+#ifdef DEAL_II_WITH_PETSC
 template <typename number>
 class MGCoarseSolverAMG : public MGCoarseGridBase<LinearAlgebra::distributed::Vector<number>>
 {
@@ -375,7 +376,7 @@ private:
   mutable VectorTypePETSc                 petsc_dst;
   mutable double                          compute_time;
 };
-
+#endif
 
 
 template <int dim>
@@ -805,8 +806,12 @@ LaplaceProblem<dim>::setup_coarse_solver()
 {
   if (do_coarse_amg)
     {
+#ifdef DEAL_II_WITH_PETSC
       mg_coarse = std::make_unique<MGCoarseSolverAMG<typename LevelMatrixType::value_type>>(
         mg_matrices[0].get_system_matrix(), 1);
+#else
+      AssertThrow(false, ExcMessage("Cannot use AMG solver without PETSc"));
+#endif
     }
   else
     {
@@ -879,9 +884,11 @@ LaplaceProblem<dim>::solve()
       pcout << mg_matrices[l].get_compute_time_and_reset() << "s ";
     }
   pcout << std::endl;
+#ifdef DEAL_II_WITH_PETSC
   if (auto coarse =
         dynamic_cast<MGCoarseSolverAMG<typename LevelMatrixType::value_type> *>(mg_coarse.get()))
     pcout << "    coarse grid " << coarse->get_compute_time_and_reset() << "s" << std::endl;
+#endif
   pcout << "iterations: " << solver_control.last_step() << std::endl;
   const unsigned int n_ranks = Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD);
   pcout << "throughput: "
