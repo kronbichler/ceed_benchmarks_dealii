@@ -425,7 +425,7 @@ do_test(const unsigned int fe_degree, const int s_in, const bool compact_output)
           << " p |  q | n_element |     n_dofs |     time/it |   dofs/s/it | mer_time/it | opt_time/it | itCG | time/matvec"
 #endif
           << std::endl;
-      while ((2 + Utilities::fixed_power<dim>(fe_degree + 1)) * (1UL << (s / 4)) <
+      while ((10 + Utilities::fixed_power<dim>(fe_degree + 1)) * (4UL << (s / 4)) <
              6000000ULL * Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD))
         {
           test<dim>(fe_degree, s, compact_output, comm_shmem);
