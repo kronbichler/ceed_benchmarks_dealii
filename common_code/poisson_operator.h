@@ -840,6 +840,8 @@ namespace Poisson
                      const std::pair<unsigned int, unsigned int> &) const
     {
       AssertThrow(n_q_points_1d == fe_degree + 1, ExcNotImplemented());
+      if (data->n_cell_batches() == 0)
+        return;
 
       FEEvaluation<dim, fe_degree, n_q_points_1d, n_components, Number, VectorizedArrayType> phi(
         *data);
